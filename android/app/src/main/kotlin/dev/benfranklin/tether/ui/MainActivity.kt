@@ -32,7 +32,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -272,8 +271,9 @@ private fun TetherApp(rt: TetherRuntime) {
         }
         composable("apps") {
             val seen by rt.seenApps.apps.collectAsStateWithLifecycle()
-            val rows by produceState(initialValue = emptyList<AppRow>(), seen, settings.notifications.apps) {
-                value = withContext(Dispatchers.IO) { appRows(ctx, seen, settings.notifications) }
+            var rows by remember { mutableStateOf(emptyList<AppRow>()) }
+            LaunchedEffect(seen, settings.notifications.apps) {
+                rows = withContext(Dispatchers.IO) { appRows(ctx, seen, settings.notifications) }
             }
             AppsScreen(
                 apps = rows,

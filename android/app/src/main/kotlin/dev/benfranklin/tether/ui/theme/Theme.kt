@@ -15,9 +15,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import dev.benfranklin.tether.R
 
 /** Pure Mono palette: black, greys and white only. State is shown with weight and fill, never hue. */
 object Mono {
@@ -62,7 +64,14 @@ private val scheme = darkColorScheme(
     scrim = Color(0xCC000000),
 )
 
-private val sans = FontFamily.SansSerif
+/** Manrope (SIL OFL, bundled) for text; numbers and codes use the platform monospace. */
+private val sans = FontFamily(
+    Font(R.font.manrope_light, FontWeight.Light),
+    Font(R.font.manrope_regular, FontWeight.Normal),
+    Font(R.font.manrope_medium, FontWeight.Medium),
+    Font(R.font.manrope_semibold, FontWeight.SemiBold),
+    Font(R.font.manrope_semibold, FontWeight.Bold),
+)
 
 val TetherType = Typography(
     displaySmall = TextStyle(fontFamily = sans, fontWeight = FontWeight.Light, fontSize = 34.sp, letterSpacing = (-0.5).sp),

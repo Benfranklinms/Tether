@@ -444,5 +444,6 @@ val LICENSES = listOf(
         "released into the public domain (Unlicense). Thank you.",
     "Bouncy Castle" to "X25519 and ChaCha20-Poly1305. MIT-style Bouncy Castle License.",
     "ZXing / zxing-android-embedded" to "QR scanning. Apache License 2.0.",
+    "Manrope" to "Typeface by The Manrope Project Authors. SIL Open Font License 1.1.",
     "AndroidX, Jetpack Compose, Kotlin, kotlinx" to "Apache License 2.0.",
 )
