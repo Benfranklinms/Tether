@@ -14,6 +14,7 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import dev.benfranklin.tether.core.transfer.TransferRecord
 import dev.benfranklin.tether.core.util.Hex
@@ -58,18 +59,21 @@ class DeviceTests {
     @get:Rule
     val perms: GrantPermissionRule = GrantPermissionRule.grant(MediaWatcher.permission())
 
+    /** The test APK plays the messaging app: it owns ReplyReceiver and the PendingIntents. */
+    private val testCtx: Context = InstrumentationRegistry.getInstrumentation().context
+
     private fun messagingNotification(): Notification {
         val pi = PendingIntent.getBroadcast(
-            ctx, 1, Intent(ctx, ReplyReceiver::class.java),
+            testCtx, 1, Intent(testCtx, ReplyReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
         )
         val read = PendingIntent.getBroadcast(
-            ctx, 2, Intent(ctx, ReplyReceiver::class.java).putExtra("read", true), PendingIntent.FLAG_IMMUTABLE,
+            testCtx, 2, Intent(testCtx, ReplyReceiver::class.java).putExtra("read", true), PendingIntent.FLAG_IMMUTABLE,
         )
         val input = RemoteInput.Builder(ReplyReceiver.KEY).setLabel("Reply").build()
         val reply = Notification.Action.Builder(null, "Reply", pi).addRemoteInput(input).build()
         val markRead = Notification.Action.Builder(null, "Mark as read", read).build()
-        return Notification.Builder(ctx, "alerts").setContentTitle("Asha").setContentText("Lunch?")
+        return Notification.Builder(testCtx, "alerts").setContentTitle("Asha").setContentText("Lunch?")
             .setSmallIcon(android.R.drawable.ic_dialog_info).addAction(markRead).addAction(reply).build()
     }
 
