@@ -244,7 +244,7 @@ private struct FeaturesPage: View {
     var body: some View {
         if olderPhone {
             Card {
-                Row(title: "Your phone runs an older Tether", detail: "Update it to use replies, photos, battery, ring and screen sharing.",
+                Row(title: "Your phone runs an older Tether", detail: "Update it to use every feature on this page.",
                     divider: false) { EmptyView() }
             }
         }
@@ -293,6 +293,73 @@ private struct FeaturesPage: View {
                 }
                 .disabled(!m.supports(Caps.ring))
             }
+        }
+        Features3Settings()
+    }
+}
+
+/// Messages, calls, now playing and proximity lock (0.3.0).
+private struct Features3Settings: View {
+    @EnvironmentObject var m: AppModel
+
+    var body: some View {
+        SectionLabel(text: "Messages")
+        Card {
+            ToggleRow(title: "Texts on this Mac", detail: "Read, search and reply to your phone's SMS. Nothing is stored on the Mac.",
+                      isOn: $m.settings.smsEnabled)
+            ToggleRow(title: "Notify for new texts",
+                      detail: "Off by default: your phone's Messages notification is mirrored already.",
+                      isOn: $m.settings.smsNotify)
+            Row(title: "Messages window", divider: false) {
+                GhostButton(title: "Open…") { m.openMessages() }.disabled(!m.supports(Caps3.sms) || !m.settings.smsEnabled)
+            }
+        }
+        SectionLabel(text: "Calls")
+        Card {
+            ToggleRow(title: "Incoming call alerts", detail: "Caller name, Decline and Silence. Missed calls become notifications.",
+                      isOn: $m.settings.callAlerts, divider: false)
+        }
+        SectionLabel(text: "Now playing")
+        Card {
+            ToggleRow(title: "Show what's playing on the phone", detail: "Title, artwork, play/pause, skip, seek and volume.",
+                      isOn: $m.settings.nowPlayingEnabled)
+            ToggleRow(title: "Mac media keys control the phone",
+                      detail: "While the phone is playing, ⏯ ⏭ ⏮ and Control Center's Now Playing drive it.",
+                      isOn: $m.settings.mediaKeys, divider: false)
+        }
+        SectionLabel(text: "Lock when my phone walks away")
+        Card {
+            ToggleRow(title: "Lock this Mac when the phone is away",
+                      detail: "Uses Bluetooth signal strength. Never locks while the phone's screen or Screen Sharing is open. "
+                        + "Tether never unlocks your Mac.",
+                      isOn: $m.settings.proximityLock)
+            Row(title: "Distance", detail: m.settings.proximityDistance.label + ". Signal varies with pockets and walls.") {
+                MonoSegmented(options: ProximityDistance.allCases, selection: $m.settings.proximityDistance,
+                              label: { $0.rawValue.capitalized }, mono: false)
+                    .fixedSize()
+            }
+            Row(title: "Away for", detail: "How long the phone must stay away before locking.") {
+                MonoSegmented(options: [10, 30, 60, 120], selection: $m.settings.proximityAwaySeconds,
+                              label: { $0 < 60 ? "\($0)s" : "\($0 / 60)m" }, mono: true)
+                    .fixedSize()
+            }
+            Row(title: "Signal now", detail: proximityDetail, divider: false) { EmptyView() }
+        }
+        if m.isConnected && !m.supports(Caps3.proximity) {
+            Text("Update Tether on your phone to use proximity lock.")
+                .font(Typo.sans(11)).foregroundColor(Mono.muted).padding(.horizontal, 4)
+        }
+    }
+
+    private var proximityDetail: String {
+        guard m.settings.proximityLock else { return "Off" }
+        guard m.isConnected else { return m.proximity.state == .unknown ? "Waiting for your phone" : "Phone out of range" }
+        let rssi = m.proximity.smoothed.map { "\(Int($0.rounded())) dBm" } ?? "measuring…"
+        switch m.proximity.state {
+        case .near: return "Near · \(rssi)"
+        case .leaving: return "Moving away · \(rssi)"
+        case .away: return "Away · \(rssi)"
+        case .unknown: return rssi
         }
     }
 }

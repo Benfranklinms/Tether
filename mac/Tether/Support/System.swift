@@ -67,6 +67,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     static let mediaCategory = "tether.media"
     static let revealAction = "tether.reveal"
     static let actionPrefix = "act:"
+    static let callCategory = "tether.call"
+    static let declineAction = "tether.call.decline"
+    static let silenceAction = "tether.call.silence"
+    static let smsCategory = "tether.sms"
     private let center = UNUserNotificationCenter.current()
     private var dynamic: [String: UNNotificationCategory] = [:]
     private let lock = NSLock()
@@ -76,6 +80,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     var onAction: ((String, String, String?) -> Void)?
     /// A media notification was clicked (path, reveal-in-Finder?)
     var onMedia: ((String, Bool) -> Void)?
+    /// (call id, "decline" / "silence")
+    var onCall: ((String, String) -> Void)?
+    /// A text-message notification was clicked (thread id).
+    var onSms: ((Int64) -> Void)?
 
     func setUp() {
         center.delegate = self
@@ -92,6 +100,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             actions: [UNNotificationAction(identifier: Self.revealAction, title: "Show in Finder", options: [])],
             intentIdentifiers: [], options: []
         ))
+        all.insert(UNNotificationCategory(
+            identifier: Self.callCategory,
+            actions: [
+                UNNotificationAction(identifier: Self.declineAction, title: "Decline", options: [.destructive]),
+                UNNotificationAction(identifier: Self.silenceAction, title: "Silence", options: []),
+            ],
+            intentIdentifiers: [], options: []
+        ))
+        all.insert(UNNotificationCategory(identifier: Self.smsCategory, actions: [], intentIdentifiers: [], options: []))
         center.setNotificationCategories(all)
     }
 
@@ -174,6 +191,41 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// Incoming call banner with Decline / Silence (0.3.0).
+    func postCall(id: String, caller: String, number: String?) {
+        let c = UNMutableNotificationContent()
+        c.title = caller
+        c.body = number.map { $0 == caller ? "Incoming call" : "Incoming call · \($0)" } ?? "Incoming call"
+        c.categoryIdentifier = Self.callCategory
+        c.userInfo = ["call": id]
+        c.sound = .default
+        if #available(macOS 12.0, *) { c.interruptionLevel = .active }
+        center.add(UNNotificationRequest(identifier: "call-\(id)", content: c, trigger: nil))
+    }
+
+    func postMissedCall(id: String, caller: String, number: String?) {
+        let c = UNMutableNotificationContent()
+        c.title = "Missed call"
+        c.body = number.map { $0 == caller ? caller : "\(caller) · \($0)" } ?? caller
+        c.threadIdentifier = "missed-calls"
+        center.add(UNNotificationRequest(identifier: "missed-\(id)", content: c, trigger: nil))
+    }
+
+    func removeCall(id: String) {
+        center.removeDeliveredNotifications(withIdentifiers: ["call-\(id)"])
+    }
+
+    func postSms(id: String, thread: Int64, title: String, body: String, sound: Bool) {
+        let c = UNMutableNotificationContent()
+        c.title = title
+        c.body = body
+        c.threadIdentifier = "sms-\(thread)"
+        c.categoryIdentifier = Self.smsCategory
+        c.userInfo = ["thread": NSNumber(value: thread)]
+        if sound { c.sound = .default }
+        center.add(UNNotificationRequest(identifier: "sms-\(id)", content: c, trigger: nil))
+    }
+
     func remove(key: String) {
         center.removeDeliveredNotifications(withIdentifiers: [key])
     }
@@ -192,7 +244,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse,
                                 withCompletionHandler done: @escaping () -> Void) {
         let info = r.notification.request.content.userInfo
-        if let path = info["path"] as? String {
+        if let call = info["call"] as? String {
+            if r.actionIdentifier == Self.declineAction {
+                onCall?(call, CallActions.decline)
+            } else if r.actionIdentifier == Self.silenceAction {
+                onCall?(call, CallActions.silence)
+            }
+        } else if let thread = (info["thread"] as? NSNumber)?.int64Value {
+            if r.actionIdentifier == UNNotificationDefaultActionIdentifier { onSms?(thread) }
+        } else if let path = info["path"] as? String {
             if r.actionIdentifier == Self.revealAction {
                 onMedia?(path, true)
             } else if r.actionIdentifier == UNNotificationDefaultActionIdentifier {

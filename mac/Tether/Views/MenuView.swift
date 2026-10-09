@@ -28,6 +28,7 @@ struct MenuView: View {
             if m.peer == nil {
                 unpaired
             } else {
+                phoneCards
                 actions
                 tabs
                 content
@@ -124,6 +125,23 @@ struct MenuView: View {
         .transition(.opacity)
     }
 
+    // MARK: 0.3.0 cards
+
+    @ViewBuilder private var phoneCards: some View {
+        VStack(spacing: 8) {
+            if let c = m.call, m.settings.callAlerts {
+                CallBanner(call: c).transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if let np = m.nowPlaying, m.settings.nowPlayingEnabled {
+                NowPlayingCard(np: np).transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, m.call != nil || m.nowPlaying != nil ? 12 : 0)
+        .animation(Motion.spring(reduce), value: m.call?.id)
+        .animation(Motion.spring(reduce), value: m.nowPlaying == nil)
+    }
+
     // MARK: actions
 
     private var actions: some View {
@@ -139,6 +157,9 @@ struct MenuView: View {
             ActionTile(title: "Phone screen", symbol: "rectangle.on.rectangle", enabled: m.supports(Caps.screen)) {
                 open("screen")
                 if m.screen.phase != .live { m.startScreen() }
+            }
+            ActionTile(title: "Messages", symbol: "message", enabled: m.supports(Caps3.sms) && m.settings.smsEnabled) {
+                m.openMessages()
             }
         }
         .tetherGlassGroup(spacing: 8)

@@ -76,6 +76,18 @@ struct MacSettings: Codable, Equatable {
     /// The menu-bar panel is torn off into a floating window (remembered across launches).
     var panelDetached = false
     var panelOnTop = true
+    // 0.3.0
+    var smsEnabled = true
+    /// Post a Mac notification for new texts (off by default: the phone's Messages notification is mirrored already).
+    var smsNotify = false
+    var callAlerts = true
+    var nowPlayingEnabled = true
+    /// The Mac's play/pause/next keys control the phone while it's playing.
+    var mediaKeys = false
+    /// Lock this Mac when the phone walks away. Off by default.
+    var proximityLock = false
+    var proximityDistance = ProximityDistance.medium
+    var proximityAwaySeconds = 30
 
     init() {}
 
@@ -97,6 +109,14 @@ struct MacSettings: Codable, Equatable {
         screenControl = try c.decodeIfPresent(Bool.self, forKey: .screenControl) ?? true
         panelDetached = try c.decodeIfPresent(Bool.self, forKey: .panelDetached) ?? false
         panelOnTop = try c.decodeIfPresent(Bool.self, forKey: .panelOnTop) ?? true
+        smsEnabled = try c.decodeIfPresent(Bool.self, forKey: .smsEnabled) ?? true
+        smsNotify = try c.decodeIfPresent(Bool.self, forKey: .smsNotify) ?? false
+        callAlerts = try c.decodeIfPresent(Bool.self, forKey: .callAlerts) ?? true
+        nowPlayingEnabled = try c.decodeIfPresent(Bool.self, forKey: .nowPlayingEnabled) ?? true
+        mediaKeys = try c.decodeIfPresent(Bool.self, forKey: .mediaKeys) ?? false
+        proximityLock = try c.decodeIfPresent(Bool.self, forKey: .proximityLock) ?? false
+        proximityDistance = (try? c.decodeIfPresent(ProximityDistance.self, forKey: .proximityDistance)) ?? .medium
+        proximityAwaySeconds = try c.decodeIfPresent(Int.self, forKey: .proximityAwaySeconds) ?? 30
     }
 
     var mediaURL: URL { mediaFolder.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? downloadURL }

@@ -8,7 +8,7 @@ enum Demo {
         key: Data(repeating: 7, count: KeyPair.keyLength), token: Data(repeating: 3, count: PairingURI.tokenLength), name: "MacBook Air"
     ).encode()
 
-    enum Shot { case unpaired, connected, qr, code, done, linking, failed, glass, screen }
+    enum Shot { case unpaired, connected, qr, code, done, linking, failed, glass, screen, call }
 
     static func now() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
@@ -54,6 +54,7 @@ enum Demo {
         if scene == .screen {
             m.screen.phase = .consent
         }
+        loadFeatures3(m, scene, t)
         let notes = [
             NotifPayload(key: "d1", pkg: "com.google.android.gm", app: "Gmail", title: "Placement Cell",
                          text: "Drive registration closes at 5 PM", ts: t - 31 * 60_000),
@@ -76,6 +77,34 @@ enum Demo {
                            status: .DONE, transferred: 4_800_000, createdAt: t - 600_000, via: .WIFI),
             TransferRecord(id: "c", direction: .IN, name: "Lecture-notes.pdf", size: 1_200_000, sha256: "", mime: "application/pdf",
                            status: .DONE, transferred: 1_200_000, createdAt: t - 3_600_000, via: .BLE),
+        ]
+    }
+
+    private static func loadFeatures3(_ m: AppModel, _ scene: Shot, _ t: Int64) {
+        m.nowPlaying = NowPlayingPayload(active: true, pkg: "com.spotify.music", app: "Spotify", title: "Kesariya",
+                                         artist: "Arijit Singh", album: "Brahmastra", durationMs: 268_000, positionMs: 94_000,
+                                         playing: true, speed: 1, canSeek: true, canNext: true, canPrev: true, volume: 0.6, ts: t)
+        if scene == .call {
+            m.call = CallStatePayload(id: "c1", state: CallStates.ringing, number: "+91 98470 12345", name: "Amma", ts: t)
+        }
+        m.sms.sims = [SimInfo(id: 1, slot: 0, name: "Jio"), SimInfo(id: 2, slot: 1, name: "Airtel")]
+        m.sms.threads = [
+            SmsThread(id: 1, addrs: ["+919847012345"], names: ["Amma"], snippet: "Reached? Call when free",
+                      date: t - 4 * 60_000, unread: 1),
+            SmsThread(id: 2, addrs: ["JM-HDFCBK"], names: [nil], snippet: "OTP 482913 for your transaction. Do not share.",
+                      date: t - 52 * 60_000),
+            SmsThread(id: 3, addrs: ["+919995551234"], names: ["Rahul (CSBS)"], snippet: "Lab record submission moved to Monday",
+                      date: t - 3 * 3_600_000, outLast: true),
+            SmsThread(id: 4, addrs: ["+918089001122"], names: ["Placement Cell"], snippet: "Drive registration closes at 5 PM",
+                      date: t - 26 * 3_600_000),
+        ]
+        m.sms.selected = 1
+        m.sms.conversations[1] = [
+            SmsMessage(id: "s1", thread: 1, addr: "+919847012345", name: "Amma", body: "Did you eat?", date: t - 75 * 60_000, sub: 1),
+            SmsMessage(id: "s2", thread: 1, addr: "+919847012345", body: "Yes, in the canteen. Leaving college at 5.",
+                       date: t - 70 * 60_000, out: true, status: SmsStatus.sent, sub: 1),
+            SmsMessage(id: "s3", thread: 1, addr: "+919847012345", name: "Amma", body: "Reached? Call when free",
+                       date: t - 4 * 60_000, sub: 1, read: false),
         ]
     }
 

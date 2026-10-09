@@ -94,6 +94,8 @@ enum Screenshots {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous)))
         },
         Shot(name: "screen", scene: .screen) { AnyView(ScreenWindow(screen: ScreenModel()).frame(width: 380, height: 760)) },
+        Shot(name: "menu-call", scene: .call) { AnyView(MenuView()) },
+        Shot(name: "messages", scene: .connected) { AnyView(MessagesView().frame(width: 820, height: 560)) },
     ]
 
     private static var window: NSWindow?

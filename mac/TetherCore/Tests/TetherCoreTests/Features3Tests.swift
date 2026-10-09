@@ -37,7 +37,8 @@ final class Features3CodecTests: XCTestCase {
 
     func testKotlinShapedHeadersDecode() throws {
         // kotlinx.serialization with encodeDefaults writes every default; Swift must also accept them missing.
-        let kotlin = #"{"msg":{"id":"s1","thread":3,"addr":"123","name":null,"body":"hi","date":5,"out":true,"status":"sent","att":[],"read":true}}"#
+        let kotlin = #"{"msg":{"id":"s1","thread":3,"addr":"123","name":null,"body":"hi","date":5,"out":true,"#
+            + #""status":"sent","att":[],"read":true}}"#
         guard case .smsNew(let m) = try MessageCodec.decode(frame(0x96, kotlin)) else { return XCTFail("type") }
         XCTAssertTrue(m.out)
         XCTAssertEqual(m.status, "sent")

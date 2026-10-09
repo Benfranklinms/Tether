@@ -147,6 +147,15 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         }
     }
 
+    /// Fire-and-forget send for 0.3.0 requests; `failed` runs on the main queue when offline.
+    func send(_ message: Message, failed: (() -> Void)? = nil) {
+        queue.async { [self] in
+            let ok = controller.send(message)
+            if !ok { Log.info("send.offline", ["type": "\(message.type)"]) }
+            if !ok, let failed { DispatchQueue.main.async(execute: failed) }
+        }
+    }
+
     func ring(_ on: Bool) {
         queue.async { [self] in
             let ok = controller.send(on ? .ring(timeoutS: 60) : .ringStop(reason: "user"))
@@ -239,6 +248,15 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             case .ringState(let on, let reason): m.ringUpdate(on, reason: reason)
             case .screenState(let st): m.screenUpdate(st)
             case .screenStop(let reason): m.screenUpdate(ScreenStatePayload(state: ScreenStates.stopped, reason: reason))
+            case .smsThreads(let p): m.smsThreads(p)
+            case .smsMessages(let p): m.smsMessages(p)
+            case .smsNew(let msg): m.smsNew(msg)
+            case .smsSendResult(let r): m.smsSendResult(r)
+            case .sims(let sims): m.sms.sims = sims
+            case .callState(let c): m.callUpdate(c)
+            case .nowPlaying(let np): m.nowPlayingUpdate(np)
+            case .nowPlayingArt(let hash, let data): m.nowPlayingArt(hash: hash, data: data)
+            case .rssi(let rssi, _): m.rssiReading(rssi)
             default: Log.info("msg.ignored", ["type": "\(message.type)"])
             }
         }

@@ -6,7 +6,7 @@ import TetherCore
 /// The app's windows, owned by AppKit (not SwiftUI scenes) so the menu-bar panel can be
 /// detached into a floating window and every view can open the others the same way.
 enum WindowID: String {
-    case pair, settings, screen
+    case pair, settings, screen, messages
 }
 
 /// Applies the live appearance (Pure Mono / Liquid Glass) and the model to any root view.
@@ -30,6 +30,8 @@ final class WindowRouter: NSObject, NSWindowDelegate {
         self.model = model
     }
 
+    func isOpen(_ id: WindowID) -> Bool { windows[id]?.isVisible == true }
+
     func show(_ id: WindowID) {
         NSApp.activate(ignoringOtherApps: true)
         if let w = windows[id] {
@@ -52,6 +54,11 @@ final class WindowRouter: NSObject, NSWindowDelegate {
             style.insert(.resizable)
             style.insert(.miniaturizable)
             size = NSSize(width: 420, height: 860)
+        case .messages:
+            root = AnyView(MessagesView())
+            style.insert(.resizable)
+            style.insert(.miniaturizable)
+            size = NSSize(width: 820, height: 580)
         }
         let host = NSHostingController(rootView: Themed(model: model, content: root))
         let w = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: style, backing: .buffered, defer: false)
@@ -62,12 +69,21 @@ final class WindowRouter: NSObject, NSWindowDelegate {
         w.isMovableByWindowBackground = id != .screen
         w.isReleasedWhenClosed = false
         w.appearance = NSAppearance(named: .darkAqua)
-        w.title = id == .pair ? "Pair a phone" : id == .settings ? "Tether Settings" : "Phone screen"
+        switch id {
+        case .pair: w.title = "Pair a phone"
+        case .settings: w.title = "Tether Settings"
+        case .screen: w.title = "Phone screen"
+        case .messages: w.title = "Messages"
+        }
         w.identifier = NSUserInterfaceItemIdentifier(id.rawValue)
         w.delegate = self
         if id == .screen {
             w.contentMinSize = NSSize(width: 300, height: 480)
             w.setFrameAutosaveName("TetherScreenWindow")
+        }
+        if id == .messages {
+            w.contentMinSize = NSSize(width: 640, height: 420)
+            w.setFrameAutosaveName("TetherMessagesWindow")
         }
         if w.frameAutosaveName.isEmpty || !w.setFrameUsingName(w.frameAutosaveName) { w.center() }
         windows[id] = w

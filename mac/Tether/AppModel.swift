@@ -31,6 +31,21 @@ final class AppModel: ObservableObject {
     /// Per notification key: "sending", "sent" or an error, for the reply field.
     @Published var actionStatus: [String: String] = [:]
     let screen = ScreenModel()
+    // 0.3.0
+    @Published var sms = SmsModel()
+    /// The incoming call ringing right now (nil when none).
+    @Published var call: CallStatePayload?
+    @Published var callNote: String?
+    @Published var nowPlaying: NowPlayingPayload?
+    @Published var artwork: NSImage?
+    @Published var proximity = ProximityStatus()
+    var artCache: [String: NSImage] = [:]
+    /// Phone clock minus Mac clock (ms), estimated from now-playing timestamps.
+    var phoneClockSkew: Int64 = 0
+    var proximityMonitor = ProximityMonitor()
+    var lockPolicy = LockPolicy()
+    var proximityTimer: Timer?
+    var mediaKeys: MediaKeys?
     /// Owns the pair / settings / screen windows (set by the app delegate).
     var windows: WindowRouter?
     var lowBattery = LowBatteryMonitor()
@@ -67,6 +82,9 @@ final class AppModel: ObservableObject {
         notifier.onAction = { [weak self] key, action, text in
             DispatchQueue.main.async { self?.performAction(key: key, action: action, text: text) }
         }
+        notifier.onCall = { [weak self] id, action in
+            DispatchQueue.main.async { self?.callAction(id: id, action: action) }
+        }
         notifier.onMedia = { path, reveal in
             DispatchQueue.main.async {
                 let url = URL(fileURLWithPath: path)
@@ -82,6 +100,7 @@ final class AppModel: ObservableObject {
         }
         clipboard.start()
         e.start()
+        setUp3()
     }
 
     var isConnected: Bool {
@@ -101,11 +120,13 @@ final class AppModel: ObservableObject {
         self.peer = peer
         self.peerCaps = caps
         self.peerApp = peerApp
+        let wasConnected = isConnected
         if case .connected = link {} else {
             battery = nil
             ringing = false
             ringRequested = false
         }
+        linkChanged3(wasConnected: wasConnected)
         if screen.phase == .live || screen.phase == .consent || screen.phase == .requesting {
             if case .connected(_, let w) = link, w {} else {
                 screen.phase = .ended("The Wi-Fi link to your phone dropped")
@@ -358,6 +379,7 @@ final class AppModel: ObservableObject {
         guard settings != old, !demo else { return }
         settingsFile.write(settings)
         engine?.apply(settings)
+        settingsChanged3(old)
         if settings.notifications.historyLimit != old.notifications.historyLimit {
             history.trim(settings.notifications.historyLimit)
             scheduleHistoryWrite()
