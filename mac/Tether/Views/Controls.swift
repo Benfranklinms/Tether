@@ -5,29 +5,25 @@ struct MonoToggleStyle: ToggleStyle {
     @Environment(\.accessibilityReduceMotion) private var reduce
     @Environment(\.isEnabled) private var enabled
 
+    /// Draws only the switch; the label is kept for VoiceOver through the accessibility representation.
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 12) {
-            configuration.label
-            Spacer(minLength: 8)
-            ZStack(alignment: configuration.isOn ? .trailing : .leading) {
-                Capsule()
-                    .fill(configuration.isOn ? Mono.accent : Mono.surfaceHigh)
-                    .overlay(Capsule().stroke(configuration.isOn ? Color.clear : Mono.line))
-                    .frame(width: 34, height: 20)
-                Circle()
-                    .fill(configuration.isOn ? Mono.bg : Mono.muted)
-                    .frame(width: 16, height: 16)
-                    .padding(2)
-            }
-            .animation(Motion.bouncy(reduce), value: configuration.isOn)
-            .onTapGesture { configuration.isOn.toggle() }
-            .opacity(enabled ? 1 : 0.4)
+        ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+            Capsule()
+                .fill(configuration.isOn ? Mono.accent : Mono.surfaceHigh)
+                .overlay(Capsule().stroke(configuration.isOn ? Color.clear : Mono.line))
+                .frame(width: 34, height: 20)
+            Circle()
+                .fill(configuration.isOn ? Mono.bg : Mono.muted)
+                .frame(width: 16, height: 16)
+                .padding(2)
         }
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(configuration.isOn ? "On" : "Off")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction { configuration.isOn.toggle() }
+        .animation(Motion.bouncy(reduce), value: configuration.isOn)
+        .contentShape(Capsule())
+        .onTapGesture { if enabled { configuration.isOn.toggle() } }
+        .opacity(enabled ? 1 : 0.4)
+        .accessibilityRepresentation {
+            Toggle(isOn: configuration.$isOn) { configuration.label }
+        }
     }
 }
 
@@ -117,7 +113,7 @@ struct ToggleRow: View {
 
     var body: some View {
         Row(title: title, detail: detail, divider: divider) {
-            Toggle(title, isOn: $isOn).labelsHidden().toggleStyle(MonoToggleStyle()).fixedSize()
+            Toggle(isOn: $isOn) { Text(title) }.toggleStyle(MonoToggleStyle()).fixedSize()
         }
     }
 }
