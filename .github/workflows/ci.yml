@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: android
+    env:
+      TETHER_VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-ci.${GITHUB_RUN_NUMBER}"; fi
+          echo "TETHER_VERSION_NAME=$v" >> "$GITHUB_ENV"
+      - name: Detekt
+        run: ./gradlew --stacktrace detekt
+      - name: Unit tests (core + app, Robolectric)
+        run: ./gradlew --stacktrace :core:test :app:testDebugUnitTest
+      - name: Android lint
+        run: ./gradlew --stacktrace :app:lintDebug
+      - name: Build APKs
+        run: ./gradlew --stacktrace :app:assembleDebug :app:assembleRelease
+      - name: Screenshots (Roborazzi)
+        run: ./gradlew --stacktrace :app:recordRoborazziDebug
+      - name: Collect
+        run: |
+          mkdir -p ../out
+          cp app/build/outputs/apk/release/app-release.apk "../out/Tether-${TETHER_VERSION_NAME}.apk"
+          ls -la ../out ../docs/screenshots/android || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: |
+            out/*.apk
+            docs/screenshots/android/*.png
+      - name: Reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          path: |
+            android/build/reports
+            android/core/build/reports
+            android/app/build/reports
+            android/app/build/outputs/roborazzi
+      - name: Commit screenshots
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/android
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "Update Android screenshots [skip ci]"
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done

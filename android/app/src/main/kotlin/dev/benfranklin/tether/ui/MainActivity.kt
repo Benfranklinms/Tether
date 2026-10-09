@@ -17,7 +17,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.IntOffset
+import dev.benfranklin.tether.ui.theme.LocalReduceMotion
+import dev.benfranklin.tether.ui.theme.Motion
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -112,6 +122,7 @@ fun homeModel(s: UiState, transfers: List<TransferRecord>, mirroringOff: Boolean
     )
 }
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun TetherApp(rt: TetherRuntime) {
     val ctx = LocalContext.current
@@ -196,8 +207,22 @@ private fun TetherApp(rt: TetherRuntime) {
     }
 
     val nav = rememberNavController()
-    NavHost(nav, startDestination = "home") {
+    val reduce = LocalReduceMotion.current
+    // iOS-style push: the new screen slides in from the right on a spring while the old one
+    // drifts left by a third. Predictive back (Android 14+) scrubs the same animation.
+    val slide = Motion.spring<IntOffset>(reduce)
+    val fade = Motion.spring<Float>(reduce)
+    SharedTransitionLayout {
+    val sharedScope = this
+    NavHost(
+        nav, startDestination = "home",
+        enterTransition = { slideInHorizontally(slide) { it } },
+        exitTransition = { slideOutHorizontally(slide) { -it / 3 } + fadeOut(fade, targetAlpha = 0.6f) },
+        popEnterTransition = { slideInHorizontally(slide) { -it / 3 } + fadeIn(fade, initialAlpha = 0.6f) },
+        popExitTransition = { slideOutHorizontally(slide) { it } },
+    ) {
         composable("home") {
+          CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
             HomeScreen(
                 m = homeModel(state, transfers, mirroringOff = settings.notifications.enabled && !listenerOn),
                 onSendClipboard = { ctx.startActivity(dev.benfranklin.tether.clip.ClipSendActivity.intent(ctx)) },
@@ -207,8 +232,10 @@ private fun TetherApp(rt: TetherRuntime) {
                 onNoticeShown = rt::clearNotice,
                 onFixMirroring = { grant("listener") },
             )
+          }
         }
         composable("settings") {
+          CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
             val pm = ctx.getSystemService(PowerManager::class.java)
             SettingsScreen(
                 s = settings,
@@ -241,6 +268,7 @@ private fun TetherApp(rt: TetherRuntime) {
                 },
                 onBack = { nav.popBackStack() },
             )
+          }
         }
         composable("apps") {
             val seen by rt.seenApps.apps.collectAsStateWithLifecycle()
@@ -261,6 +289,7 @@ private fun TetherApp(rt: TetherRuntime) {
             )
         }
         composable("licenses") { LicensesScreen(onBack = { nav.popBackStack() }) }
+    }
     }
 }
 

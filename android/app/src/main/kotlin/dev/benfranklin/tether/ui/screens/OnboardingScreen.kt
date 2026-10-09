@@ -1,7 +1,22 @@
 package dev.benfranklin.tether.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
+import dev.benfranklin.tether.ui.Haptics
+import dev.benfranklin.tether.ui.theme.LocalReduceMotion
+import dev.benfranklin.tether.ui.theme.Motion
+import kotlinx.coroutines.delay
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -71,9 +86,13 @@ fun OnboardingScreen(
     onReject: () -> Unit,
     onCancelPairing: () -> Unit,
 ) {
+    val reduce = LocalReduceMotion.current
     AnimatedContent(
         step, label = "step",
-        transitionSpec = { (slideInHorizontally { it / 4 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 4 } + fadeOut()) },
+        transitionSpec = {
+            (slideInHorizontally(Motion.spring(reduce)) { it } + fadeIn(Motion.spring(reduce))) togetherWith
+                (slideOutHorizontally(Motion.spring(reduce)) { -it / 3 } + fadeOut(Motion.spring(reduce)))
+        },
         modifier = Modifier.fillMaxSize().safeDrawingPadding(),
     ) { s ->
         Column(
@@ -137,7 +156,7 @@ private fun Welcome(onNext: () -> Unit) {
 @Composable
 private fun Feature(title: String, text: String) {
     Row(Modifier.padding(vertical = 8.dp)) {
-        Text("—", color = Mono.Sage, modifier = Modifier.width(24.dp))
+        Text("—", color = Mono.Text, modifier = Modifier.width(24.dp))
         Column {
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(text, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted)
@@ -166,7 +185,7 @@ private fun Permissions(items: List<PermissionItem>, onGrant: (String) -> Unit, 
                 Text(p.why, style = MaterialTheme.typography.bodySmall, color = Mono.Muted)
             }
             if (p.granted) {
-                Icon(Icons.Outlined.Check, contentDescription = null, tint = Mono.Sage, modifier = Modifier.padding(12.dp))
+                Icon(Icons.Outlined.Check, contentDescription = null, tint = Mono.Text, modifier = Modifier.padding(12.dp))
             } else {
                 TextButton(onClick = { onGrant(p.id) }) { Text("Allow") }
             }
@@ -180,9 +199,30 @@ private fun Permissions(items: List<PermissionItem>, onGrant: (String) -> Unit, 
 private fun ColumnScope.Pair(
     pair: PairView, onScanQr: () -> Unit, onNearby: () -> Unit, onConfirm: () -> Unit, onReject: () -> Unit, onCancel: () -> Unit,
 ) {
+    val reduce = LocalReduceMotion.current
+    val view = LocalView.current
     Spacer(Modifier.height(24.dp))
     Title("Pair your Mac")
     Spacer(Modifier.height(12.dp))
+    AnimatedContent(
+        pair, label = "pair", contentKey = { it::class },
+        transitionSpec = {
+            (fadeIn(Motion.spring(reduce)) + scaleIn(Motion.spring(reduce), initialScale = 0.94f)) togetherWith
+                (fadeOut(Motion.spring(reduce)) + scaleOut(Motion.spring(reduce), targetScale = 1.04f))
+        },
+    ) { pv -> Column { PairBody(pv, view, onScanQr, onNearby, onConfirm, onReject, onCancel) } }
+    Spacer(Modifier.height(24.dp))
+    Text(
+        "Pairing uses an encrypted Noise handshake. The code proves no one is in the middle.",
+        style = MaterialTheme.typography.bodySmall, color = Mono.Muted,
+    )
+}
+
+@Composable
+private fun ColumnScope.PairBody(
+    pair: PairView, view: android.view.View, onScanQr: () -> Unit, onNearby: () -> Unit, onConfirm: () -> Unit,
+    onReject: () -> Unit, onCancel: () -> Unit,
+) {
     when (pair) {
         PairView.Idle, is PairView.Failed -> {
             Body("On your Mac, open Tether from the menu bar and choose Pair a phone. Then scan the code it shows.")
@@ -211,19 +251,17 @@ private fun ColumnScope.Pair(
         is PairView.Confirm -> {
             Body("Check that ${pair.macName} shows the same code, then confirm on both devices.")
             Spacer(Modifier.height(32.dp))
-            val spaced = pair.sas.chunked(3).joinToString(" ")
-            Text(
-                spaced, fontFamily = FontFamily.Monospace, fontSize = 44.sp, letterSpacing = 4.sp, color = Mono.Text,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().semantics {
-                    contentDescription = "Pairing code ${pair.sas.toList().joinToString(" ")}"
-                    liveRegion = LiveRegionMode.Polite
-                },
-            )
+            SasDigits(pair.sas)
             Spacer(Modifier.height(36.dp))
-            Primary("Codes match", onClick = onConfirm)
+            Primary("Codes match") {
+                Haptics.confirm(view)
+                onConfirm()
+            }
             Spacer(Modifier.height(12.dp))
-            Secondary("They don't match", onClick = onReject)
+            Secondary("They don't match") {
+                Haptics.reject(view)
+                onReject()
+            }
         }
         is PairView.Auto -> {
             Body("Pairing with ${pair.macName}…")
@@ -231,9 +269,41 @@ private fun ColumnScope.Pair(
             TetherMark(88.dp, linked = true, pulse = true, modifier = Modifier.align(Alignment.CenterHorizontally))
         }
     }
-    Spacer(Modifier.height(24.dp))
-    Text(
-        "Pairing uses an encrypted Noise handshake. The code proves no one is in the middle.",
-        style = MaterialTheme.typography.bodySmall, color = Mono.Muted,
-    )
 }
+
+/** The six-digit code, digits dropping in one after another on a bouncy spring. */
+@Composable
+private fun SasDigits(sas: String) {
+    val reduce = LocalReduceMotion.current
+    var shown by remember(sas) { mutableIntStateOf(if (reduce) sas.length else 0) }
+    LaunchedEffect(sas) {
+        while (shown < sas.length) {
+            delay(DIGIT_STAGGER_MS)
+            shown++
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
+            contentDescription = "Pairing code ${sas.toList().joinToString(" ")}"
+            liveRegion = LiveRegionMode.Polite
+        },
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        sas.forEachIndexed { i, c ->
+            if (i == sas.length / 2) Spacer(Modifier.width(18.dp))
+            val visible = i < shown
+            val y by animateFloatAsState(if (visible) 0f else 1f, Motion.bouncy(reduce), label = "digitY")
+            val a by animateFloatAsState(if (visible) 1f else 0f, Motion.spring(reduce), label = "digitA")
+            Text(
+                c.toString(), fontFamily = FontFamily.Monospace, fontSize = 44.sp, color = Mono.Text, textAlign = TextAlign.Center,
+                modifier = Modifier.width(30.dp).graphicsLayer {
+                    alpha = a
+                    translationY = y * DIGIT_DROP_PX
+                },
+            )
+        }
+    }
+}
+
+private const val DIGIT_STAGGER_MS = 70L
+private const val DIGIT_DROP_PX = -36f

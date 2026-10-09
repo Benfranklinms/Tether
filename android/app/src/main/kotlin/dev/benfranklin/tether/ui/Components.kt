@@ -1,8 +1,12 @@
 package dev.benfranklin.tether.ui
 
+import android.os.Build
+import android.view.HapticFeedbackConstants
+import android.view.View
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -10,6 +14,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,40 +36,87 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.benfranklin.tether.ui.theme.LocalReduceMotion
 import dev.benfranklin.tether.ui.theme.Mono
+import dev.benfranklin.tether.ui.theme.Motion
 
-/** The Tether mark: two linked rings. [linked] tints the second ring sage; [pulse] breathes while searching. */
+/**
+ * The Tether mark: two rings. Apart and breathing while searching; they spring together and
+ * interlock when [linked]. All motion is spring-driven and stops when reduce-motion is on.
+ */
 @Composable
 fun TetherMark(size: Dp, linked: Boolean, pulse: Boolean, modifier: Modifier = Modifier) {
+    val reduce = LocalReduceMotion.current
     val t = rememberInfiniteTransition(label = "pulse")
     val phase by t.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(PULSE_MS, easing = LinearEasing), RepeatMode.Reverse), label = "phase",
     )
-    val gap = if (pulse) 0.08f + 0.10f * phase else 0.08f
+    val apart by animateFloatAsState(if (linked) 0f else 1f, Motion.spring(reduce, damping = 0.6f), label = "apart")
+    val fill by animateFloatAsState(if (linked) 1f else 0f, Motion.spring(reduce), label = "fill")
+    val breathe = if (pulse && !linked && !reduce) phase else 0.5f
     Canvas(modifier.size(size)) {
-        val r = this.size.minDimension * 0.27f
-        val stroke = Stroke(width = this.size.minDimension * 0.06f)
+        val r = this.size.minDimension * 0.25f
+        val w = this.size.minDimension * 0.055f
         val cy = this.size.height / 2
         val cx = this.size.width / 2
-        val dx = this.size.width * gap + r * 0.55f
-        drawCircle(Mono.Text, r, Offset(cx - dx, cy), style = stroke)
-        drawCircle(if (linked) Mono.Sage else Mono.Muted, r, Offset(cx + dx, cy), style = stroke)
+        // Interlocked: centres 0.9r apart. Apart: 1.9r..2.3r while breathing.
+        val dx = r * (0.45f + apart * (0.5f + 0.2f * breathe))
+        drawCircle(Mono.Text, r, Offset(cx - dx, cy), style = Stroke(w))
+        drawCircle(Mono.Text.copy(alpha = 0.35f + 0.65f * fill), r, Offset(cx + dx, cy), style = Stroke(w))
+        if (fill > 0f) drawCircle(Mono.Text, w * 1.6f * fill, Offset(cx, cy), style = Fill)
     }
 }
 
 private const val PULSE_MS = 1400
+
+/** Light, system-standard haptic ticks. Silent when the user disabled touch feedback. */
+object Haptics {
+    fun confirm(v: View) {
+        v.performHapticFeedback(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY,
+        )
+    }
+
+    fun reject(v: View) {
+        v.performHapticFeedback(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS,
+        )
+    }
+
+    fun tick(v: View) {
+        v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+    }
+}
+
+/** iOS-style press feedback: content scales down slightly on a spring while pressed. */
+@Composable
+fun Modifier.pressScale(source: MutableInteractionSource): Modifier {
+    val reduce = LocalReduceMotion.current
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) PRESSED_SCALE else 1f, Motion.spring(reduce, stiffness = 1400f), label = "press")
+    return this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
+}
+
+private const val PRESSED_SCALE = 0.96f
 
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier) {
@@ -82,10 +135,20 @@ fun Card(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 }
 
 @Composable
+fun monoSwitchColors() = SwitchDefaults.colors(
+    checkedThumbColor = Mono.Bg, checkedTrackColor = Mono.Text, checkedBorderColor = Mono.Text,
+    uncheckedThumbColor = Mono.Muted, uncheckedTrackColor = Mono.Bg, uncheckedBorderColor = Mono.Line,
+)
+
+@Composable
 fun ToggleRow(title: String, subtitle: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    val view = LocalView.current
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp)
-            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch) {
+                Haptics.tick(view)
+                onChange(it)
+            }
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -94,20 +157,16 @@ fun ToggleRow(title: String, subtitle: String?, checked: Boolean, enabled: Boole
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Mono.Muted)
         }
         Spacer(Modifier.width(12.dp))
-        Switch(
-            checked = checked, onCheckedChange = null, enabled = enabled,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Mono.Bg, checkedTrackColor = Mono.Sage, checkedBorderColor = Mono.Sage,
-                uncheckedThumbColor = Mono.Muted, uncheckedTrackColor = Mono.Bg, uncheckedBorderColor = Mono.Line,
-            ),
-        )
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled, colors = monoSwitchColors())
     }
 }
 
 @Composable
 fun NavRow(title: String, value: String?, icon: ImageVector? = null, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(role = Role.Button, onClick = onClick)
+        Modifier.fillMaxWidth().heightIn(min = 56.dp)
+            .clickable(interactionSource = source, indication = androidx.compose.material3.ripple(), role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -123,17 +182,21 @@ fun Divider() {
     Box(Modifier.fillMaxWidth().padding(start = 16.dp).heightIn(min = 1.dp, max = 1.dp).background(Mono.Line))
 }
 
+/** Filled white when on, hollow grey when off. */
 @Composable
 fun StatusDot(on: Boolean, modifier: Modifier = Modifier) {
-    Box(modifier.size(8.dp).clip(CircleShape).background(if (on) Mono.Sage else Mono.Muted))
+    Box(
+        modifier.size(8.dp).clip(CircleShape).background(if (on) Mono.Text else Mono.Bg)
+            .border(1.dp, if (on) Mono.Text else Mono.Muted, CircleShape),
+    )
 }
 
-/** A small outlined label, e.g. "Wi-Fi" or "Bluetooth". */
+/** A small outlined label, e.g. "Wi-Fi" or "Bluetooth". Highlighted = white, otherwise grey. */
 @Composable
 fun Chip(text: String, highlighted: Boolean = false) {
     Text(
-        text, style = MaterialTheme.typography.labelSmall, color = if (highlighted) Mono.Sage else Mono.Muted,
-        modifier = Modifier.border(1.dp, if (highlighted) Mono.Sage else Mono.Line, RoundedCornerShape(50))
+        text, style = MaterialTheme.typography.labelSmall, color = if (highlighted) Mono.Text else Mono.Muted,
+        modifier = Modifier.border(1.dp, if (highlighted) Mono.Text else Mono.Line, RoundedCornerShape(50))
             .padding(horizontal = 8.dp, vertical = 2.dp),
     )
 }

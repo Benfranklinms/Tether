@@ -59,7 +59,11 @@ import dev.benfranklin.tether.ui.Card
 import dev.benfranklin.tether.ui.Divider
 import dev.benfranklin.tether.ui.NavRow
 import dev.benfranklin.tether.ui.SectionHeader
+import dev.benfranklin.tether.ui.TetherMark
 import dev.benfranklin.tether.ui.ToggleRow
+import dev.benfranklin.tether.ui.sharedHero
+import dev.benfranklin.tether.ui.theme.LocalReduceMotion
+import dev.benfranklin.tether.ui.monoSwitchColors
 import dev.benfranklin.tether.ui.theme.Mono
 import java.util.Locale
 
@@ -107,6 +111,7 @@ private fun SettingsActions.notif(change: (NotificationSettings) -> Notification
 @Composable
 fun SettingsScreen(s: AppSettings, d: DeviceInfo, a: SettingsActions, onBack: () -> Unit) {
     var confirmUnpair by remember { mutableStateOf(false) }
+    val reduce = LocalReduceMotion.current
     val n = s.notifications
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Settings", onBack) }) { pad ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding(), bottom = 40.dp)) {
@@ -217,6 +222,15 @@ fun SettingsScreen(s: AppSettings, d: DeviceInfo, a: SettingsActions, onBack: ()
             item {
                 Card {
                     Column {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TetherMark(40.dp, linked = d.connected, pulse = false, modifier = Modifier.sharedHero("mark", reduce))
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                if (d.connected) "Connected" else "Not connected", style = MaterialTheme.typography.titleSmall,
+                                color = if (d.connected) Mono.Text else Mono.Muted,
+                            )
+                        }
+                        Divider()
                         InfoRow("Mac", d.macName ?: "Not paired")
                         d.macFingerprint?.let {
                             Divider()
@@ -347,13 +361,7 @@ private fun AppItem(app: AppRow, onSet: (String, AppRule) -> Unit) {
         if (app.rule != AppRule.INHERIT) {
             TextButton(onClick = { onSet(app.pkg, AppRule.INHERIT) }) { Text("Reset", color = Mono.Muted) }
         }
-        androidx.compose.material3.Switch(
-            checked = app.effectiveOn, onCheckedChange = null,
-            colors = androidx.compose.material3.SwitchDefaults.colors(
-                checkedThumbColor = Mono.Bg, checkedTrackColor = Mono.Sage, checkedBorderColor = Mono.Sage,
-                uncheckedThumbColor = Mono.Muted, uncheckedTrackColor = Mono.Bg, uncheckedBorderColor = Mono.Line,
-            ),
-        )
+        androidx.compose.material3.Switch(checked = app.effectiveOn, onCheckedChange = null, colors = monoSwitchColors())
     }
 }
 
