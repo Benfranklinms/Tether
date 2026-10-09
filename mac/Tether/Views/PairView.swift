@@ -69,7 +69,8 @@ struct PairView: View {
         }
         .padding(28)
         .frame(width: 420, height: 540)
-        .background(Mono.bg)
+        .tetherBackground()
+        .tetherWindowChrome()
         .preferredColorScheme(.dark)
         .animation(Motion.spring(reduce), value: s.key)
         .onAppear {

@@ -8,7 +8,7 @@ enum Demo {
         key: Data(repeating: 7, count: KeyPair.keyLength), token: Data(repeating: 3, count: PairingURI.tokenLength), name: "MacBook Air"
     ).encode()
 
-    enum Shot { case unpaired, connected, qr, code, done, linking, failed }
+    enum Shot { case unpaired, connected, qr, code, done, linking, failed, glass, screen }
 
     static func now() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
@@ -48,12 +48,20 @@ enum Demo {
         }
         m.link = .connected(peerName: phone, wifi: true)
         m.bluetooth = .on
+        m.peerCaps = Set(Caps.current)
+        m.battery = BatteryPayload(level: 76, charging: false, net: "cellular", gen: "5G", signal: 3, ts: t)
+        if scene == .glass { m.settings.appearance = .glass }
+        if scene == .screen {
+            m.screen.phase = .consent
+        }
         let notes = [
             NotifPayload(key: "d1", pkg: "com.google.android.gm", app: "Gmail", title: "Placement Cell",
                          text: "Drive registration closes at 5 PM", ts: t - 31 * 60_000),
             NotifPayload(key: "d2", pkg: "org.telegram.messenger", app: "Telegram", title: "Project group",
                          text: "Pushed the new build, can you test?", ts: t - 9 * 60_000),
-            NotifPayload(key: "d3", pkg: "com.whatsapp", app: "WhatsApp", title: "Amma", text: "Call when you're free", ts: t - 2 * 60_000),
+            NotifPayload(key: "d3", pkg: "com.whatsapp", app: "WhatsApp", title: "Amma", text: "Call when you're free",
+                         ts: t - 2 * 60_000, actions: [NotifActionInfo(id: "reply0", title: "Reply", reply: true),
+                                                  NotifActionInfo(id: "a1", title: "Mark as read")]),
         ]
         var history = NotificationHistory()
         for n in notes { history.add(n, limit: 50) }

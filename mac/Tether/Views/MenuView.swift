@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 import TetherCore
 import UniformTypeIdentifiers
@@ -30,7 +31,8 @@ struct MenuView: View {
             footer
         }
         .frame(width: 360)
-        .background(Mono.bg)
+        .tetherBackground()
+        .tetherWindowChrome()
         .preferredColorScheme(.dark)
         .overlay(dropOverlay)
         .overlay(alignment: .bottom) { noticeView }
@@ -84,6 +86,8 @@ struct MenuView: View {
                 HStack(spacing: 6) {
                     Chip(text: "Bluetooth", on: !m.onWifi)
                     if m.onWifi { Chip(text: "Wi-Fi", on: true).transition(.scale(scale: 0.6).combined(with: .opacity)) }
+                    Spacer()
+                    if let b = m.battery { BatteryBadge(b: b).transition(.opacity) }
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -98,6 +102,7 @@ struct MenuView: View {
         .animation(Motion.spring(reduce), value: m.isConnected)
         .animation(Motion.spring(reduce), value: m.onWifi)
         .animation(Motion.spring(reduce), value: m.lastError)
+        .animation(Motion.spring(reduce), value: m.battery?.level)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(statusTitle). \(statusLine)")
     }
@@ -115,11 +120,21 @@ struct MenuView: View {
     // MARK: actions
 
     private var actions: some View {
-        HStack(spacing: 8) {
+        let cols = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+        return LazyVGrid(columns: cols, spacing: 8) {
             ActionTile(title: "Send clipboard", symbol: "doc.on.clipboard", enabled: m.isConnected) { m.sendClipboardNow() }
             ActionTile(title: "Send file…", symbol: "arrow.up.doc") { m.chooseFiles() }
             ActionTile(title: "Downloads", symbol: "folder") { m.openDownloads() }
+            ActionTile(title: m.ringing || m.ringRequested ? "Stop ringing" : "Find phone",
+                       symbol: m.ringing ? "speaker.wave.3.fill" : "speaker.wave.2", enabled: m.supports(Caps.ring)) {
+                if m.ringing || m.ringRequested { m.stopRing() } else { m.ring() }
+            }
+            ActionTile(title: "Phone screen", symbol: "rectangle.on.rectangle", enabled: m.supports(Caps.screen)) {
+                open("screen")
+                if m.screen.phase != .live { m.startScreen() }
+            }
         }
+        .tetherGlassGroup(spacing: 8)
         .padding(.horizontal, 16).padding(.bottom, 12)
     }
 
@@ -170,7 +185,8 @@ struct MenuView: View {
                         empty("bell", "Your phone's notifications appear here.")
                     }
                     ForEach(m.history.items, id: \.key) { n in
-                        NotificationRow(n: n, privacy: m.settings.notifications.privacyMode) {
+                        NotificationRow(n: n, privacy: m.settings.notifications.privacyMode,
+                                        actionsEnabled: m.settings.notificationActions && m.supports(Caps.reply)) {
                             withAnimation(Motion.spring(reduce)) { m.dismiss(n.key) }
                         }
                         .transition(.asymmetric(
@@ -179,6 +195,7 @@ struct MenuView: View {
                         ))
                     }
                 case .transfers:
+                    if !m.recentMedia.isEmpty { RecentMediaStrip(items: m.recentMedia) }
                     if m.transfers.isEmpty {
                         empty("arrow.up.arrow.down", "Drop files here to send them.\nFiles from your phone land in Downloads/Tether.")
                     }
@@ -277,42 +294,217 @@ struct MenuView: View {
 }
 
 struct NotificationRow: View {
+    @EnvironmentObject var m: AppModel
     let n: MirroredNotification
     let privacy: Bool
+    var actionsEnabled = false
     let onDismiss: () -> Void
     @State private var hover = false
+    @State private var replying = false
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduce
+
+    private var buttons: [NotifActionInfo] { actionsEnabled ? n.actions.filter { !$0.reply } : [] }
+    private var reply: NotifActionInfo? { actionsEnabled ? n.replyAction : nil }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(String(n.app.prefix(1)).uppercased())
-                .font(Typo.sans(12, .semibold)).foregroundColor(Mono.muted)
-                .frame(width: 28, height: 28).background(RoundedRectangle(cornerRadius: 7).fill(Mono.surfaceHigh))
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(n.app).font(Typo.sans(11)).foregroundColor(Mono.muted)
-                    Spacer()
-                    Text(relativeTime(n.ts)).font(Typo.sans(10)).foregroundColor(Mono.muted)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Monogram(text: n.app, size: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(n.app).font(Typo.sans(11)).foregroundColor(Mono.muted)
+                        Spacer()
+                        Text(relativeTime(n.ts)).font(Typo.sans(10)).foregroundColor(Mono.muted)
+                    }
+                    if privacy {
+                        Text("New notification").font(Typo.sans(13)).foregroundColor(Mono.text)
+                    } else {
+                        if !n.title.isEmpty { Text(n.title).font(Typo.sans(13, .medium)).foregroundColor(Mono.text).lineLimit(1) }
+                        if !n.text.isEmpty { Text(n.text).font(Typo.sans(12)).foregroundColor(Mono.muted).lineLimit(3) }
+                    }
                 }
-                if privacy {
-                    Text("New notification").font(Typo.sans(13)).foregroundColor(Mono.text)
-                } else {
-                    if !n.title.isEmpty { Text(n.title).font(Typo.sans(13, .medium)).foregroundColor(Mono.text).lineLimit(1) }
-                    if !n.text.isEmpty { Text(n.text).font(Typo.sans(12)).foregroundColor(Mono.muted).lineLimit(3) }
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).foregroundColor(Mono.muted)
+                        .frame(width: 20, height: 20).background(Circle().fill(Mono.surfaceHigh))
                 }
+                .buttonStyle(PressStyle())
+                .opacity(hover ? 1 : 0)
+                .accessibilityLabel("Dismiss")
             }
-            Button(action: onDismiss) {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).foregroundColor(Mono.muted)
-                    .frame(width: 20, height: 20).background(Circle().fill(Mono.surfaceHigh))
+            if reply != nil || !buttons.isEmpty { actionBar.padding(.leading, 38) }
+            if replying { replyField.padding(.leading, 38).transition(.move(edge: .top).combined(with: .opacity)) }
+            if let st = m.actionStatus[n.key], st != "sending", st != "sent" {
+                Text(st).font(Typo.sans(11)).foregroundColor(Mono.muted).padding(.leading, 38)
             }
-            .buttonStyle(PressStyle())
-            .opacity(hover ? 1 : 0)
-            .accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(hover ? Mono.surface : Color.clear)
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
-        .accessibilityElement(children: .combine)
+        .animation(Motion.spring(reduce), value: replying)
+        .animation(Motion.spring(reduce), value: m.actionStatus[n.key])
+        .accessibilityElement(children: .contain)
         .accessibilityAction(named: "Dismiss", onDismiss)
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: 6) {
+            if reply != nil {
+                SmallAction(title: m.actionStatus[n.key] == "sent" ? "Sent" : "Reply", symbol: "arrowshape.turn.up.left") {
+                    replying.toggle()
+                    if replying { DispatchQueue.main.async { focused = true } }
+                }
+            }
+            ForEach(buttons, id: \.id) { a in
+                SmallAction(title: a.title, symbol: nil) { m.performAction(key: n.key, action: a.id, text: nil) }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var replyField: some View {
+        HStack(spacing: 6) {
+            TextField("Reply to \(n.title.isEmpty ? n.app : n.title)", text: $draft)
+                .textFieldStyle(.plain)
+                .font(Typo.sans(12))
+                .foregroundColor(Mono.text)
+                .focused($focused)
+                .onSubmit(send)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .tetherCard(cornerRadius: 8)
+            Button(action: send) {
+                Image(systemName: m.actionStatus[n.key] == "sending" ? "ellipsis" : "arrow.up")
+                    .font(.system(size: 11, weight: .semibold)).foregroundColor(Mono.bg)
+                    .frame(width: 26, height: 26).background(Circle().fill(draft.isEmpty ? Mono.muted : Mono.accent))
+            }
+            .buttonStyle(PressStyle())
+            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityLabel("Send reply")
+        }
+    }
+
+    private func send() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let r = reply else { return }
+        m.performAction(key: n.key, action: r.id, text: text)
+        draft = ""
+        replying = false
+    }
+}
+
+/// A compact capsule button for notification actions.
+struct SmallAction: View {
+    var title: String
+    var symbol: String?
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if let symbol { Image(systemName: symbol).font(.system(size: 9, weight: .semibold)) }
+                Text(title).font(Typo.sans(11, .medium)).lineLimit(1)
+            }
+            .foregroundColor(Mono.text)
+            .padding(.horizontal, 9).frame(minHeight: 22)
+            .tetherControl(Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressStyle())
+    }
+}
+
+/// Phone battery: level glyph (bolt while charging), percent, network.
+struct BatteryBadge: View {
+    let b: BatteryPayload
+
+    private var symbol: String {
+        if b.charging { return "battery.100.bolt" }
+        switch b.level {
+        case ..<13: return "battery.0"
+        case ..<38: return "battery.25"
+        case ..<63: return "battery.50"
+        case ..<88: return "battery.75"
+        default: return "battery.100"
+        }
+    }
+
+    private var network: String? {
+        switch b.net {
+        case "wifi": return "Wi-Fi"
+        case "cellular": return b.gen ?? "Cellular"
+        default: return nil
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if let network { Text(network).font(Typo.mono(10, .medium)).foregroundColor(Mono.muted) }
+            Image(systemName: symbol).font(.system(size: 13)).foregroundColor(b.level <= 20 && !b.charging ? Mono.text : Mono.muted)
+            Text("\(b.level)%").font(Typo.mono(11, .medium)).foregroundColor(Mono.text).contentTransition(.numericText())
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Phone battery \(b.level) percent\(b.charging ? ", charging" : "")")
+    }
+}
+
+/// Recent screenshots/photos from the phone; click opens, drag drops the file anywhere.
+struct RecentMediaStrip: View {
+    let items: [TransferRecord]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("FROM YOUR PHONE").font(Typo.mono(10, .medium)).tracking(0.8).foregroundColor(Mono.muted)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(items, id: \.id) { r in MediaThumb(record: r) }
+                }
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+}
+
+struct MediaThumb: View {
+    let record: TransferRecord
+    @State private var image: NSImage?
+    @State private var hover = false
+
+    private var url: URL? { record.ref.map { URL(fileURLWithPath: $0) } }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8).fill(Mono.surfaceHigh)
+            if let image {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else {
+                Image(systemName: "photo").foregroundColor(Mono.muted)
+            }
+        }
+        .frame(width: 64, height: 64)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(hover ? Mono.text : Mono.line))
+        .scaleEffect(hover ? 1.04 : 1)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hover)
+        .onHover { hover = $0 }
+        .onTapGesture { if let url { NSWorkspace.shared.open(url) } }
+        .onDrag { url.flatMap { NSItemProvider(contentsOf: $0) } ?? NSItemProvider() }
+        .help(record.name)
+        .accessibilityLabel(record.name)
+        .task(id: record.id) { image = await Self.thumbnail(url) }
+    }
+
+    static func thumbnail(_ url: URL?) async -> NSImage? {
+        guard let url else { return nil }
+        return await Task.detached(priority: .utility) {
+            guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+            let opts: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 160,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+            ]
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+            return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        }.value
     }
 }
 

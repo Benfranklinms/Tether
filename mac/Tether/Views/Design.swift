@@ -125,10 +125,17 @@ struct MonoButton: View {
                 .frame(maxWidth: .infinity, minHeight: 32)
                 .foregroundColor(filled ? Mono.bg : Mono.text)
                 .background(RoundedRectangle(cornerRadius: 9).fill(filled ? Mono.accent : Color.clear))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(filled ? Color.clear : Mono.line))
+                .modifier(OutlineIfNeeded(filled: filled))
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressStyle())
+    }
+}
+
+private struct OutlineIfNeeded: ViewModifier {
+    var filled: Bool
+    func body(content: Content) -> some View {
+        if filled { content } else { content.tetherControl(RoundedRectangle(cornerRadius: 9)) }
     }
 }
 
@@ -149,8 +156,7 @@ struct ActionTile: View {
             .foregroundColor(enabled ? Mono.text : Mono.muted)
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 12)
-            .background(RoundedRectangle(cornerRadius: 12).fill(hover && enabled ? Mono.surfaceHigh : Mono.surface))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Mono.line))
+            .tetherCard(highlighted: hover && enabled)
             .contentShape(Rectangle())
         }
         .buttonStyle(PressStyle())

@@ -12,6 +12,7 @@ struct SettingsView: View {
     enum Section: String, CaseIterable, Identifiable {
         case general = "General"
         case notifications = "Notifications"
+        case features = "Features"
         case phone = "Phone"
         case diagnostics = "Diagnostics"
         case about = "About"
@@ -22,6 +23,7 @@ struct SettingsView: View {
             switch self {
             case .general: return "gearshape"
             case .notifications: return "bell"
+            case .features: return "square.grid.2x2"
             case .phone: return "iphone.gen2"
             case .diagnostics: return "waveform.path.ecg"
             case .about: return "info.circle"
@@ -46,7 +48,8 @@ struct SettingsView: View {
             .clipped()
         }
         .frame(width: 560, height: 600)
-        .background(Mono.bg)
+        .tetherBackground()
+        .tetherWindowChrome()
         .preferredColorScheme(.dark)
         .overlay(alignment: .bottom) { toast }
         .animation(Motion.spring(reduce), value: m.notice)
@@ -66,7 +69,7 @@ struct SettingsView: View {
                         Text(s.rawValue).font(Typo.sans(11, section == s ? .semibold : .regular))
                     }
                     .foregroundColor(section == s ? Mono.text : Mono.muted)
-                    .frame(width: 96, height: 54)
+                    .frame(width: 84, height: 54)
                     .background {
                         if section == s {
                             RoundedRectangle(cornerRadius: 10).fill(Mono.surfaceHigh).matchedGeometryEffect(id: "sel", in: ns)
@@ -97,6 +100,7 @@ struct SettingsView: View {
                 switch s {
                 case .general: GeneralPage()
                 case .notifications: NotificationsPage()
+                case .features: FeaturesPage()
                 case .phone: PhonePage()
                 case .diagnostics: DiagnosticsPage()
                 case .about: AboutPage()
@@ -123,6 +127,14 @@ private struct GeneralPage: View {
     @EnvironmentObject var m: AppModel
 
     var body: some View {
+        SectionLabel(text: "Appearance")
+        Card {
+            Row(title: "Look", detail: m.settings.appearance == .glass ? GlassSupport.support : "Solid black, greys and white.",
+                divider: false) {
+                MonoSegmented(options: AppearanceStyle.allCases, selection: $m.settings.appearance, label: { $0.title })
+                    .fixedSize()
+            }
+        }
         SectionLabel(text: "Mac")
         Card {
             ToggleRow(title: "Open at login", isOn: Binding(get: { m.launchAtLogin }, set: { m.setLaunchAtLogin($0) }))
@@ -224,6 +236,69 @@ private struct AppPrefRow: View {
     }
 }
 
+private struct FeaturesPage: View {
+    @EnvironmentObject var m: AppModel
+    @Environment(\.openWindow) private var openWindow
+
+    private var olderPhone: Bool { m.isConnected && !Caps.current.allSatisfy { m.peerCaps.contains($0) } }
+
+    var body: some View {
+        if olderPhone {
+            Card {
+                Row(title: "Your phone runs an older Tether", detail: "Update it to use replies, photos, battery, ring and screen sharing.",
+                    divider: false) { EmptyView() }
+            }
+        }
+        SectionLabel(text: "Notifications")
+        Card {
+            ToggleRow(title: "Reply and actions", detail: "Inline replies and buttons like Mark as read, when the phone app offers them.",
+                      isOn: $m.settings.notificationActions, divider: false)
+        }
+        SectionLabel(text: "Screenshots and photos")
+        Card {
+            Row(title: "Save to", detail: m.settings.mediaURL.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")) {
+                GhostButton(title: "Change…") { m.chooseMediaFolder() }
+            }
+            ToggleRow(title: "Show a thumbnail notification", isOn: $m.settings.mediaNotify, divider: false)
+        }
+        Text("Choose what the phone sends in Tether on the phone › Settings › On your Mac. Photos wait for Wi-Fi.")
+            .font(Typo.sans(11)).foregroundColor(Mono.muted).padding(.horizontal, 4)
+        SectionLabel(text: "Battery")
+        Card {
+            ToggleRow(title: "Show percentage in the menu bar", isOn: $m.settings.batteryInMenuBar)
+            ToggleRow(title: "Alert at 20%", detail: "Once per discharge, when the phone isn't charging.",
+                      isOn: $m.settings.lowBatteryAlert, divider: false)
+        }
+        SectionLabel(text: "Screen")
+        Card {
+            Row(title: "Quality", detail: "Lower is smoother on busy networks.") {
+                MonoSegmented(options: [720, 1080, 1280, 1600], selection: $m.settings.screenQuality, label: { "\($0)" }, mono: true)
+                    .fixedSize()
+            }
+            ToggleRow(title: "Control with mouse and keyboard",
+                      detail: "Needs Tether's accessibility service on the phone. Right-click or Esc is Back.",
+                      isOn: $m.settings.screenControl)
+            Row(title: "Phone screen", detail: "Needs Wi-Fi or your phone's hotspot.", divider: false) {
+                GhostButton(title: "Open…") {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "screen")
+                    m.startScreen()
+                }
+                .disabled(!m.supports(Caps.screen))
+            }
+        }
+        SectionLabel(text: "Find my phone")
+        Card {
+            Row(title: "Ring your phone", detail: "Loud, even on silent. Stops after a minute or when found.", divider: false) {
+                GhostButton(title: m.ringing || m.ringRequested ? "Stop" : "Ring") {
+                    if m.ringing || m.ringRequested { m.stopRing() } else { m.ring() }
+                }
+                .disabled(!m.supports(Caps.ring))
+            }
+        }
+    }
+}
+
 private struct PhonePage: View {
     @EnvironmentObject var m: AppModel
     @Environment(\.openWindow) private var openWindow
@@ -310,6 +385,9 @@ private struct DiagnosticsPage: View {
             Row(title: "Bluetooth") { value(btText) }
             Row(title: "Link") { value(linkText) }
             Row(title: "Transfers") { value("\(m.transfers.filter { !$0.status.isFinal }.count) active") }
+            Row(title: "Phone app") { value(m.peerApp ?? "—") }
+            Row(title: "Phone features") { value(m.peerCaps.isEmpty ? "—" : m.peerCaps.sorted().joined(separator: " ")) }
+            Row(title: "Appearance") { value(m.settings.appearance == .glass ? GlassSupport.support : "Pure Mono") }
             Row(title: "Tether") { value(Engine.version) }
             Row(title: "macOS", divider: false) {
                 value(ProcessInfo.processInfo.operatingSystemVersionString.replacingOccurrences(of: "Version ", with: ""))

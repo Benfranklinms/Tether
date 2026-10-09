@@ -11,6 +11,8 @@ final class MacFiles: OutgoingFiles, IncomingFiles {
     private var readers: [String: FileHandle] = [:]
     private var writers: [String: FileHandle] = [:]
     var downloadFolder: () -> URL
+    /// Where automatic screenshots/photos go (0.2.0); defaults to the download folder.
+    var mediaFolder: (() -> URL)?
 
     struct IOError: Error, CustomStringConvertible {
         let description: String
@@ -118,7 +120,7 @@ final class MacFiles: OutgoingFiles, IncomingFiles {
         }
         try? input.close()
         guard sha.finalizeHex() == record.sha256 else { throw IntegrityError(message: "checksum mismatch") }
-        let folder = downloadFolder()
+        let folder = record.kind != nil ? (mediaFolder?() ?? downloadFolder()) : downloadFolder()
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let dest = Self.unique(folder.appendingPathComponent(record.name))
         try FileManager.default.moveItem(at: src, to: dest)

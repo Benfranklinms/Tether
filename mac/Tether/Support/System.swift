@@ -60,18 +60,64 @@ final class ClipboardWatcher {
 
 /// Posts mirrored notifications through UserNotifications. macOS Focus / Do Not Disturb is
 /// applied by the system to everything we post; "silent" apps are delivered without sound
-/// and as passive (no banner).
+/// and as passive (no banner). Notifications whose phone app offers buttons get a matching
+/// category: an inline text field for replies, plain buttons for the rest (0.2.0).
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     static let category = "tether.mirror"
+    static let mediaCategory = "tether.media"
+    static let revealAction = "tether.reveal"
+    static let actionPrefix = "act:"
     private let center = UNUserNotificationCenter.current()
+    private var dynamic: [String: UNNotificationCategory] = [:]
+    private let lock = NSLock()
     var onDismiss: ((String) -> Void)?
     var onOpen: ((String) -> Void)?
+    /// (notification key, action id, reply text)
+    var onAction: ((String, String, String?) -> Void)?
+    /// A media notification was clicked (path, reveal-in-Finder?)
+    var onMedia: ((String, Bool) -> Void)?
 
     func setUp() {
         center.delegate = self
-        center.setNotificationCategories([
-            UNNotificationCategory(identifier: Self.category, actions: [], intentIdentifiers: [], options: [.customDismissAction]),
-        ])
+        registerCategories()
+    }
+
+    private func registerCategories() {
+        lock.lock()
+        var all = Set(dynamic.values)
+        lock.unlock()
+        all.insert(UNNotificationCategory(identifier: Self.category, actions: [], intentIdentifiers: [], options: [.customDismissAction]))
+        all.insert(UNNotificationCategory(
+            identifier: Self.mediaCategory,
+            actions: [UNNotificationAction(identifier: Self.revealAction, title: "Show in Finder", options: [])],
+            intentIdentifiers: [], options: []
+        ))
+        center.setNotificationCategories(all)
+    }
+
+    /// A category for this set of buttons (shared by every notification with the same buttons).
+    private func category(for actions: [NotifActionInfo]) -> String {
+        guard !actions.isEmpty else { return Self.category }
+        let sig = actions.map { "\($0.id)|\($0.title)|\($0.reply)" }.joined(separator: "\u{1F}")
+        var h: UInt64 = 0xcbf29ce484222325
+        for b in sig.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
+        let id = "tether.a.\(String(h, radix: 36))"
+        lock.lock()
+        let known = dynamic[id] != nil
+        if !known {
+            let buttons: [UNNotificationAction] = actions.map { a in
+                if a.reply {
+                    return UNTextInputNotificationAction(identifier: Self.actionPrefix + a.id, title: a.title, options: [],
+                                                         textInputButtonTitle: "Send", textInputPlaceholder: "Reply")
+                }
+                return UNNotificationAction(identifier: Self.actionPrefix + a.id, title: a.title, options: [])
+            }
+            dynamic[id] = UNNotificationCategory(identifier: id, actions: buttons, intentIdentifiers: [], options: [.customDismissAction])
+            if dynamic.count > 60 { dynamic.remove(at: dynamic.startIndex) }
+        }
+        lock.unlock()
+        if !known { registerCategories() }
+        return id
     }
 
     func requestAuthorization(_ done: @escaping (Bool) -> Void) {
@@ -85,13 +131,14 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.getNotificationSettings { done($0.authorizationStatus) }
     }
 
-    func post(key: String, threadId: String, title: String, subtitle: String?, body: String, banner: Bool, sound: Bool) {
+    func post(key: String, threadId: String, title: String, subtitle: String?, body: String, banner: Bool, sound: Bool,
+              actions: [NotifActionInfo] = []) {
         let c = UNMutableNotificationContent()
         c.title = title
         if let subtitle { c.subtitle = subtitle }
         c.body = body
         c.threadIdentifier = threadId
-        c.categoryIdentifier = Self.category
+        c.categoryIdentifier = category(for: actions)
         c.userInfo = ["key": key]
         if banner && sound { c.sound = .default }
         if #available(macOS 12.0, *) { c.interruptionLevel = banner ? .active : .passive }
@@ -100,11 +147,31 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    func postLocal(id: String, title: String, body: String) {
+    func postLocal(id: String, title: String, body: String, sound: Bool = false) {
         let c = UNMutableNotificationContent()
         c.title = title
         c.body = body
+        if sound { c.sound = .default }
         center.add(UNNotificationRequest(identifier: id, content: c, trigger: nil))
+    }
+
+    /// "Screenshot from your phone" with the image as a thumbnail. Clicking opens it.
+    func postMedia(id: String, title: String, body: String, file: URL) {
+        let c = UNMutableNotificationContent()
+        c.title = title
+        c.body = body
+        c.categoryIdentifier = Self.mediaCategory
+        c.userInfo = ["path": file.path]
+        // The system moves attachment files into its own store, so hand it a copy.
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("tether-thumb-\(id).\(file.pathExtension)")
+        try? FileManager.default.removeItem(at: tmp)
+        if (try? FileManager.default.copyItem(at: file, to: tmp)) != nil,
+           let a = try? UNNotificationAttachment(identifier: "thumb", url: tmp, options: nil) {
+            c.attachments = [a]
+        }
+        center.add(UNNotificationRequest(identifier: "media-\(id)", content: c, trigger: nil)) { err in
+            if let err { Log.warn("notify.media_failed", ["reason": "\(err)"]) }
+        }
     }
 
     func remove(key: String) {
@@ -124,11 +191,22 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse,
                                 withCompletionHandler done: @escaping () -> Void) {
-        if let key = r.notification.request.content.userInfo["key"] as? String {
+        let info = r.notification.request.content.userInfo
+        if let path = info["path"] as? String {
+            if r.actionIdentifier == Self.revealAction {
+                onMedia?(path, true)
+            } else if r.actionIdentifier == UNNotificationDefaultActionIdentifier {
+                onMedia?(path, false)
+            }
+        } else if let key = info["key"] as? String {
             if r.actionIdentifier == UNNotificationDismissActionIdentifier {
                 onDismiss?(key)
             } else if r.actionIdentifier == UNNotificationDefaultActionIdentifier {
                 onOpen?(key)
+            } else if r.actionIdentifier.hasPrefix(Self.actionPrefix) {
+                let id = String(r.actionIdentifier.dropFirst(Self.actionPrefix.count))
+                let text = (r as? UNTextInputNotificationResponse)?.userText
+                onAction?(key, id, text)
             }
         }
         done()

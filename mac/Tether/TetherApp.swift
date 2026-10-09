@@ -30,24 +30,33 @@ struct TetherApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuView().environmentObject(model)
+            MenuView().environmentObject(model).environment(\.tetherStyle, model.settings.appearance)
         } label: {
-            MenuLabel(linked: model.isConnected, unpaired: model.peer == nil)
+            MenuLabel(linked: model.isConnected, unpaired: model.peer == nil,
+                      battery: model.settings.batteryInMenuBar && model.isConnected ? model.battery : nil)
         }
         .menuBarExtraStyle(.window)
 
         Window("Pair a phone", id: "pair") {
-            PairView().environmentObject(model)
+            PairView().environmentObject(model).environment(\.tetherStyle, model.settings.appearance)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .defaultPosition(.center)
 
         Window("Tether Settings", id: "settings") {
-            SettingsView().environmentObject(model)
+            SettingsView().environmentObject(model).environment(\.tetherStyle, model.settings.appearance)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+        .defaultPosition(.center)
+
+        Window("Phone screen", id: "screen") {
+            ScreenWindow(screen: model.screen).environmentObject(model).environment(\.tetherStyle, model.settings.appearance)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 420, height: 860)
         .defaultPosition(.center)
     }
 }
@@ -56,11 +65,15 @@ struct TetherApp: App {
 private struct MenuLabel: View {
     var linked: Bool
     var unpaired: Bool
+    var battery: BatteryPayload?
     @Environment(\.openWindow) private var openWindow
     @AppStorage("didOfferPairing") private var didOfferPairing = false
 
     var body: some View {
-        Image(nsImage: MenuIcon.image(linked: linked))
+        HStack(spacing: 3) {
+            Image(nsImage: MenuIcon.image(linked: linked))
+            if let b = battery { Text("\(b.level)%\(b.charging ? "⚡︎" : "")").font(.system(size: 12, weight: .medium).monospacedDigit()) }
+        }
             .onAppear {
                 guard unpaired, !didOfferPairing, Launch.screenshotDir == nil else { return }
                 didOfferPairing = true
@@ -80,7 +93,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // SwiftUI may restore Window scenes at launch; a menu-bar app starts quiet.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            for w in NSApp.windows where (w.identifier?.rawValue ?? "").contains("settings") { w.close() }
+            for w in NSApp.windows {
+                let id = w.identifier?.rawValue ?? ""
+                if id.contains("settings") || id.contains("screen") { w.close() }
+            }
         }
     }
 
@@ -109,6 +125,9 @@ enum Screenshots {
         Shot(name: "settings-notifications", scene: .connected) { AnyView(SettingsView(initialSection: .notifications)) },
         Shot(name: "settings-phone", scene: .connected) { AnyView(SettingsView(initialSection: .phone)) },
         Shot(name: "settings-about", scene: .connected) { AnyView(SettingsView(initialSection: .about)) },
+        Shot(name: "settings-features", scene: .connected) { AnyView(SettingsView(initialSection: .features)) },
+        Shot(name: "menu-glass", scene: .glass) { AnyView(MenuView()) },
+        Shot(name: "screen", scene: .screen) { AnyView(ScreenWindow(screen: ScreenModel()).frame(width: 380, height: 760)) },
     ]
 
     private static var window: NSWindow?
@@ -126,7 +145,7 @@ enum Screenshots {
         }
         let model = AppModel(demo: true)
         Demo.load(model, shot.scene)
-        let host = NSHostingView(rootView: shot.view().environmentObject(model))
+        let host = NSHostingView(rootView: shot.view().environmentObject(model).environment(\.tetherStyle, model.settings.appearance))
         let size = host.fittingSize
         host.frame = NSRect(origin: .zero, size: size)
         let w = window ?? NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)

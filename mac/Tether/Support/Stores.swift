@@ -63,6 +63,16 @@ struct MacSettings: Codable, Equatable {
     var wifiFastPath = true
     var notifyOnReceive = true
     var notifications = MacNotificationSettings()
+    // 0.2.0
+    var appearance = AppearanceStyle.mono
+    var notificationActions = true
+    /// Screenshots and photos from the phone; nil = the file download folder.
+    var mediaFolder: String?
+    var mediaNotify = true
+    var batteryInMenuBar = false
+    var lowBatteryAlert = true
+    var screenQuality = 1280
+    var screenControl = true
 
     init() {}
 
@@ -74,7 +84,17 @@ struct MacSettings: Codable, Equatable {
         wifiFastPath = try c.decodeIfPresent(Bool.self, forKey: .wifiFastPath) ?? true
         notifyOnReceive = try c.decodeIfPresent(Bool.self, forKey: .notifyOnReceive) ?? true
         notifications = try c.decodeIfPresent(MacNotificationSettings.self, forKey: .notifications) ?? MacNotificationSettings()
+        appearance = (try? c.decodeIfPresent(AppearanceStyle.self, forKey: .appearance)) ?? .mono
+        notificationActions = try c.decodeIfPresent(Bool.self, forKey: .notificationActions) ?? true
+        mediaFolder = try c.decodeIfPresent(String.self, forKey: .mediaFolder)
+        mediaNotify = try c.decodeIfPresent(Bool.self, forKey: .mediaNotify) ?? true
+        batteryInMenuBar = try c.decodeIfPresent(Bool.self, forKey: .batteryInMenuBar) ?? false
+        lowBatteryAlert = try c.decodeIfPresent(Bool.self, forKey: .lowBatteryAlert) ?? true
+        screenQuality = try c.decodeIfPresent(Int.self, forKey: .screenQuality) ?? 1280
+        screenControl = try c.decodeIfPresent(Bool.self, forKey: .screenControl) ?? true
     }
+
+    var mediaURL: URL { mediaFolder.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? downloadURL }
 
     var downloadURL: URL {
         downloadFolder.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? Paths.defaultDownloads

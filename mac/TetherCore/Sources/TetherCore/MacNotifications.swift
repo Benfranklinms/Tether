@@ -78,6 +78,8 @@ public struct MirroredNotification: Codable, Equatable, Identifiable {
     public var title: String
     public var text: String
     public var ts: Int64
+    /// Buttons from the phone (reply, mark as read...); the live intents stay on the phone.
+    public var actions: [NotifActionInfo]
 
     public init(_ n: NotifPayload) {
         key = n.key
@@ -86,7 +88,22 @@ public struct MirroredNotification: Codable, Equatable, Identifiable {
         title = n.title
         text = n.text
         ts = n.ts
+        actions = n.actions
     }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decode(String.self, forKey: .key)
+        pkg = try c.decode(String.self, forKey: .pkg)
+        app = try c.decode(String.self, forKey: .app)
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        ts = try c.decode(Int64.self, forKey: .ts)
+        actions = try c.decodeIfPresent([NotifActionInfo].self, forKey: .actions) ?? []
+    }
+
+    /// The inline-reply button, if the phone app offers one.
+    public var replyAction: NotifActionInfo? { actions.first { $0.reply } }
 }
 
 /// Newest-first, de-duplicated by key, capped history.

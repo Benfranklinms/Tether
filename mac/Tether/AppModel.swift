@@ -21,6 +21,17 @@ final class AppModel: ObservableObject {
     @Published var radio = RadioDiag()
     /// Set when a pairing attempt got stuck after the phone connected; the pair window shows it.
     @Published var pairFailure: String?
+    // 0.2.0
+    /// Features the connected phone announced (empty offline; a 0.1.x phone lacks the new ones).
+    @Published var peerCaps: Set<String> = []
+    @Published var peerApp: String?
+    @Published var battery: BatteryPayload?
+    @Published var ringing = false
+    @Published var ringRequested = false
+    /// Per notification key: "sending", "sent" or an error, for the reply field.
+    @Published var actionStatus: [String: String] = [:]
+    let screen = ScreenModel()
+    var lowBattery = LowBatteryMonitor()
 
     /// How long the pair window waits for the secure link once the phone has connected.
     static let linkingLimit: TimeInterval = 45
@@ -28,9 +39,9 @@ final class AppModel: ObservableObject {
     private var linkingCheck: DispatchWorkItem?
 
     let demo: Bool
-    private var engine: Engine?
+    var engine: Engine?
     private let clipboard = ClipboardWatcher()
-    private let notifier = Notifier()
+    let notifier = Notifier()
     private let settingsFile = JSONFile<MacSettings>("settings.json")
     private let historyFile = JSONFile<NotificationHistory>("history.json")
     private var historyWrite: DispatchWorkItem?
@@ -51,6 +62,17 @@ final class AppModel: ObservableObject {
             DispatchQueue.main.async { self?.dismiss(key, fromSystem: true) }
         }
         notifier.onOpen = { _ in NSApp.activate(ignoringOtherApps: true) }
+        notifier.onAction = { [weak self] key, action, text in
+            DispatchQueue.main.async { self?.performAction(key: key, action: action, text: text) }
+        }
+        notifier.onMedia = { path, reveal in
+            DispatchQueue.main.async {
+                let url = URL(fileURLWithPath: path)
+                if reveal { NSWorkspace.shared.activateFileViewerSelecting([url]) } else { NSWorkspace.shared.open(url) }
+            }
+        }
+        e.attach(sink: screen.sink)
+        screen.sink.onFirstFrame = { [weak self] in self?.screen.hasVideo = true }
         notifier.requestAuthorization { ok in DispatchQueue.main.async { self.notificationsAllowed = ok } }
         clipboard.onCopy = { [weak self] text in
             guard let self, self.settings.sendClipboard, self.isConnected else { return }
@@ -72,9 +94,22 @@ final class AppModel: ObservableObject {
 
     // MARK: engine -> UI
 
-    func apply(link: LinkState, peer: PeerRecord?) {
+    func apply(link: LinkState, peer: PeerRecord?, caps: Set<String> = [], peerApp: String? = nil, wifi: Bool = false) {
         self.link = link
         self.peer = peer
+        self.peerCaps = caps
+        self.peerApp = peerApp
+        if case .connected = link {} else {
+            battery = nil
+            ringing = false
+            ringRequested = false
+        }
+        if screen.phase == .live || screen.phase == .consent || screen.phase == .requesting {
+            if case .connected(_, let w) = link, w {} else {
+                screen.phase = .ended("The Wi-Fi link to your phone dropped")
+                screen.hasVideo = false
+            }
+        }
         if isConnected { lastError = nil }
         trackLinking()
     }
@@ -162,7 +197,8 @@ final class AppModel: ObservableObject {
         if notificationsAllowed {
             notifier.post(
                 key: n.key, threadId: n.pkg, title: p.title, subtitle: settings.notifications.privacyMode ? nil : n.app,
-                body: p.body, banner: p.banner, sound: settings.notifications.sound
+                body: p.body, banner: p.banner, sound: settings.notifications.sound,
+                actions: settings.notificationActions && peerCaps.contains(Caps.reply) ? n.actions : []
             )
         }
     }

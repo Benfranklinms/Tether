@@ -73,8 +73,7 @@ struct Card<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) { content }
-            .background(RoundedRectangle(cornerRadius: 12).fill(Mono.surface))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Mono.line))
+            .tetherCard()
     }
 }
 
@@ -143,7 +142,7 @@ struct GhostButton: View {
                 .foregroundColor(Mono.text)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 26)
-                .overlay(Capsule().stroke(Mono.line))
+                .tetherControl(Capsule())
                 .contentShape(Capsule())
         }
         .buttonStyle(PressStyle())

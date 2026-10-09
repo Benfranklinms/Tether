@@ -14,12 +14,14 @@ final class FeatureCodecTests: XCTestCase {
             .screenStart(ScreenStartPayload()), .screenStart(ScreenStartPayload(maxSize: 720, fps: 30, bitrate: 2_000_000)),
             .screenState(ScreenStatePayload(state: "live", w: 720, h: 1600, rotation: 90, control: true)),
             .screenStop(reason: "phone"),
-            .videoFrame(VideoFramePayload(src: "screen", seq: 7, pts: 33_000, key: true, config: true, data: Data(repeating: 9, count: 5000))),
+            .videoFrame(VideoFramePayload(src: "screen", seq: 7, pts: 33_000, key: true, config: true,
+                                          data: Data(repeating: 9, count: 5000))),
             .screenInput(ScreenInputPayload(k: "swipe", x: 0.1, y: 0.2, x2: 0.3, y2: 0.4, dur: 250, rot: 90)),
             .screenInput(ScreenInputPayload(k: "text", text: "héllo")),
             .videoFeedback(VideoFeedbackPayload(kbps: 4000, lagMs: 40, dropped: 2, keyframe: true)),
             .notif(NotifPayload(key: "k", pkg: "com.whatsapp", app: "WhatsApp", title: "A", text: "B", ts: 1,
-                                actions: [NotifActionInfo(id: "reply", title: "Reply", reply: true), NotifActionInfo(id: "1", title: "Mark as read")])),
+                                actions: [NotifActionInfo(id: "reply", title: "Reply", reply: true),
+                                          NotifActionInfo(id: "1", title: "Mark as read")])),
             .fileOffer(FileOfferPayload(id: "i", name: "Screenshot.png", size: 10, sha256: String(repeating: "c", count: 64),
                                         mime: "image/png", kind: "screenshot")),
         ]
@@ -37,14 +39,18 @@ final class FeatureCodecTests: XCTestCase {
         }
         XCTAssertEqual(try MessageCodec.decode(msg(0x70, #"{"level":42,"charging":true,"plug":"ac","ts":7}"#)),
                        .battery(BatteryPayload(level: 42, charging: true, plug: "ac", ts: 7)))
-        XCTAssertEqual(try MessageCodec.decode(msg(0x83, #"{"src":"screen","seq":1,"pts":2,"key":true,"config":false,"part":0,"parts":1}"#,
-                                                    body: Data([0, 0, 0, 1, 0x65]))),
-                       .videoFrame(VideoFramePayload(src: "screen", seq: 1, pts: 2, key: true, config: false, data: Data([0, 0, 0, 1, 0x65]))))
-        let n = try MessageCodec.decode(msg(0x40, #"{"key":"k","pkg":"p","app":"A","title":"t","text":"x","ts":1,"actions":[{"id":"reply","title":"Reply","reply":true}]}"#))
-        guard case .notif(let p) = n else { return XCTFail() }
+        let frameHeader = #"{"src":"screen","seq":1,"pts":2,"key":true,"config":false,"part":0,"parts":1}"#
+        XCTAssertEqual(try MessageCodec.decode(msg(0x83, frameHeader, body: Data([0, 0, 0, 1, 0x65]))),
+                       .videoFrame(VideoFramePayload(src: "screen", seq: 1, pts: 2, key: true, config: false,
+                                                     data: Data([0, 0, 0, 1, 0x65]))))
+        let notifHeader = #"{"key":"k","pkg":"p","app":"A","title":"t","text":"x","ts":1,"#
+            + #""actions":[{"id":"reply","title":"Reply","reply":true}]}"#
+        let n = try MessageCodec.decode(msg(0x40, notifHeader))
+        guard case .notif(let p) = n else { return XCTFail("not a notif") }
         XCTAssertEqual(p.actions, [NotifActionInfo(id: "reply", title: "Reply", reply: true)])
         // 0.1.x NOTIF without actions
-        guard case .notif(let old) = try MessageCodec.decode(msg(0x40, #"{"key":"k","pkg":"p","app":"A","ts":1}"#)) else { return XCTFail() }
+        let oldMsg = try MessageCodec.decode(msg(0x40, #"{"key":"k","pkg":"p","app":"A","ts":1}"#))
+        guard case .notif(let old) = oldMsg else { return XCTFail("not a notif") }
         XCTAssertTrue(old.actions.isEmpty)
         XCTAssertThrowsError(try MessageCodec.decode(msg(0x83, #"{"src":"screen","seq":1,"pts":2,"part":2,"parts":2}"#)))
     }
@@ -57,7 +63,8 @@ final class FeatureCodecTests: XCTestCase {
     }
 
     func testOldTransfersJsonStillLoads() throws {
-        let json = #"[{"id":"a","direction":"IN","name":"x.pdf","size":3,"sha256":"aa","mime":"application/pdf","status":"DONE","transferred":3,"createdAt":1,"updatedAt":2,"retries":0}]"#
+        let json = #"[{"id":"a","direction":"IN","name":"x.pdf","size":3,"sha256":"aa","mime":"application/pdf","#
+            + #""status":"DONE","transferred":3,"createdAt":1,"updatedAt":2,"retries":0}]"#
         let recs = try JSONDecoder().decode([TransferRecord].self, from: Data(json.utf8))
         XCTAssertEqual(recs.first?.wifiOnly, false)
         XCTAssertNil(recs.first?.kind)
