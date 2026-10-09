@@ -67,7 +67,7 @@ data class PermissionItem(val id: String, val title: String, val why: String, va
 
 sealed interface PairView {
     data object Idle : PairView
-    data class Searching(val qrName: String?) : PairView
+    data class Searching(val qrName: String?, val status: String = "") : PairView
     data class Confirm(val sas: String, val macName: String) : PairView
     data class Auto(val macName: String) : PairView
     data class Failed(val message: String) : PairView
@@ -85,6 +85,7 @@ fun OnboardingScreen(
     onConfirm: () -> Unit,
     onReject: () -> Unit,
     onCancelPairing: () -> Unit,
+    onExportLogs: () -> Unit = {},
 ) {
     val reduce = LocalReduceMotion.current
     AnimatedContent(
@@ -101,7 +102,7 @@ fun OnboardingScreen(
             when (s) {
                 OnboardingStep.WELCOME -> Welcome(onNext)
                 OnboardingStep.PERMISSIONS -> Permissions(permissions, onGrant, onNext)
-                OnboardingStep.PAIR -> Pair(pair, onScanQr, onPairNearby, onConfirm, onReject, onCancelPairing)
+                OnboardingStep.PAIR -> Pair(pair, onScanQr, onPairNearby, onConfirm, onReject, onCancelPairing, onExportLogs)
             }
         }
     }
@@ -198,6 +199,7 @@ private fun Permissions(items: List<PermissionItem>, onGrant: (String) -> Unit, 
 @Composable
 private fun ColumnScope.Pair(
     pair: PairView, onScanQr: () -> Unit, onNearby: () -> Unit, onConfirm: () -> Unit, onReject: () -> Unit, onCancel: () -> Unit,
+    onExportLogs: () -> Unit,
 ) {
     val reduce = LocalReduceMotion.current
     val view = LocalView.current
@@ -216,6 +218,28 @@ private fun ColumnScope.Pair(
         "Pairing uses an encrypted Noise handshake. The code proves no one is in the middle.",
         style = MaterialTheme.typography.bodySmall, color = Mono.Muted,
     )
+    if (pair is PairView.Searching || pair is PairView.Failed) {
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = onExportLogs, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text("Export diagnostics", style = MaterialTheme.typography.labelMedium, color = Mono.Muted)
+        }
+    }
+}
+
+/** Live one-line status under the pairing animation ("Found your Mac · connecting…"). */
+@Composable
+private fun StatusLine(text: String, modifier: Modifier = Modifier) {
+    val reduce = LocalReduceMotion.current
+    AnimatedContent(
+        text, label = "status", modifier = modifier,
+        transitionSpec = { fadeIn(Motion.spring(reduce)) togetherWith fadeOut(Motion.spring(reduce)) },
+    ) { t ->
+        Text(
+            t, style = MaterialTheme.typography.bodySmall, color = Mono.Muted, textAlign = TextAlign.Center,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+        )
+    }
 }
 
 @Composable
@@ -243,7 +267,9 @@ private fun ColumnScope.PairBody(
             Body(pair.qrName?.let { "Looking for $it…" } ?: "Looking for a Mac in pairing mode…")
             Spacer(Modifier.height(36.dp))
             TetherMark(88.dp, linked = false, pulse = true, modifier = Modifier.align(Alignment.CenterHorizontally))
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(20.dp))
+            if (pair.status.isNotEmpty()) StatusLine(pair.status)
+            Spacer(Modifier.height(16.dp))
             Body("Keep the Mac's pairing window open and the devices within a few metres.")
             Spacer(Modifier.height(24.dp))
             Secondary("Cancel", onClick = onCancel)

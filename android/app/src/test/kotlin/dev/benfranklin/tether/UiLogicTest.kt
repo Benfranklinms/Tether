@@ -57,4 +57,24 @@ class UiLogicTest {
         assertEquals("Received · 2 KB", statusLine(r.copy(status = TransferStatus.DONE)))
         assertEquals("boom", statusLine(r.copy(status = TransferStatus.FAILED, error = "boom")))
     }
+
+    @Test
+    fun pairingStatusLine() {
+        val scanning = BleCentral.Diag(stage = BleCentral.Stage.SCANNING, adsSeen = 42)
+        assertTrue(pairStatus(UiState(radio = BleCentral.RadioState.SCANNING, diag = scanning)).contains("42 Bluetooth signals"))
+        val quiet = BleCentral.Diag(stage = BleCentral.Stage.SCANNING, locationOff = true)
+        assertTrue(pairStatus(UiState(diag = quiet)).contains("Location"))
+        val found = BleCentral.Diag(stage = BleCentral.Stage.CONNECTING, connectAttempts = 2, macSeen = true)
+        assertEquals("Found your Mac · connecting (try 2)", pairStatus(UiState(diag = found)))
+        assertTrue(pairStatus(UiState(link = LinkState.Handshaking)).contains("securing"))
+        assertTrue(pairStatus(UiState(radio = BleCentral.RadioState.OFF)).startsWith("Bluetooth is off"))
+    }
+
+    @Test
+    fun pairingFailureReasons() {
+        assertTrue(pairFailure(BleCentral.Diag(adsSeen = 120), LinkState.Offline).startsWith("Couldn't find your Mac"))
+        assertTrue(pairFailure(BleCentral.Diag(), LinkState.Offline).startsWith("No Bluetooth signals"))
+        assertTrue(pairFailure(BleCentral.Diag(macSeen = true, lastError = "gatt status 133"), LinkState.Offline).contains("133"))
+        assertTrue(pairFailure(BleCentral.Diag(macSeen = true, linkUps = 1), LinkState.Offline).contains("handshake"))
+    }
 }

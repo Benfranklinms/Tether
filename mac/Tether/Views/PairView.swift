@@ -17,6 +17,8 @@ struct PairView: View {
         case code(sas: String, name: String)
         case linking(String)
         case done(String)
+        case bluetooth(BluetoothStatus)
+        case failed(String)
 
         var key: Int {
             switch self {
@@ -25,12 +27,16 @@ struct PairView: View {
             case .code: return 2
             case .linking: return 3
             case .done: return 4
+            case .bluetooth: return 5
+            case .failed: return 6
             }
         }
     }
 
     private var stage: Stage {
         if m.justPaired { return .done(m.peer?.name ?? "your phone") }
+        if !m.demo, [.off, .unauthorized, .unsupported].contains(m.bluetooth) { return .bluetooth(m.bluetooth) }
+        if let f = m.pairFailure { return .failed(f) }
         switch m.link {
         case let .pairing(sas, name, auto):
             return auto ? .linking(name) : .code(sas: sas, name: name)
@@ -53,6 +59,8 @@ struct PairView: View {
                 case let .code(sas, name): CodeStage(sas: sas, name: name, ns: ns)
                 case .linking(let name): LinkingStage(name: name, ns: ns)
                 case .done(let name): DoneStage(name: name, ns: ns) { close() }
+                case .bluetooth(let status): BluetoothStage(status: status, ns: ns)
+                case .failed(let reason): FailedStage(reason: reason, ns: ns)
                 }
             }
             .id(s.key)
@@ -135,7 +143,7 @@ private struct QRStage: View {
                         .accessibilityLabel("Pairing QR code")
                 }
             }
-            .frame(width: 236, height: 236)
+            .frame(width: 220, height: 220)
             .scaleEffect(shown || reduce ? 1 : 0.86)
             .opacity(shown || reduce ? 1 : 0)
             .blur(radius: shown || reduce ? 0 : 8)
@@ -143,6 +151,7 @@ private struct QRStage: View {
             Text("No camera? Tap “Pair without camera” and compare codes.")
                 .font(Typo.sans(11)).foregroundColor(Mono.muted).multilineTextAlignment(.center)
             Spacer(minLength: 0)
+            PairStatusLine(text: m.pairStatus)
         }
     }
 }
@@ -199,6 +208,7 @@ struct SasCode: View {
 }
 
 private struct LinkingStage: View {
+    @EnvironmentObject var m: AppModel
     var name: String
     var ns: Namespace.ID
 
@@ -208,6 +218,77 @@ private struct LinkingStage: View {
             TetherMark(linked: false, pulse: true, size: 72).matchedGeometryEffect(id: "mark", in: ns)
             StageTitle(title: "Linking with \(name)…", subtitle: "Keep both devices close.")
             Spacer()
+            PairStatusLine(text: m.pairStatus)
+        }
+    }
+}
+
+/// Live one-line status at the bottom of the pair window ("Visible over Bluetooth · waiting…").
+struct PairStatusLine: View {
+    var text: String
+    @Environment(\.accessibilityReduceMotion) private var reduce
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle().fill(Mono.text.opacity(0.7)).frame(width: 5, height: 5)
+            Text(text)
+                .font(Typo.sans(11))
+                .foregroundColor(Mono.muted)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .id(text)
+                .transition(.opacity)
+        }
+        .animation(reduce ? nil : .easeInOut(duration: 0.25), value: text)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.updatesFrequently)
+    }
+}
+
+/// Bluetooth is off, not allowed, or missing: say so and offer the fix instead of spinning.
+private struct BluetoothStage: View {
+    @EnvironmentObject var m: AppModel
+    var status: BluetoothStatus
+    var ns: Namespace.ID
+
+    private var copy: (String, String) {
+        switch status {
+        case .off: return ("Turn on Bluetooth", "Tether links to your phone over Bluetooth. Turn it on in Control Center.")
+        case .unauthorized:
+            return ("Allow Bluetooth", "Open System Settings › Privacy & Security › Bluetooth and switch Tether on, then reopen Tether.")
+        default: return ("Bluetooth unavailable", "This Mac doesn't offer Bluetooth Low Energy.")
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 22) {
+            Spacer()
+            TetherMark(linked: false, pulse: false, size: 72).matchedGeometryEffect(id: "mark", in: ns)
+            StageTitle(title: copy.0, subtitle: copy.1)
+            Spacer()
+            if status == .unauthorized {
+                MonoButton(title: "Open Bluetooth settings") { m.openBluetoothPrivacy() }
+            }
+        }
+    }
+}
+
+/// The phone connected but the secure link never finished: explain, retry, export logs.
+private struct FailedStage: View {
+    @EnvironmentObject var m: AppModel
+    var reason: String
+    var ns: Namespace.ID
+
+    var body: some View {
+        VStack(spacing: 22) {
+            Spacer()
+            TetherMark(linked: false, pulse: false, size: 72).matchedGeometryEffect(id: "mark", in: ns)
+            StageTitle(title: "Couldn't finish linking", subtitle: reason)
+            Spacer()
+            VStack(spacing: 8) {
+                MonoButton(title: "Try again") { m.retryPairing() }
+                MonoButton(title: "Export diagnostics", filled: false) { m.exportLogs() }
+            }
         }
     }
 }

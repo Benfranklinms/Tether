@@ -14,6 +14,7 @@ import dev.benfranklin.tether.core.proto.Message
 import dev.benfranklin.tether.core.proto.Ping
 import dev.benfranklin.tether.core.proto.Pong
 import dev.benfranklin.tether.core.proto.Protocol
+import dev.benfranklin.tether.core.proto.RecordKind
 import dev.benfranklin.tether.core.proto.Unpair
 import dev.benfranklin.tether.core.proto.WifiBind
 import dev.benfranklin.tether.core.proto.WifiOffer
@@ -115,6 +116,12 @@ class TetherController(
     private val reassembler = Reassembler()
     private val heartbeat = Heartbeat()
     private var bleStartedAt = 0L
+    private var blePairing: PairingContext = PairingContext.CLOSED
+    private var bleLinkUp = false
+    private var bleHeard = false
+    private var bleFirstSeen = false
+    private var bleRetries = 0
+    private var blePairingChanged = false
 
     // ---- Wi-Fi ----
     private var wifi: Session? = null
@@ -148,11 +155,37 @@ class TetherController(
         ble?.linkLost()
         this.maxFragment = maxFragment.coerceAtLeast(DEFAULT_FRAGMENT)
         bleWriter = writer
+        blePairing = pairing
+        bleLinkUp = true
+        bleRetries = 0
+        startBleSession()
+    }
+
+    /**
+     * Pairing mode opened or closed while a link may already be up. Applies to the next
+     * handshake on this link (the responder restarts its session when the phone retries).
+     */
+    fun setPairing(pairing: PairingContext) {
+        blePairing = pairing
+        blePairingChanged = true
+    }
+
+    /** Handshake attempts on the current link beyond the first (for diagnostics). */
+    val bleHandshakeRetries: Int get() = bleRetries
+
+    private fun startBleSession() {
+        // Detach the old session first so its close can't reach the app as a link loss.
+        val old = ble
+        ble = null
+        old?.linkLost()
         reassembler.reset()
         bleStartedAt = clock()
-        val s = Session(
-            role, identity.localKey, localHello(), ::trusts, pairing, BleListener(), random,
-        )
+        bleHeard = false
+        bleFirstSeen = false
+        blePairingChanged = false
+        val listener = BleListener()
+        val s = Session(role, identity.localKey, localHello(), ::trusts, blePairing, listener, random)
+        listener.session = s
         ble = s
         setState(LinkState.Handshaking)
         s.start()
@@ -163,15 +196,32 @@ class TetherController(
     }
 
     fun bleFragment(fragment: ByteArray) {
-        val s = ble ?: return
+        if (!bleLinkUp) return
         val record = reassembler.accept(fragment) ?: return
         heartbeat.heard(clock())
-        s.receive(record)
+        bleHeard = true
+        if (role == Role.RESPONDER && isFirstHandshakeMessage(record)) {
+            // The phone (re)started the handshake: a lost message or a session that already
+            // timed out here must not wedge the link, so begin a fresh session for it.
+            val cur = ble
+            val fresh = cur != null && cur.state == SessionState.HANDSHAKING && !bleFirstSeen && !blePairingChanged
+            val restartable = cur == null || cur.state == SessionState.HANDSHAKING || cur.state == SessionState.CLOSED
+            if (!fresh && restartable) {
+                bleRetries++
+                startBleSession()
+            }
+            bleFirstSeen = true
+        }
+        ble?.receive(record)
     }
 
+    private fun isFirstHandshakeMessage(record: ByteArray): Boolean =
+        record.size >= 2 && record[0].toInt() == RecordKind.HANDSHAKE && record[1].toInt() == 1
+
     fun bleDisconnected() {
-        val s = ble ?: return
-        s.linkLost()
+        bleLinkUp = false
+        ble?.linkLost()
+        bleWriter = null
     }
 
     fun confirmPairing() = ble?.confirmPairing()
@@ -286,7 +336,16 @@ class TetherController(
 
     private fun tickSession(s: Session, hb: Heartbeat, startedAt: Long, now: Long) {
         when (s.state) {
-            SessionState.HANDSHAKING -> if (now - startedAt > HANDSHAKE_TIMEOUT_MS) s.close(CloseReason.TIMEOUT)
+            SessionState.HANDSHAKING -> when {
+                // Phone: nothing back from the Mac yet. A write may have been lost while the
+                // Mac was still setting up the subscription, so send the first message again.
+                s === ble && role == Role.INITIATOR && !bleHeard && bleRetries < MAX_HANDSHAKE_RETRIES &&
+                    now - startedAt > HANDSHAKE_RETRY_MS -> {
+                    bleRetries++
+                    startBleSession()
+                }
+                now - startedAt > HANDSHAKE_TIMEOUT_MS -> s.close(CloseReason.TIMEOUT)
+            }
             SessionState.VERIFYING -> if (now - startedAt > PAIRING_TIMEOUT_MS) s.close(CloseReason.TIMEOUT)
             SessionState.ESTABLISHED -> when (hb.tick(now)) {
                 Heartbeat.Action.SEND_PING -> s.send(Ping(now))
@@ -369,7 +428,13 @@ class TetherController(
     }
 
     private inner class BleListener : SessionListener {
+        /** The session this listener belongs to; callbacks from a replaced session are ignored. */
+        var session: Session? = null
+
+        private val current: Boolean get() = session != null && session === ble
+
         override fun onOutput(record: ByteArray) {
+            if (!current) return
             val w = bleWriter ?: return
             try {
                 fragmenter.fragment(record, maxFragment).forEach(w)
@@ -379,10 +444,12 @@ class TetherController(
         }
 
         override fun onPairingRequest(sas: String, remote: Hello, remoteKey: ByteArray, autoConfirmed: Boolean) {
+            if (!current) return
             setState(LinkState.Pairing(sas, remote.name, autoConfirmed))
         }
 
         override fun onEstablished(remote: Hello, remoteKey: ByteArray, newlyPaired: Boolean) {
+            if (!current) return
             val now = clock()
             heartbeat.reset(now)
             if (newlyPaired) {
@@ -400,13 +467,15 @@ class TetherController(
         }
 
         override fun onMessage(message: Message) {
+            if (!current) return
             val s = ble ?: return
             handleCommon(s, message, bleChannel)
         }
 
         override fun onClosed(reason: CloseReason, byRemote: Boolean) {
+            if (!current) return
             ble = null
-            bleWriter = null
+            // bleWriter stays: the radio link may still be up and the phone may retry.
             reassembler.reset()
             gate.revoke()
             updateEngineChannel()
@@ -460,6 +529,8 @@ class TetherController(
     companion object {
         const val DEFAULT_FRAGMENT = 20
         const val HANDSHAKE_TIMEOUT_MS = 15_000L
+        const val HANDSHAKE_RETRY_MS = 3_000L
+        const val MAX_HANDSHAKE_RETRIES = 3
         const val PAIRING_TIMEOUT_MS = 120_000L
     }
 }

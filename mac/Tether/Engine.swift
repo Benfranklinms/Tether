@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import Foundation
 import TetherCore
@@ -7,7 +8,7 @@ import TetherCore
 final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
     let queue = DispatchQueue(label: "tether.engine", qos: .userInitiated)
     private weak var model: AppModel?
-    private let identity: KeychainIdentityStore
+    private let identity: FileIdentityStore
     private let files: MacFiles
     private var controller: TetherController!
     private var peripheral: Peripheral!
@@ -19,11 +20,12 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
     private let transfersFile = JSONFile<[TransferRecord]>("transfers.json")
     private var transfers: [TransferRecord] = []
     private var lastTransferWrite = Date.distantPast
+    private var wakeObserver: NSObjectProtocol?
 
     init(model: AppModel, settings: MacSettings) {
         self.model = model
         self.settings = settings
-        identity = KeychainIdentityStore()
+        identity = FileIdentityStore()
         let downloads = settings.downloadURL
         files = MacFiles(downloadFolder: { downloads })
         transfers = transfersFile.read() ?? []
@@ -45,7 +47,17 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             peripheral = Peripheral(queue: queue, delegate: self)
             wifi = WifiClient(queue: queue, delegate: self)
             updateAdvertising()
-            Log.info("engine.start", ["version": Engine.version])
+            Log.info("engine.start", ["version": Engine.version, "macOS": ProcessInfo.processInfo.operatingSystemVersionString])
+        }
+        // Advertising can silently stop across sleep; start it again on wake.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.queue.async {
+                Log.info("engine.wake")
+                self.peripheral?.refreshAdvertising()
+            }
         }
     }
 
@@ -68,7 +80,9 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             var token = Data(count: PairingURI.tokenLength)
             for i in 0..<token.count { token[i] = UInt8.random(in: 0...255) }
             pairingToken = token
+            controller.setPairing(PairingContext(acceptNew: true, token: token))
             updateAdvertising()
+            peripheral.refreshAdvertising()
             let uri = PairingURI(key: identity.localKey.publicKey, token: token, name: Host.current().localizedName ?? "Mac").encode()
             Log.info("pair.open")
             DispatchQueue.main.async { done(uri) }
@@ -78,8 +92,10 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
     func stopPairing() {
         queue.async { [self] in
             pairingToken = nil
+            controller.setPairing(.closed)
             if case .pairing = controller.state { controller.rejectPairing() }
             updateAdvertising()
+            Log.info("pair.close")
         }
     }
 
@@ -138,6 +154,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
     // MARK: ControllerListener
 
     func controllerState(_ state: LinkState) {
+        Log.info("link.state", ["state": Self.describe(state), "retries": "\(controller?.bleHandshakeRetries ?? 0)"])
         retick(state)
         let peer = identity.peer
         if case .connected = state {
@@ -183,6 +200,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
 
     func controllerPaired(_ peer: PeerRecord) {
         pairingToken = nil
+        controller.setPairing(.closed)
         updateAdvertising()
         Log.info("pair.done", ["peer": fingerprint(peer.keyBytes)])
         DispatchQueue.main.async { self.model?.paired(peer) }
@@ -251,6 +269,11 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         if status == .on { updateAdvertising() }
     }
 
+    func radio(_ diag: RadioDiag) {
+        Log.info("ble.radio", ["diag": diag.description])
+        DispatchQueue.main.async { self.model?.radio = diag }
+    }
+
     // MARK: WifiClientDelegate
 
     func wifiOpened(writer: @escaping (Data) -> Void, token: String) { controller.wifiConnected(writer: writer, token: token) }
@@ -280,6 +303,15 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         t.setEventHandler { [weak self] in self?.controller.tick() }
         t.resume()
         ticker = t
+    }
+
+    static func describe(_ s: LinkState) -> String {
+        switch s {
+        case .offline: return "offline"
+        case .handshaking: return "handshaking"
+        case .pairing(_, _, let auto): return auto ? "pairing-auto" : "pairing"
+        case .connected(_, let w): return w ? "connected-wifi" : "connected"
+        }
     }
 
     static func now() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }

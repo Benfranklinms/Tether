@@ -53,6 +53,7 @@ import com.journeyapps.barcodescanner.ScanOptions
 import dev.benfranklin.tether.BuildConfig
 import dev.benfranklin.tether.TetherRuntime
 import dev.benfranklin.tether.UiState
+import dev.benfranklin.tether.pairStatus
 import dev.benfranklin.tether.ble.BleCentral
 import dev.benfranklin.tether.clip.readClipboardText
 import dev.benfranklin.tether.core.LinkState
@@ -181,7 +182,7 @@ private fun TetherApp(rt: TetherRuntime) {
             is LinkState.Pairing -> if (l.auto) PairView.Auto(l.peerName) else PairView.Confirm(l.sas, l.peerName)
             else -> when {
                 paired -> PairView.Auto(state.peer?.name.orEmpty())
-                state.pairingMode -> PairView.Searching(state.pairingQrName)
+                state.pairingMode -> PairView.Searching(state.pairingQrName, pairStatus(state))
                 state.lastError != null -> PairView.Failed(state.lastError.orEmpty())
                 else -> PairView.Idle
             }
@@ -201,6 +202,7 @@ private fun TetherApp(rt: TetherRuntime) {
             onConfirm = rt::confirmPairing,
             onReject = rt::rejectPairing,
             onCancelPairing = rt::cancelPairing,
+            onExportLogs = { exportLogs(activity, state) },
         )
         return
     }
@@ -337,7 +339,7 @@ private fun pickTime(activity: ComponentActivity, minutes: Int, onPicked: (Int) 
 private fun exportLogs(activity: ComponentActivity, s: UiState) {
     Thread {
         val header = "Tether ${BuildConfig.VERSION_NAME} · Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}) · " +
-            "${Build.MANUFACTURER} ${Build.MODEL} · link=${s.link::class.simpleName} radio=${s.radio}"
+            "${Build.MANUFACTURER} ${Build.MODEL} · link=${s.link::class.simpleName} radio=${s.radio}\n${s.diag}"
         val file = Log.export(activity, header)
         val uri: Uri = FileProvider.getUriForFile(activity, "${activity.packageName}.files", file)
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)

@@ -57,6 +57,8 @@ public final class TetherController {
     public static let defaultFragment = 20
     public static let handshakeTimeoutMs: Int64 = 15_000
     public static let pairingTimeoutMs: Int64 = 120_000
+    public static let handshakeRetryMs: Int64 = 3_000
+    public static let maxHandshakeRetries = 3
 
     private let role: Role
     private let identity: IdentityStore
@@ -72,7 +74,13 @@ public final class TetherController {
     private let reassembler = Reassembler()
     private var heartbeat = Heartbeat()
     private var bleStartedAt: Int64 = 0
-    private var bleDelegate: BleDelegate!
+    private var bleDelegate: BleDelegate?
+    private var blePairing = PairingContext.closed
+    private var blePairingChanged = false
+    private var bleLinkUp = false
+    private var bleHeard = false
+    private var bleFirstSeen = false
+    public private(set) var bleHandshakeRetries = 0
 
     private var wifi: Session?
     private var wifiWriter: ((Data) -> Void)?
@@ -96,10 +104,8 @@ public final class TetherController {
         self.clock = clock
         self.engineDelegate = EngineDelegate()
         self.transfers = TransferEngine(outgoing: outgoing, incoming: incoming, listener: engineDelegate, clock: clock)
-        self.bleDelegate = BleDelegate()
         self.wifiDelegate = WifiDelegate()
         engineDelegate.owner = self
-        bleDelegate.owner = self
         wifiDelegate.owner = self
     }
 
@@ -115,10 +121,35 @@ public final class TetherController {
         ble?.linkLost()
         self.maxFragment = max(maxFragment, Self.defaultFragment)
         bleWriter = writer
+        blePairing = pairing
+        bleLinkUp = true
+        bleHandshakeRetries = 0
+        startBleSession()
+    }
+
+    /// Pairing mode opened or closed while a link may already be up. Applies to the next
+    /// handshake on this link (the responder restarts its session when the phone retries).
+    public func setPairing(_ pairing: PairingContext) {
+        blePairing = pairing
+        blePairingChanged = true
+    }
+
+    private func startBleSession() {
+        // Detach the old session first so its close can't reach the app as a link loss.
+        let old = ble
+        ble = nil
+        old?.linkLost()
         reassembler.reset()
         bleStartedAt = clock()
+        bleHeard = false
+        bleFirstSeen = false
+        blePairingChanged = false
+        let delegate = BleDelegate()
+        delegate.owner = self
+        bleDelegate = delegate
         let s = Session(role: role, localStatic: identity.localKey, localHello: localHello(),
-                        isTrusted: { [weak self] in self?.trusts($0) ?? false }, pairing: pairing, listener: bleDelegate)
+                        isTrusted: { [weak self] in self?.trusts($0) ?? false }, pairing: blePairing, listener: delegate)
+        delegate.session = s
         ble = s
         setState(.handshaking)
         s.start()
@@ -127,12 +158,34 @@ public final class TetherController {
     public func setMaxFragment(_ n: Int) { maxFragment = max(n, Self.defaultFragment) }
 
     public func bleFragment(_ fragment: Data) {
-        guard let s = ble, let record = reassembler.accept(fragment) else { return }
+        guard bleLinkUp, let record = reassembler.accept(fragment) else { return }
         heartbeat.heard(clock())
-        s.receive(record)
+        bleHeard = true
+        if role == .responder && Self.isFirstHandshakeMessage(record) {
+            // The phone (re)started the handshake: a lost message or a session that already
+            // timed out here must not wedge the link, so begin a fresh session for it.
+            let cur = ble
+            let fresh = cur?.state == .handshaking && !bleFirstSeen && !blePairingChanged
+            let restartable = cur == nil || cur?.state == .handshaking || cur?.state == .closed
+            if !fresh && restartable {
+                bleHandshakeRetries += 1
+                startBleSession()
+            }
+            bleFirstSeen = true
+        }
+        ble?.receive(record)
     }
 
-    public func bleDisconnected() { ble?.linkLost() }
+    private static func isFirstHandshakeMessage(_ r: Data) -> Bool {
+        r.count >= 2 && r[r.startIndex] == RecordKind.handshake && r[r.startIndex + 1] == 1
+    }
+
+    public func bleDisconnected() {
+        bleLinkUp = false
+        ble?.linkLost()
+        bleWriter = nil
+    }
+
     public func confirmPairing() { ble?.confirmPairing() }
     public func rejectPairing() { ble?.rejectPairing() }
 
@@ -229,7 +282,16 @@ public final class TetherController {
 
     private func tickSession(_ s: Session, _ hb: inout Heartbeat, _ startedAt: Int64, _ now: Int64) {
         switch s.state {
-        case .handshaking: if now - startedAt > Self.handshakeTimeoutMs { s.close(.timeout) }
+        case .handshaking:
+            if s === ble && role == .initiator && !bleHeard && bleHandshakeRetries < Self.maxHandshakeRetries
+                && now - startedAt > Self.handshakeRetryMs {
+                // Phone: nothing back from the Mac yet. A write may have been lost while the
+                // Mac was still setting up the subscription, so send the first message again.
+                bleHandshakeRetries += 1
+                startBleSession()
+            } else if now - startedAt > Self.handshakeTimeoutMs {
+                s.close(.timeout)
+            }
         case .verifying: if now - startedAt > Self.pairingTimeoutMs { s.close(.timeout) }
         case .established:
             switch hb.tick(now) {
@@ -328,9 +390,16 @@ public final class TetherController {
 
     fileprivate final class BleDelegate: SessionListener {
         weak var owner: TetherController?
+        /// The session this delegate belongs to; callbacks from a replaced session are ignored.
+        weak var session: Session?
+
+        private var live: TetherController? {
+            guard let o = owner, let s = session, o.ble === s else { return nil }
+            return o
+        }
 
         func sessionOutput(_ record: Data) {
-            guard let o = owner, let w = o.bleWriter else { return }
+            guard let o = live, let w = o.bleWriter else { return }
             do {
                 for f in try o.fragmenter.fragment(record, maxFragment: o.maxFragment) { w(f) }
             } catch {
@@ -339,11 +408,11 @@ public final class TetherController {
         }
 
         func sessionPairingRequest(sas: String, remote: Hello, remoteKey: Data, autoConfirmed: Bool) {
-            owner?.setState(.pairing(sas: sas, peerName: remote.name, auto: autoConfirmed))
+            live?.setState(.pairing(sas: sas, peerName: remote.name, auto: autoConfirmed))
         }
 
         func sessionEstablished(remote: Hello, remoteKey: Data, newlyPaired: Bool) {
-            guard let o = owner else { return }
+            guard let o = live else { return }
             let now = o.clock()
             o.heartbeat.reset(now)
             if newlyPaired {
@@ -360,14 +429,14 @@ public final class TetherController {
         }
 
         func sessionMessage(_ message: Message) {
-            guard let o = owner, let s = o.ble else { return }
+            guard let o = live, let s = o.ble else { return }
             o.handleCommon(s, message, o.bleChannel)
         }
 
         func sessionClosed(reason: CloseReason, byRemote: Bool) {
-            guard let o = owner else { return }
+            guard let o = live else { return }
             o.ble = nil
-            o.bleWriter = nil
+            // bleWriter stays: the radio link may still be up and the phone may retry.
             o.reassembler.reset()
             o.gate.revoke()
             o.updateEngineChannel()

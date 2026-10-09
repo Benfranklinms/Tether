@@ -242,4 +242,75 @@ class ControllerTest {
         loop.drain()
         assertEquals(LinkState.Offline, phone.state)
     }
+
+    @Test
+    fun lostFirstHandshakeMessageIsRetried() {
+        val (phone, mac) = fresh()
+        val link = LoopbackBle(loop, phone, mac)
+        link.dropToMac = 1 // the Mac wasn't ready for the phone's first write
+        link.connect(PairingContext(acceptNew = true), PairingContext(acceptNew = true))
+        loop.drain()
+        assertEquals(LinkState.Handshaking, phone.state)
+        loop.now += TetherController.HANDSHAKE_RETRY_MS + 1
+        phone.controller.tick()
+        loop.drain()
+        assertEquals(1, phone.controller.bleHandshakeRetries)
+        assertTrue(phone.state is LinkState.Pairing)
+        assertEquals((phone.state as LinkState.Pairing).sas, (mac.state as LinkState.Pairing).sas)
+        phone.controller.confirmPairing()
+        mac.controller.confirmPairing()
+        loop.drain()
+        assertTrue(phone.state is LinkState.Connected)
+        assertTrue(mac.state is LinkState.Connected)
+        assertTrue(phone.closes.isEmpty())
+    }
+
+    @Test
+    fun lostMacReplyRestartsBothSides() {
+        val (phone, mac) = fresh()
+        val link = LoopbackBle(loop, phone, mac)
+        link.dropToPhone = 1
+        link.connect(PairingContext(acceptNew = true), PairingContext(acceptNew = true))
+        loop.drain()
+        loop.now += TetherController.HANDSHAKE_RETRY_MS + 1
+        phone.controller.tick()
+        loop.drain()
+        assertEquals(1, mac.controller.bleHandshakeRetries)
+        assertTrue(phone.state is LinkState.Pairing)
+        assertTrue(mac.state is LinkState.Pairing)
+    }
+
+    @Test
+    fun macSessionThatTimedOutRevivesWhenPhoneRetries() {
+        val (phone, mac) = fresh()
+        val link = LoopbackBle(loop, phone, mac)
+        link.dropToMac = 1_000
+        link.dropToPhone = 1_000
+        link.connect(PairingContext(acceptNew = true), PairingContext(acceptNew = true))
+        loop.drain()
+        loop.now += TetherController.HANDSHAKE_TIMEOUT_MS + 1
+        mac.controller.tick() // Mac gives up; the GATT link stays up (CoreBluetooth can't drop it)
+        loop.drain()
+        assertEquals(LinkState.Offline, mac.state)
+        link.dropToMac = 0
+        link.dropToPhone = 0
+        phone.controller.tick() // phone heard nothing, so it starts the handshake again
+        loop.drain()
+        assertTrue(mac.state is LinkState.Pairing)
+        assertTrue(phone.state is LinkState.Pairing)
+    }
+
+    @Test
+    fun pairingOpenedAfterConnectAppliesToRetry() {
+        val (phone, mac) = fresh()
+        val link = LoopbackBle(loop, phone, mac)
+        link.dropToMac = 1
+        link.connect(PairingContext(acceptNew = true), PairingContext.CLOSED)
+        loop.drain()
+        mac.controller.setPairing(PairingContext(acceptNew = true))
+        loop.now += TetherController.HANDSHAKE_RETRY_MS + 1
+        phone.controller.tick()
+        loop.drain()
+        assertTrue(mac.state is LinkState.Pairing)
+    }
 }

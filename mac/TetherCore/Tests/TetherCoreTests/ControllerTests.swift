@@ -272,3 +272,80 @@ final class TransferTests: XCTestCase {
         XCTAssertEqual(phone.files.finished[rec.id], bytes)
     }
 }
+
+// MARK: handshake recovery (first real-device run: the Mac sat on "Linking" forever)
+
+extension ControllerTests {
+
+    private func isPairing(_ s: LinkState) -> Bool {
+        if case .pairing = s { return true }
+        return false
+    }
+
+    func testLostFirstHandshakeMessageIsRetried() {
+        let (phone, mac) = fresh()
+        let link = LoopbackBle(loop, phone, mac)
+        link.dropToMac = 1
+        link.connect(phonePairing: PairingContext(acceptNew: true), macPairing: PairingContext(acceptNew: true))
+        loop.drain()
+        XCTAssertEqual(phone.state, .handshaking)
+        loop.now += TetherController.handshakeRetryMs + 1
+        phone.controller.tick()
+        loop.drain()
+        XCTAssertEqual(phone.controller.bleHandshakeRetries, 1)
+        XCTAssertTrue(isPairing(phone.state))
+        XCTAssertTrue(isPairing(mac.state))
+        phone.controller.confirmPairing()
+        mac.controller.confirmPairing()
+        loop.drain()
+        XCTAssertEqual(phone.state, .connected(peerName: "MacBook", wifi: false))
+        XCTAssertEqual(mac.state, .connected(peerName: "Pixel", wifi: false))
+        XCTAssertTrue(phone.closes.isEmpty)
+    }
+
+    func testLostMacReplyRestartsBothSides() {
+        let (phone, mac) = fresh()
+        let link = LoopbackBle(loop, phone, mac)
+        link.dropToPhone = 1
+        link.connect(phonePairing: PairingContext(acceptNew: true), macPairing: PairingContext(acceptNew: true))
+        loop.drain()
+        loop.now += TetherController.handshakeRetryMs + 1
+        phone.controller.tick()
+        loop.drain()
+        XCTAssertEqual(mac.controller.bleHandshakeRetries, 1)
+        XCTAssertTrue(isPairing(phone.state))
+        XCTAssertTrue(isPairing(mac.state))
+    }
+
+    func testMacSessionThatTimedOutRevivesWhenPhoneRetries() {
+        let (phone, mac) = fresh()
+        let link = LoopbackBle(loop, phone, mac)
+        link.dropToMac = 1_000
+        link.dropToPhone = 1_000
+        link.connect(phonePairing: PairingContext(acceptNew: true), macPairing: PairingContext(acceptNew: true))
+        loop.drain()
+        loop.now += TetherController.handshakeTimeoutMs + 1
+        mac.controller.tick()
+        loop.drain()
+        XCTAssertEqual(mac.state, .offline)
+        link.dropToMac = 0
+        link.dropToPhone = 0
+        phone.controller.tick()
+        loop.drain()
+        XCTAssertTrue(isPairing(mac.state))
+        XCTAssertTrue(isPairing(phone.state))
+    }
+
+    func testPairingOpenedAfterConnectAppliesToRetry() {
+        let (phone, mac) = fresh()
+        let link = LoopbackBle(loop, phone, mac)
+        link.dropToMac = 1
+        link.connect(phonePairing: PairingContext(acceptNew: true), macPairing: .closed)
+        loop.drain()
+        mac.controller.setPairing(PairingContext(acceptNew: true))
+        loop.now += TetherController.handshakeRetryMs + 1
+        phone.controller.tick()
+        loop.drain()
+        XCTAssertTrue(isPairing(mac.state))
+    }
+}

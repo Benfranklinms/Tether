@@ -65,7 +65,44 @@ data class UiState(
     val lastError: String? = null,
     val fingerprint: String = "",
     val notice: String? = null,
+    /** What the Bluetooth side is doing right now, for the pairing status line and failures. */
+    val diag: BleCentral.Diag = BleCentral.Diag(),
 )
+
+/** One line saying what pairing is doing right now. Pure; unit-tested. */
+fun pairStatus(s: UiState): String {
+    val d = s.diag
+    return when {
+        s.link is LinkState.Handshaking -> "Connected to your Mac · securing the link…"
+        s.radio == BleCentral.RadioState.OFF || d.stage == BleCentral.Stage.OFF -> "Bluetooth is off. Turn it on to pair."
+        s.radio == BleCentral.RadioState.NO_PERMISSION -> "Allow Nearby devices for Tether to find your Mac."
+        d.stage == BleCentral.Stage.CONNECTING ->
+            "Found your Mac · connecting" + if (d.connectAttempts > 1) " (try ${d.connectAttempts})" else "…"
+        d.stage == BleCentral.Stage.DISCOVERING || d.stage == BleCentral.Stage.SUBSCRIBING -> "Found your Mac · opening the link…"
+        d.stage == BleCentral.Stage.CONNECTED -> "Connected to your Mac · securing the link…"
+        d.stage == BleCentral.Stage.SCANNING && d.adsSeen == 0 && d.locationOff ->
+            "Looking for your Mac… nothing heard yet. If this stays, turn on Location."
+        d.stage == BleCentral.Stage.SCANNING -> "Looking for your Mac… ${d.adsSeen} Bluetooth signals heard, no Tether yet"
+        else -> "Starting Bluetooth…"
+    }
+}
+
+/** Why a pairing attempt ran out of time, in words that say what to try. Pure; unit-tested. */
+fun pairFailure(d: BleCentral.Diag, link: LinkState): String = when {
+    link is LinkState.Handshaking || d.linkUps > 0 ->
+        "Your Mac answered but the secure handshake didn't finish. Close and reopen the Mac's pairing window, " +
+            "then try again. If it repeats, export diagnostics from both apps."
+    d.macSeen ->
+        "Found your Mac but couldn't connect" + (d.lastError?.let { " ($it)" } ?: "") +
+            ". Turn Bluetooth off and on on both devices, then try again."
+    d.adsSeen == 0 ->
+        "No Bluetooth signals at all reached this phone." +
+            (if (d.locationOff) " Turn on Location (some phones need it to scan)." else "") +
+            " Check Nearby devices permission for Tether, then try again."
+    else ->
+        "Couldn't find your Mac. Keep Tether's pairing window open on the Mac, check its Bluetooth is on and Tether is " +
+            "allowed in System Settings › Privacy & Security › Bluetooth, then try again."
+}
 
 /**
  * The process-wide owner of the link. One single-threaded [engine] executor runs the
@@ -132,11 +169,19 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     /** Enter pairing mode; [qr] when the user scanned the Mac's code. Times out after 2 minutes. */
     fun startPairing(qr: PairingUri?) = engine.execute {
-        pairing = PairingContext(acceptNew = true, expectedRemoteKey = qr?.key, token = qr?.token)
+        val ctx = PairingContext(acceptNew = true, expectedRemoteKey = qr?.key, token = qr?.token)
+        pairing = ctx
+        controller.setPairing(ctx)
         state.update { it.copy(pairingMode = true, pairingQrName = qr?.name, lastError = null) }
         pairingTimeout?.cancel(false)
-        pairingTimeout = engine.schedule({ cancelPairingInternal("Pairing timed out. Try again.") }, 2, TimeUnit.MINUTES)
+        pairingTimeout = engine.schedule({
+            val s = state.value
+            if (controller.state is LinkState.Pairing) return@schedule // codes on screen; the session times out itself
+            Log.w("pair.timeout", "diag" to s.diag, "link" to s.link::class.simpleName)
+            cancelPairingInternal(pairFailure(s.diag, s.link))
+        }, PAIRING_TIMEOUT_S, TimeUnit.SECONDS)
         central.clearAvoided()
+        central.resetDiag()
         TetherService.start(app)
         central.start()
         central.setForeground(true)
@@ -150,6 +195,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     private fun cancelPairingInternal(error: String?) {
         if (pairing == null) return
         pairing = null
+        controller.setPairing(PairingContext.CLOSED)
         pairingTimeout?.cancel(false)
         if (controller.state is LinkState.Pairing) controller.rejectPairing()
         state.update { it.copy(pairingMode = false, pairingQrName = null, lastError = error) }
@@ -287,6 +333,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     override fun onPaired(peer: PeerRecord) {
         pairing = null
+        controller.setPairing(PairingContext.CLOSED)
         pairingTimeout?.cancel(false)
         state.update { it.copy(peer = peer, pairingMode = false, pairingQrName = null) }
         settings.update { it.copy(onboardingDone = true) }
@@ -352,6 +399,10 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     override fun onLinkDown(reason: String) {
         controller.bleDisconnected()
         Log.i("ble.link_down", "reason" to reason)
+    }
+
+    override fun onDiag(diag: BleCentral.Diag) {
+        state.update { it.copy(diag = diag) }
     }
 
     override fun onRadioState(state: BleCentral.RadioState) {
@@ -431,6 +482,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     companion object {
         private const val AVOID_MINUTES = 10L
+        private const val PAIRING_TIMEOUT_S = 90L
         private const val WIFI_RETRY_S = 10L
         private const val WIFI_ID_BYTES = 8
         private const val FAST_TICK_S = 1L

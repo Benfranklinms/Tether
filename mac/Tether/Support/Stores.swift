@@ -81,9 +81,14 @@ struct MacSettings: Codable, Equatable {
     }
 }
 
-/// Identity (our static key, a pending rotated key, and the paired phone) in the login
-/// Keychain, readable only on this Mac after first unlock.
-final class KeychainIdentityStore: IdentityStore {
+/// Identity (our static key, a pending rotated key, and the paired phone) in
+/// ~/Library/Application Support/Tether/identity.json, readable only by this user (0600).
+///
+/// v0.1.0 kept it in the login Keychain. With an ad-hoc signature every update changes the
+/// code hash, so macOS put up a blocking "Tether wants to use your confidential information"
+/// prompt at launch after each update. The file store avoids that; an existing Keychain
+/// item is migrated once without showing any prompt (if macOS would prompt, it is skipped).
+final class FileIdentityStore: IdentityStore {
     private struct Blob: Codable {
         var key: String
         var pendingKey: String?
@@ -92,17 +97,28 @@ final class KeychainIdentityStore: IdentityStore {
 
     private static let service = "in.benfranklin.tether"
     private static let account = "identity"
+    private let url = Paths.support.appendingPathComponent("identity.json")
     private var blob: Blob
     private let lock = NSLock()
 
     init() {
-        if let data = Self.load(), let b = try? JSONDecoder().decode(Blob.self, from: data),
-           let k = B64.decode(b.key), (try? KeyPair(privateKey: k)) != nil {
+        if let b = Self.decode(try? Data(contentsOf: url)) {
             blob = b
+        } else if let b = Self.decode(Self.loadKeychainSilently()) {
+            blob = b
+            Log.info("identity.migrated_from_keychain")
+            save()
         } else {
             blob = Blob(key: B64.encode(KeyPair.generate().privateKey))
+            Log.info("identity.created")
             save()
         }
+    }
+
+    private static func decode(_ data: Data?) -> Blob? {
+        guard let data, let b = try? JSONDecoder().decode(Blob.self, from: data),
+              let k = B64.decode(b.key), (try? KeyPair(privateKey: k)) != nil else { return nil }
+        return b
     }
 
     var localKey: KeyPair {
@@ -146,23 +162,16 @@ final class KeychainIdentityStore: IdentityStore {
         let data = try? JSONEncoder().encode(blob)
         lock.unlock()
         guard let data else { return }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: Self.account,
-        ]
-        let attrs: [String: Any] = [
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ]
-        var status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
-        if status == errSecItemNotFound {
-            status = SecItemAdd(query.merging(attrs) { $1 } as CFDictionary, nil)
+        do {
+            try data.write(to: url, options: [.atomic])
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        } catch {
+            Log.error("identity.save_failed", error)
         }
-        if status != errSecSuccess { Log.warn("keychain.save_failed", ["status": "\(status)"]) }
     }
 
-    private static func load() -> Data? {
+    /// Reads the v0.1.0 Keychain item without ever showing an access prompt.
+    private static func loadKeychainSilently() -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -171,7 +180,13 @@ final class KeychainIdentityStore: IdentityStore {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var out: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess else { return nil }
+        SecKeychainSetUserInteractionAllowed(false)
+        defer { SecKeychainSetUserInteractionAllowed(true) }
+        let status = SecItemCopyMatching(query as CFDictionary, &out)
+        guard status == errSecSuccess else {
+            if status != errSecItemNotFound { Log.info("identity.keychain_skipped", ["status": "\(status)"]) }
+            return nil
+        }
         return out as? Data
     }
 }

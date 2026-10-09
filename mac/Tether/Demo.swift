@@ -8,7 +8,7 @@ enum Demo {
         key: Data(repeating: 7, count: KeyPair.keyLength), token: Data(repeating: 3, count: PairingURI.tokenLength), name: "MacBook Air"
     ).encode()
 
-    enum Shot { case unpaired, connected, qr, code, done }
+    enum Shot { case unpaired, connected, qr, code, done, linking, failed }
 
     static func now() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
@@ -16,6 +16,21 @@ enum Demo {
         let t = now()
         m.myFingerprint = fingerprint(Data(repeating: 9, count: 32))
         guard scene != .unpaired else { return }
+        m.bluetooth = .on
+        m.radio = RadioDiag(advertising: true, serviceReady: true)
+        if scene == .linking {
+            m.pairingURI = pairingURI
+            m.radio.phoneSeen = true
+            m.radio.subscribed = true
+            m.link = .handshaking
+            return
+        }
+        if scene == .failed {
+            m.pairingURI = pairingURI
+            m.pairFailure = "Your phone connected, but the secure link didn't finish. "
+                + "Try again with both devices close. If it keeps happening, export diagnostics on both."
+            return
+        }
         if scene == .qr {
             m.pairingURI = pairingURI
             return

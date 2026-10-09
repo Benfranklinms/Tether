@@ -15,7 +15,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = (System.getenv("TETHER_VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("TETHER_VERSION_NAME") ?: "0.1.0-dev"
+        versionName = System.getenv("TETHER_VERSION_NAME") ?: "0.1.1-dev"
     }
 
     // A key committed to the repo so every CI build (debug and release) is signed the same

@@ -152,6 +152,9 @@ final class LoopbackBle {
     private(set) var up = false
     var fragmentsSent = 0
     var cutAfter: Int?
+    /// Silently lose the next N fragments towards the Mac / the phone.
+    var dropToMac = 0
+    var dropToPhone = 0
     private var generation = 0
 
     init(_ loop: Loop, _ phone: Side, _ mac: Side, mtu: Int = 185) {
@@ -174,6 +177,14 @@ final class LoopbackBle {
     private func deliver(_ gen: Int, _ fragment: Data, toMac: Bool) {
         guard up, gen == generation else { return }
         fragmentsSent += 1
+        if toMac && dropToMac > 0 {
+            dropToMac -= 1
+            return
+        }
+        if !toMac && dropToPhone > 0 {
+            dropToPhone -= 1
+            return
+        }
         if let left = cutAfter {
             if left <= 0 {
                 loop.execute { self.disconnect() }

@@ -18,6 +18,14 @@ final class AppModel: ObservableObject {
     @Published var launchAtLogin = LoginItem.isEnabled
     @Published var notificationsAllowed = true
     @Published var myFingerprint = ""
+    @Published var radio = RadioDiag()
+    /// Set when a pairing attempt got stuck after the phone connected; the pair window shows it.
+    @Published var pairFailure: String?
+
+    /// How long the pair window waits for the secure link once the phone has connected.
+    static let linkingLimit: TimeInterval = 45
+    private var linkingSince: Date?
+    private var linkingCheck: DispatchWorkItem?
 
     let demo: Bool
     private var engine: Engine?
@@ -68,6 +76,65 @@ final class AppModel: ObservableObject {
         self.link = link
         self.peer = peer
         if isConnected { lastError = nil }
+        trackLinking()
+    }
+
+    /// One line for the pair window: what Bluetooth is doing right now.
+    var pairStatus: String {
+        switch bluetooth {
+        case .off: return "Bluetooth is off. Turn it on in Control Center."
+        case .unauthorized: return "Tether isn't allowed to use Bluetooth."
+        case .unsupported: return "This Mac doesn't support Bluetooth LE."
+        case .unknown: return "Starting Bluetooth…"
+        case .on: break
+        }
+        if case .handshaking = link { return "Phone connected · securing the link…" }
+        if case .pairing = link { return "Secure link ready · compare the codes" }
+        if let e = radio.advertiseError { return "Bluetooth couldn't advertise: \(e)" }
+        if !radio.serviceReady || !radio.advertising { return "Getting Bluetooth ready…" }
+        if radio.subscribed { return "Phone connected · starting…" }
+        return "Visible over Bluetooth · waiting for your phone"
+    }
+
+    /// Start a 45 s watch the first time the phone connects during pairing; if the codes
+    /// never appear, the pair window switches to an explained error instead of spinning.
+    private func trackLinking() {
+        guard pairingURI != nil, !demo else { return }
+        switch link {
+        case .handshaking:
+            guard linkingSince == nil else { return }
+            linkingSince = Date()
+            let w = DispatchWorkItem { [weak self] in
+                guard let self, self.pairingURI != nil, !self.justPaired else { return }
+                if case .pairing = self.link { return }
+                if case .connected = self.link { return }
+                Log.warn("pair.stuck", ["radio": self.radio.description])
+                self.pairFailure = "Your phone connected, but the secure link didn't finish. "
+                    + "Try again with both devices close. If it keeps happening, export diagnostics on both."
+            }
+            linkingCheck?.cancel()
+            linkingCheck = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.linkingLimit, execute: w)
+        case .pairing, .connected:
+            linkingCheck?.cancel()
+            linkingSince = nil
+        case .offline:
+            break
+        }
+    }
+
+    func retryPairing() {
+        pairFailure = nil
+        linkingCheck?.cancel()
+        linkingSince = nil
+        engine?.stopPairing()
+        pairingURI = nil
+        startPairing()
+    }
+
+    func openBluetoothPrivacy() {
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth")
+        if let url { NSWorkspace.shared.open(url) }
     }
 
     func paired(_ p: PeerRecord) {
@@ -122,6 +189,9 @@ final class AppModel: ObservableObject {
 
     func startPairing() {
         justPaired = false
+        pairFailure = nil
+        linkingSince = nil
+        NSApp.activate(ignoringOtherApps: true)
         if demo {
             pairingURI = Demo.pairingURI
             return
@@ -131,6 +201,9 @@ final class AppModel: ObservableObject {
 
     func stopPairing() {
         pairingURI = nil
+        pairFailure = nil
+        linkingCheck?.cancel()
+        linkingSince = nil
         engine?.stopPairing()
     }
 
@@ -232,7 +305,7 @@ final class AppModel: ObservableObject {
         panel.nameFieldStringValue = "tether-logs.txt"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let os = ProcessInfo.processInfo.operatingSystemVersionString
-        let header = "Tether \(Engine.version) · macOS \(os) · link=\(link) bluetooth=\(bluetooth)"
+        let header = "Tether \(Engine.version) · macOS \(os) · link=\(link) bluetooth=\(bluetooth) radio=\(radio)"
         do {
             try Log.export(header: header).write(to: url, options: .atomic)
             NSWorkspace.shared.activateFileViewerSelecting([url])

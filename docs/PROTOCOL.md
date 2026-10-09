@@ -54,6 +54,7 @@ Close reasons: `0 normal, 1 untrusted, 2 busy, 3 protocol error, 4 version misma
   - If pairing is not open on this device → close *untrusted*.
   - Otherwise the session enters **verifying** (pairing, §5).
 - Heartbeat: `PING` every 45 s of silence, dead after 20 s more. Handshake timeout 15 s; pairing timeout 120 s.
+- Handshake recovery (Bluetooth, since 0.1.1): if the phone hears nothing within 3 s of sending message 1, it starts a fresh session and sends a new message 1 (up to 3 times per link). The Mac starts a fresh session whenever a message 1 arrives while it is still handshaking or after its session closed with the radio link still up, so a lost write never wedges the link. Writes that reach the Mac before the phone's subscription is reported are held and replayed. Fragments are capped at 244 bytes (phone requests ATT MTU 247).
 
 ## 5. Pairing
 

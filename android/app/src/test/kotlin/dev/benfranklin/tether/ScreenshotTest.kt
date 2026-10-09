@@ -106,6 +106,23 @@ class ScreenshotTest {
     }
 
     @Test
+    fun pairingSearching() = shot("pairing-searching") {
+        OnboardingScreen(
+            OnboardingStep.PAIR, emptyList(),
+            PairView.Searching(null, "Found your Mac · connecting (try 2)"), {}, {}, {}, {}, {}, {}, {},
+        )
+    }
+
+    @Test
+    fun pairingFailed() = shot("pairing-failed") {
+        OnboardingScreen(
+            OnboardingStep.PAIR, emptyList(),
+            PairView.Failed(pairFailure(dev.benfranklin.tether.ble.BleCentral.Diag(adsSeen = 87), dev.benfranklin.tether.core.LinkState.Offline)),
+            {}, {}, {}, {}, {}, {}, {},
+        )
+    }
+
+    @Test
     fun pairingCode() = shot("pairing-code") {
         OnboardingScreen(OnboardingStep.PAIR, emptyList(), PairView.Confirm("482913", "Ben's MacBook Air"), {}, {}, {}, {}, {}, {}, {})
     }

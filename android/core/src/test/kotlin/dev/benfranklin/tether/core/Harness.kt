@@ -182,6 +182,9 @@ class LoopbackBle(private val loop: Loop, val phone: Side, val mac: Side, val mt
     var fragmentsSent = 0
     /** Cut the link after this many more fragments (simulates walking out of range). */
     var cutAfter: Int? = null
+    /** Silently lose the next N fragments towards the Mac / the phone (radio loss, setup races). */
+    var dropToMac = 0
+    var dropToPhone = 0
     private var generation = 0
 
     fun connect(phonePairing: PairingContext = PairingContext.CLOSED, macPairing: PairingContext = PairingContext.CLOSED) {
@@ -194,6 +197,14 @@ class LoopbackBle(private val loop: Loop, val phone: Side, val mac: Side, val mt
     private fun deliver(gen: Int, fragment: ByteArray, mac: Boolean) {
         if (!up || gen != generation) return
         fragmentsSent++
+        if (mac && dropToMac > 0) {
+            dropToMac--
+            return
+        }
+        if (!mac && dropToPhone > 0) {
+            dropToPhone--
+            return
+        }
         cutAfter?.let { left ->
             if (left <= 0) {
                 loop.execute { disconnect() }

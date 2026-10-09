@@ -103,6 +103,8 @@ enum Screenshots {
         Shot(name: "pair-qr", scene: .qr) { AnyView(PairView()) },
         Shot(name: "pair-code", scene: .code) { AnyView(PairView()) },
         Shot(name: "pair-done", scene: .done) { AnyView(PairView()) },
+        Shot(name: "pair-linking", scene: .linking) { AnyView(PairView()) },
+        Shot(name: "pair-failed", scene: .failed) { AnyView(PairView()) },
         Shot(name: "settings-general", scene: .connected) { AnyView(SettingsView(initialSection: .general)) },
         Shot(name: "settings-notifications", scene: .connected) { AnyView(SettingsView(initialSection: .notifications)) },
         Shot(name: "settings-phone", scene: .connected) { AnyView(SettingsView(initialSection: .phone)) },
