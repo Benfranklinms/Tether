@@ -101,6 +101,7 @@ interface SettingsActions {
     fun unpair()
     fun exportLogs()
     fun openLicenses()
+    fun openFeatures() = Unit
 }
 
 fun minutesLabel(m: Int): String = String.format(Locale.ROOT, "%02d:%02d", m / 60, m % 60)
@@ -115,6 +116,12 @@ fun SettingsScreen(s: AppSettings, d: DeviceInfo, a: SettingsActions, onBack: ()
     val n = s.notifications
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Settings", onBack) }) { pad ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding(), bottom = 40.dp)) {
+            item { SectionHeader("Features") }
+            item {
+                Card {
+                    NavRow("On your Mac", "Replies, photos, battery, ring, screen", onClick = a::openFeatures)
+                }
+            }
             item { SectionHeader("Clipboard") }
             item {
                 Card {

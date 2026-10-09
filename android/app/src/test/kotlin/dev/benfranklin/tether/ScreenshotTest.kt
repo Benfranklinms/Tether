@@ -15,6 +15,9 @@ import dev.benfranklin.tether.core.transfer.TransferStatus
 import dev.benfranklin.tether.core.transfer.Transport
 import dev.benfranklin.tether.data.AppSettings
 import dev.benfranklin.tether.ui.screens.AppRow
+import dev.benfranklin.tether.ui.screens.FeatureActions
+import dev.benfranklin.tether.ui.screens.FeatureStatus
+import dev.benfranklin.tether.ui.screens.FeaturesScreen
 import dev.benfranklin.tether.ui.screens.AppsScreen
 import dev.benfranklin.tether.ui.screens.DeviceInfo
 import dev.benfranklin.tether.ui.screens.HomeModel
@@ -152,6 +155,23 @@ class ScreenshotTest {
                 AppRow("com.android.vending", "Play Store", AppRule.INHERIT, false, null),
             ),
             { _, _ -> }, {},
+        )
+    }
+
+    @Test
+    fun features() = shot("features") {
+        FeaturesScreen(
+            AppSettings(sendPhotos = true),
+            FeatureStatus(connected = true, macCaps = dev.benfranklin.tether.core.proto.Caps.CURRENT.toSet(), mediaPermission = false),
+            object : FeatureActions {
+                override fun update(change: (AppSettings) -> AppSettings) = Unit
+                override fun grantMedia() = Unit
+                override fun grantPhoneState() = Unit
+                override fun openFullScreenSettings() = Unit
+                override fun openAccessibility() = Unit
+                override fun openNotificationAccess() = Unit
+            },
+            onBack = {},
         )
     }
 

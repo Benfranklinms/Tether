@@ -28,7 +28,13 @@ object Notifications {
     const val CH_LINK = "link"
     const val CH_TRANSFERS = "transfers"
     const val CH_ALERTS = "alerts"
+    const val CH_FIND = "find"
+    const val CH_SCREEN = "screen"
+    const val CH_REQUESTS = "requests"
     const val ID_ONGOING = 1
+    const val ID_RING = 2
+    const val ID_SCREEN = 3
+    const val ID_SCREEN_REQUEST = 4
     private const val ID_TRANSFER_BASE = 1000
     private const val ID_RECEIVED_BASE = 50_000
     private const val SPAN = 40_000
@@ -47,6 +53,19 @@ object Notifications {
                 },
                 NotificationChannel(CH_ALERTS, c.getString(R.string.channel_alerts), NotificationManager.IMPORTANCE_DEFAULT).apply {
                     description = c.getString(R.string.channel_alerts_desc)
+                },
+                NotificationChannel(CH_FIND, c.getString(R.string.channel_find), NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = c.getString(R.string.channel_find_desc)
+                    setSound(null, null) // Tether plays the alarm itself on the alarm stream
+                    enableVibration(false)
+                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                },
+                NotificationChannel(CH_REQUESTS, c.getString(R.string.channel_requests), NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = c.getString(R.string.channel_requests_desc)
+                },
+                NotificationChannel(CH_SCREEN, c.getString(R.string.channel_screen), NotificationManager.IMPORTANCE_LOW).apply {
+                    description = c.getString(R.string.channel_screen_desc)
+                    setShowBadge(false)
                 },
             ),
         )
@@ -142,6 +161,11 @@ object Notifications {
             .setAutoCancel(true)
             .build(),
     )
+
+    /** Post a notification built elsewhere (ring, screen sharing), if notifications are allowed. */
+    fun postRaw(c: Context, id: Int, n: Notification) = post(c, id, n)
+
+    fun cancelId(c: Context, id: Int) = cancel(c, id)
 
     private fun post(c: Context, id: Int, n: Notification) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&

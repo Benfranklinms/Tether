@@ -70,6 +70,13 @@ import dev.benfranklin.tether.data.SeenApp
 import dev.benfranklin.tether.log.Log
 import dev.benfranklin.tether.runtime
 import dev.benfranklin.tether.service.TetherService
+import dev.benfranklin.tether.device.BatteryMonitor
+import dev.benfranklin.tether.device.Ringer
+import dev.benfranklin.tether.media.MediaWatcher
+import dev.benfranklin.tether.screen.ControlService
+import dev.benfranklin.tether.ui.screens.FeatureActions
+import dev.benfranklin.tether.ui.screens.FeatureStatus
+import dev.benfranklin.tether.ui.screens.FeaturesScreen
 import dev.benfranklin.tether.ui.screens.AppRow
 import dev.benfranklin.tether.ui.screens.AppsScreen
 import dev.benfranklin.tether.ui.screens.DeviceInfo
@@ -118,7 +125,7 @@ fun homeModel(s: UiState, transfers: List<TransferRecord>, mirroringOff: Boolean
         title = title, subtitle = sub, connected = link is LinkState.Connected,
         searching = link !is LinkState.Connected && s.radio != BleCentral.RadioState.OFF,
         wifi = (link as? LinkState.Connected)?.wifi == true, error = s.lastError, notice = s.notice,
-        transfers = transfers, mirroringOff = mirroringOff,
+        transfers = transfers, mirroringOff = mirroringOff, screenLive = s.screenLive,
     )
 }
 
@@ -136,11 +143,13 @@ private fun TetherApp(rt: TetherRuntime) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         permsTick++
         rt.setForeground(true)
+        rt.permissionsChanged()
     }
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { rt.setForeground(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         permsTick++
+        rt.permissionsChanged()
         if (BleCentral.permissionsGranted(ctx) && state.peer != null) TetherService.start(ctx)
     }
     val qrLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
@@ -173,6 +182,14 @@ private fun TetherApp(rt: TetherRuntime) {
             }
             "camera" -> permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
             "storage" -> permissionLauncher.launch(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE))
+            "media" -> permissionLauncher.launch(arrayOf(MediaWatcher.permission()))
+            "phone" -> permissionLauncher.launch(arrayOf(Manifest.permission.READ_PHONE_STATE))
+            "fullscreen" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ctx.startActivity(
+                    Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${ctx.packageName}")),
+                )
+            }
+            "accessibility" -> ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
     }
 
@@ -232,6 +249,7 @@ private fun TetherApp(rt: TetherRuntime) {
                 onCancel = rt::cancelTransfer, onRetry = rt::retryTransfer, onRemove = rt::removeTransfer,
                 onNoticeShown = rt::clearNotice,
                 onFixMirroring = { grant("listener") },
+                onStopScreen = rt::stopScreenSharing,
             )
           }
         }
@@ -266,6 +284,7 @@ private fun TetherApp(rt: TetherRuntime) {
                     override fun unpair() = rt.unpair()
                     override fun exportLogs() = exportLogs(activity, state)
                     override fun openLicenses() = nav.navigate("licenses")
+                    override fun openFeatures() = nav.navigate("features")
                 },
                 onBack = { nav.popBackStack() },
             )
@@ -291,6 +310,37 @@ private fun TetherApp(rt: TetherRuntime) {
             )
         }
         composable("licenses") { LicensesScreen(onBack = { nav.popBackStack() }) }
+        composable("features") {
+            val st = remember(permsTick, state.peerCaps, state.link) {
+                FeatureStatus(
+                    connected = state.link is LinkState.Connected,
+                    macCaps = state.peerCaps.takeIf { state.link is LinkState.Connected },
+                    listenerEnabled = listenerOn,
+                    mediaPermission = MediaWatcher.hasPermission(ctx),
+                    mediaLimited = MediaWatcher.limitedAccess(ctx),
+                    phoneState = BatteryMonitor.hasPhoneState(ctx),
+                    fullScreenAlerts = Ringer.canUseFullScreen(ctx),
+                    controlEnabled = ControlService.enabledInSettings(ctx),
+                )
+            }
+            FeaturesScreen(
+                s = settings, st = st,
+                a = object : FeatureActions {
+                    override fun update(change: (AppSettings) -> AppSettings) {
+                        rt.settings.update(change)
+                        // Turning a feature on asks for what it needs straight away.
+                        val now = rt.settings.current
+                        if ((now.sendScreenshots || now.sendPhotos) && !MediaWatcher.hasPermission(ctx)) grant("media")
+                    }
+                    override fun grantMedia() = grant("media")
+                    override fun grantPhoneState() = grant("phone")
+                    override fun openFullScreenSettings() = grant("fullscreen")
+                    override fun openAccessibility() = grant("accessibility")
+                    override fun openNotificationAccess() = grant("listener")
+                },
+                onBack = { nav.popBackStack() },
+            )
+        }
     }
     }
 }

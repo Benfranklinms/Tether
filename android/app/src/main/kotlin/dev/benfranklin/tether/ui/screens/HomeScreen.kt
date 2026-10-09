@@ -97,6 +97,8 @@ data class HomeModel(
     val notice: String?,
     val transfers: List<TransferRecord>,
     val mirroringOff: Boolean,
+    /** The Mac is viewing this screen right now. */
+    val screenLive: Boolean = false,
 )
 
 @Composable
@@ -110,6 +112,7 @@ fun HomeScreen(
     onRemove: (String) -> Unit,
     onNoticeShown: () -> Unit,
     onFixMirroring: () -> Unit,
+    onStopScreen: () -> Unit = {},
 ) {
     val snack = remember { SnackbarHostState() }
     val reduce = LocalReduceMotion.current
@@ -138,6 +141,21 @@ fun HomeScreen(
                 ) {
                     ActionTile("Send clipboard", Icons.Outlined.ContentPaste, m.connected, onSendClipboard, Modifier.weight(1f))
                     ActionTile("Send file", Icons.Outlined.UploadFile, true, onSendFile, Modifier.weight(1f))
+                }
+            }
+            if (m.screenLive) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, Mono.Text, RoundedCornerShape(12.dp)).padding(start = 16.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Your Mac is viewing this screen", style = MaterialTheme.typography.bodyMedium,
+                            color = Mono.Text, modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = onStopScreen) { Text("Stop") }
+                    }
                 }
             }
             if (m.mirroringOff) {

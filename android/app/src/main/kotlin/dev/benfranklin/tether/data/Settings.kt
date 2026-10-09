@@ -23,6 +23,20 @@ data class AppSettings(
     /** Show a system notification when a file arrives. */
     val notifyOnReceive: Boolean = true,
     val onboardingDone: Boolean = false,
+    /** Offer notification buttons (reply, mark as read...) on the Mac. */
+    val notificationActions: Boolean = true,
+    /** Send new screenshots to the Mac automatically. */
+    val sendScreenshots: Boolean = true,
+    /** Send new camera photos to the Mac automatically (over Wi-Fi only). */
+    val sendPhotos: Boolean = false,
+    /** Share battery level, charging and network with the Mac. */
+    val shareBattery: Boolean = true,
+    /** Let the Mac ring this phone. */
+    val allowRing: Boolean = true,
+    /** Let the Mac ask to view (and, with accessibility, control) this phone's screen. */
+    val allowScreen: Boolean = true,
+    /** Longest edge of the shared screen video, in pixels (720, 1080, 1280 or 1600). */
+    val screenMaxSize: Int = 1280,
 )
 
 /** App settings as a hot flow, persisted atomically on every change. */
@@ -32,11 +46,17 @@ class SettingsRepository(context: Context) {
     val settings: StateFlow<AppSettings> = state.asStateFlow()
     val current: AppSettings get() = state.value
 
-    @Synchronized
+    /** Called after every change (on the caller's thread). */
+    @Volatile var onChanged: ((AppSettings) -> Unit)? = null
+
     fun update(change: (AppSettings) -> AppSettings) {
-        val next = change(state.value)
-        if (next == state.value) return
-        state.value = next
-        file.write(next)
+        val next = synchronized(this) {
+            val n = change(state.value)
+            if (n == state.value) return
+            state.value = n
+            file.write(n)
+            n
+        }
+        onChanged?.invoke(next)
     }
 }

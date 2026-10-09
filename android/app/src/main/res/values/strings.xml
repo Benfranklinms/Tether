@@ -9,4 +9,21 @@
     <string name="channel_transfers_desc">Files moving between your phone and Mac.</string>
     <string name="channel_alerts">Alerts</string>
     <string name="channel_alerts_desc">Pairing requests and problems that need you.</string>
+    <string name="channel_find">Find my phone</string>
+    <string name="channel_find_desc">When your Mac rings this phone.</string>
+    <string name="channel_requests">Requests from your Mac</string>
+    <string name="channel_requests_desc">Your Mac asking to view this phone\'s screen.</string>
+    <string name="channel_screen">Screen sharing</string>
+    <string name="channel_screen_desc">Shown while your Mac can see this phone\'s screen.</string>
+    <string name="ring_title">Your Mac is ringing this phone</string>
+    <string name="ring_text">Tap Stop when you\'ve found it.</string>
+    <string name="ring_stop">Stop</string>
+    <string name="screen_request_title">Your Mac wants to see this screen</string>
+    <string name="screen_request_text">Tap to allow. Android asks every time.</string>
+    <string name="screen_sharing_title">Sharing your screen with your Mac</string>
+    <string name="screen_sharing_text">Your Mac can see everything on this screen.</string>
+    <string name="screen_sharing_control">Your Mac can see and control this screen.</string>
+    <string name="screen_stop">Stop sharing</string>
+    <string name="control_service_label">Tether screen control</string>
+    <string name="control_service_desc">Lets your paired Mac tap, swipe and type on this phone while you share your screen with it. Tether only acts on input you send from your Mac during a screen session you approved, and never reads or stores screen content.</string>
 </resources>

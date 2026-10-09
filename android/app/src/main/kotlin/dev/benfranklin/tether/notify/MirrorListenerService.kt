@@ -43,14 +43,24 @@ class MirrorListenerService : NotificationListenerService() {
         val facts = facts(sbn, rankingMap) ?: return
         rt.seenApps.saw(facts.pkg, facts.appLabel, facts.isSystemApp, System.currentTimeMillis())
         val decision = NotificationFilter.decide(facts, rt.settings.current.notifications, deviceContext(), packageName)
-        if (decision is FilterDecision.Forward && deduper.shouldForward(decision.notif)) {
-            forwarded += sbn.key
-            rt.mirror(decision.notif)
+        if (decision is FilterDecision.Forward) {
+            val actions = if (rt.settings.current.notificationActions) {
+                NotificationActions.extract(sbn.notification)
+            } else {
+                emptyList()
+            }
+            NotificationActions.register(sbn.key, actions)
+            val notif = decision.notif.copy(actions = actions.map { it.info })
+            if (deduper.shouldForward(notif)) {
+                forwarded += sbn.key
+                rt.mirror(notif)
+            }
         }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification, rankingMap: RankingMap?, reason: Int) {
         deduper.removed(sbn.key)
+        NotificationActions.remove(sbn.key)
         // Only tell the Mac about notifications it actually has, and not when the Mac itself asked.
         if (forwarded.remove(sbn.key) && reason != REASON_LISTENER_CANCEL) {
             applicationContext.runtime.mirrorRemoved(sbn.key)

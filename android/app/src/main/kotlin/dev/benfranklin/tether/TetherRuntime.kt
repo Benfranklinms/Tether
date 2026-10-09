@@ -23,6 +23,30 @@ import dev.benfranklin.tether.core.proto.NotifDismiss
 import dev.benfranklin.tether.core.proto.NotifRemoved
 import dev.benfranklin.tether.core.proto.Protocol
 import dev.benfranklin.tether.core.proto.WifiOffer
+import dev.benfranklin.tether.core.features.AdaptiveBitrate
+import dev.benfranklin.tether.core.features.BatteryThrottle
+import dev.benfranklin.tether.core.features.FrameSplitter
+import dev.benfranklin.tether.core.proto.Battery
+import dev.benfranklin.tether.core.proto.Caps
+import dev.benfranklin.tether.core.proto.NotifAction
+import dev.benfranklin.tether.core.proto.NotifActionResult
+import dev.benfranklin.tether.core.proto.Ring
+import dev.benfranklin.tether.core.proto.RingState
+import dev.benfranklin.tether.core.proto.RingStop
+import dev.benfranklin.tether.core.proto.ScreenInput
+import dev.benfranklin.tether.core.proto.ScreenStart
+import dev.benfranklin.tether.core.proto.ScreenState
+import dev.benfranklin.tether.core.proto.ScreenStates
+import dev.benfranklin.tether.core.proto.ScreenStop
+import dev.benfranklin.tether.core.proto.VideoFeedback
+import dev.benfranklin.tether.data.AppSettings
+import dev.benfranklin.tether.device.BatteryMonitor
+import dev.benfranklin.tether.device.Ringer
+import dev.benfranklin.tether.media.MediaWatcher
+import dev.benfranklin.tether.notify.NotificationActions
+import dev.benfranklin.tether.screen.ControlService
+import dev.benfranklin.tether.screen.ScreenCaptureService
+import dev.benfranklin.tether.screen.ScreenConsentActivity
 import dev.benfranklin.tether.core.session.PairingContext
 import dev.benfranklin.tether.core.session.PairingUri
 import dev.benfranklin.tether.core.session.PeerRecord
@@ -67,6 +91,12 @@ data class UiState(
     val notice: String? = null,
     /** What the Bluetooth side is doing right now, for the pairing status line and failures. */
     val diag: BleCentral.Diag = BleCentral.Diag(),
+    /** Features the connected Mac announced (empty offline); a 0.1.x Mac lacks the new ones. */
+    val peerCaps: Set<String> = emptySet(),
+    val peerApp: String? = null,
+    /** The Mac is viewing this phone's screen right now. */
+    val screenLive: Boolean = false,
+    val ringing: Boolean = false,
 )
 
 /** One line saying what pairing is doing right now. Pure; unit-tested. */
@@ -136,14 +166,31 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     private var pairingTimeout: ScheduledFuture<*>? = null
     private var lastClipHash: String? = null
 
+    // ---- 0.2.0 features ----
+    private val batteryThrottle = BatteryThrottle()
+    private val battery = BatteryMonitor(app) { b -> engine.execute { pushBattery(b) } }
+    private val ringer = Ringer(app) { on, reason -> engine.execute { ringChanged(on, reason) } }
+    private val media = MediaWatcher(app) { rec -> engine.execute { queueMedia(rec) } }
+    @Volatile var screenRequest: ScreenStart = ScreenStart()
+        private set
+    private var screenPending = false
+    private var screenLive = false
+    private var frameRotation = 0
+    private var frameSeq = 0L
+    private var abr = AdaptiveBitrate()
+    private var lastFeedback: VideoFeedback? = null
+    @Volatile private var foreground = false
+
     init {
         engine.execute {
             controller.restoreTransfers(transfers.saved)
             files.sweep(transfers.saved.map { it.id }.toSet())
         }
+        settings.onChanged = { s -> engine.execute { applyFeatures(s) } }
+        engine.execute { applyFeatures(settings.current) }
     }
 
-    private fun hello() = Hello(name = deviceName(), platform = "android", app = BuildConfig.VERSION_NAME)
+    private fun hello() = Hello(name = deviceName(), platform = "android", app = BuildConfig.VERSION_NAME, caps = Caps.CURRENT)
 
     private fun deviceName(): String {
         val m = Build.MODEL.orEmpty()
@@ -163,7 +210,10 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         stopWifi()
     }
 
-    fun setForeground(foreground: Boolean) = central.setForeground(foreground)
+    fun setForeground(foreground: Boolean) {
+        this.foreground = foreground
+        central.setForeground(foreground)
+    }
 
     // ===================== pairing =====================
 
@@ -276,6 +326,187 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     fun mirror(n: Notif) = engine.execute { controller.send(n) }
 
+    // ===================== 0.2.0 features =====================
+
+    /** Start/stop the watchers that depend on settings and permissions. Engine thread. */
+    private fun applyFeatures(s: AppSettings) {
+        if (s.shareBattery && identity.peer != null) battery.start() else battery.stop()
+        val paired = identity.peer != null
+        media.configure(MediaWatcher.Prefs(paired && s.sendScreenshots, paired && s.sendPhotos))
+        if (!s.allowScreen && (screenLive || screenPending)) stopScreen("disabled")
+        if (!s.allowRing && ringer.ringing) ringer.stop("disabled")
+    }
+
+    /** Permissions changed (the app came back from a permission screen). */
+    fun permissionsChanged() = engine.execute { applyFeatures(settings.current) }
+
+    /** MediaStore changed while the process was asleep (content-trigger job). */
+    fun mediaChanged() {
+        engine.execute { applyFeatures(settings.current) }
+        media.poke()
+    }
+
+    private fun pushBattery(b: Battery) {
+        if (!settings.current.shareBattery || !controller.peerSupports(Caps.BATTERY)) return
+        if (batteryThrottle.offer(b, System.currentTimeMillis())) controller.send(b)
+    }
+
+    private fun queueMedia(rec: TransferRecord) {
+        if (identity.peer == null || controller.transfers.hasOutgoing(rec.sha256)) {
+            files.release(rec)
+            return
+        }
+        controller.sendFile(rec)
+    }
+
+    private fun onNotifAction(a: NotifAction) {
+        if (!settings.current.notificationActions) {
+            controller.send(NotifActionResult(a.key, a.action, false, "disabled"))
+            return
+        }
+        Thread({
+            val r = NotificationActions.perform(app, a.key, a.action, a.text)
+            engine.execute { controller.send(NotifActionResult(a.key, a.action, r.ok, r.reason)) }
+        }, "tether-action").start()
+    }
+
+    private fun onRing(r: Ring) {
+        if (!settings.current.allowRing) {
+            controller.send(RingState(false, "disabled"))
+            return
+        }
+        ringer.start(r.timeoutS)
+    }
+
+    private fun ringChanged(on: Boolean, reason: String?) {
+        state.update { it.copy(ringing = on) }
+        controller.send(RingState(on, reason))
+    }
+
+    val ringing: Boolean get() = ringer.ringing
+
+    /** Stop button on the phone's home screen. */
+    fun stopScreenSharing() = engine.execute { stopScreen("phone") }
+
+    /** Stop pressed on the phone (notification or full-screen alert). */
+    fun stopRingLocally() = ringer.stop("phone")
+
+    private fun onScreenStart(req: ScreenStart) {
+        val s = settings.current
+        when {
+            !s.allowScreen -> controller.send(ScreenState(ScreenStates.DENIED, reason = "disabled"))
+            !controller.wifiReady -> controller.send(ScreenState(ScreenStates.NEEDS_WIFI, reason = "bluetooth_only"))
+            screenLive -> {
+                ScreenCaptureService.active?.requestKeyframe()
+                controller.send(liveState())
+            }
+            else -> {
+                screenRequest = req.copy(maxSize = minOf(req.maxSize, s.screenMaxSize).coerceAtLeast(MIN_SCREEN))
+                screenPending = true
+                abr = AdaptiveBitrate(maxBps = req.bitrate.coerceIn(MIN_BPS, MAX_BPS), startBps = START_BPS)
+                controller.send(ScreenState(ScreenStates.CONSENT, control = ControlService.available))
+                askScreenConsent()
+                Log.i("screen.requested", "max" to screenRequest.maxSize, "fps" to req.fps)
+            }
+        }
+    }
+
+    private fun askScreenConsent() = main.post {
+        if (foreground) {
+            app.startActivity(ScreenConsentActivity.intent(app))
+            return@post
+        }
+        val n = androidx.core.app.NotificationCompat.Builder(app, Notifications.CH_REQUESTS)
+            .setSmallIcon(R.drawable.ic_stat_tether)
+            .setContentTitle(app.getString(R.string.screen_request_title))
+            .setContentText(app.getString(R.string.screen_request_text))
+            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_CALL)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(ScreenConsentActivity.pending(app))
+            .setAutoCancel(true)
+            .setTimeoutAfter(SCREEN_REQUEST_TIMEOUT_MS)
+            .build()
+        Notifications.postRaw(app, Notifications.ID_SCREEN_REQUEST, n)
+    }
+
+    fun screenConsentResult(granted: Boolean) = engine.execute {
+        if (!granted) {
+            screenPending = false
+            controller.send(ScreenState(ScreenStates.DENIED, reason = "user"))
+            Log.i("screen.denied")
+        }
+    }
+
+    fun screenBitrate(): Int = abr.bitrate
+
+    private fun liveState() = ScreenState(
+        ScreenStates.LIVE, lastW, lastH, frameRotation, control = ControlService.available,
+    )
+
+    private var lastW = 0
+    private var lastH = 0
+
+    fun screenLive(w: Int, h: Int, rotation: Int) = engine.execute {
+        screenPending = false
+        screenLive = true
+        lastW = w
+        lastH = h
+        frameRotation = rotation
+        state.update { it.copy(screenLive = true) }
+        if (!controller.send(liveState())) stopScreen("link")
+    }
+
+    fun screenEnded(state: String, reason: String) = engine.execute {
+        val was = screenLive || screenPending
+        screenLive = false
+        screenPending = false
+        this.state.update { it.copy(screenLive = false) }
+        if (was) controller.send(ScreenState(state, reason = reason))
+    }
+
+    private fun stopScreen(reason: String) {
+        screenPending = false
+        Notifications.cancelId(app, Notifications.ID_SCREEN_REQUEST)
+        val svc = ScreenCaptureService.active
+        if (svc != null) svc.stopSession(reason) else screenEnded(ScreenStates.STOPPED, reason)
+    }
+
+    /** One encoded access unit from the screen encoder (any thread). */
+    fun sendVideo(data: ByteArray, key: Boolean, config: Boolean, ptsUs: Long) = engine.execute {
+        if (!screenLive && !config) return@execute
+        val queued = tcp?.queuedBytes ?: 0L
+        val fb = lastFeedback
+        abr.update(queued, fb?.lagMs ?: 0, fb?.dropped ?: 0, System.currentTimeMillis())?.let { bps ->
+            ScreenCaptureService.active?.setBitrate(bps)
+            Log.i("screen.bitrate", "bps" to bps, "queued" to queued)
+        }
+        lastFeedback = null
+        if (abr.shouldDrop(queued, key) && !config) {
+            ScreenCaptureService.active?.requestKeyframe()
+            return@execute
+        }
+        val seq = frameSeq++
+        for (part in FrameSplitter.split("screen", seq, ptsUs, key, config, data)) {
+            if (!controller.send(part)) {
+                stopScreen("wifi")
+                return@execute
+            }
+        }
+    }
+
+    private fun onVideoFeedback(f: VideoFeedback) {
+        lastFeedback = f
+        if (f.keyframe) ScreenCaptureService.active?.requestKeyframe()
+    }
+
+    private fun onScreenInput(i: ScreenInput) {
+        if (!screenLive) return
+        val svc = ControlService.current ?: return
+        main.post {
+            if (!svc.perform(i, frameRotation)) Log.w("control.failed", "kind" to i.k)
+        }
+    }
+
     fun mirrorRemoved(key: String) = engine.execute {
         if (settings.current.notifications.dismissSync) controller.send(NotifRemoved(key))
     }
@@ -283,7 +514,16 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     // ===================== ControllerListener =====================
 
     override fun onState(state: LinkState) {
-        this.state.update { it.copy(link = state, peer = identity.peer) }
+        this.state.update {
+            it.copy(link = state, peer = identity.peer, peerCaps = controller.peerCaps, peerApp = controller.peerApp)
+        }
+        if (state is LinkState.Connected) {
+            batteryThrottle.reset()
+            battery.snapshot()?.let(::pushBattery)
+            media.poke()
+        } else if (screenLive || screenPending) {
+            stopScreen("link")
+        }
         retick(state)
         if (state is LinkState.Connected) {
             this.state.update { it.copy(lastError = null) }
@@ -296,6 +536,13 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         when (message) {
             is Clip -> onClip(message)
             is NotifDismiss -> if (settings.current.notifications.dismissSync) MirrorListenerService.dismiss(message.key)
+            is NotifAction -> onNotifAction(message)
+            is Ring -> onRing(message)
+            is RingStop -> ringer.stop("mac")
+            is ScreenStart -> onScreenStart(message)
+            is ScreenStop -> stopScreen("mac")
+            is ScreenInput -> onScreenInput(message)
+            is VideoFeedback -> onVideoFeedback(message)
             else -> Log.i("msg.ignored", "type" to message.type)
         }
     }
@@ -337,6 +584,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         pairingTimeout?.cancel(false)
         state.update { it.copy(peer = peer, pairingMode = false, pairingQrName = null) }
         settings.update { it.copy(onboardingDone = true) }
+        applyFeatures(settings.current)
         Log.i("pair.done", "peer" to fingerprint(peer.keyBytes))
     }
 
@@ -346,6 +594,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     private fun afterUnpair(msg: String) {
         stopWifi()
+        applyFeatures(settings.current)
         state.update { it.copy(peer = null, link = LinkState.Offline, notice = msg) }
         central.stop()
         TetherService.stop(app)
@@ -354,6 +603,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     override fun onClosed(reason: CloseReason, byRemote: Boolean, wifi: Boolean) {
         Log.i("link.closed", "reason" to reason.name, "remote" to byRemote, "wifi" to wifi)
         if (wifi) {
+            if (screenLive || screenPending) stopScreen("wifi")
             tcp?.close()
             tcp = null
             offeredAddrs = emptyList()
@@ -487,5 +737,10 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         private const val WIFI_ID_BYTES = 8
         private const val FAST_TICK_S = 1L
         private const val IDLE_TICK_S = 5L
+        private const val MIN_SCREEN = 480
+        private const val MIN_BPS = 1_000_000
+        private const val MAX_BPS = 12_000_000
+        private const val START_BPS = 4_000_000
+        private const val SCREEN_REQUEST_TIMEOUT_MS = 60_000L
     }
 }

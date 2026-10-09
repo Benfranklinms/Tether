@@ -29,6 +29,21 @@
     <!-- QR pairing. -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Auto-send screenshots/photos (0.2.0): read new images from MediaStore. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <!-- Screen view/control (0.2.0). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
+    <!-- Find my phone (0.2.0): full-screen alert over the lock screen, vibration. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Optional: show 4G/5G next to the battery on the Mac. Asked only from Settings. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+
     <!-- Android 8-9 only: received files go to the public Downloads folder. -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
@@ -97,6 +112,54 @@
             android:name="com.journeyapps.barcodescanner.CaptureActivity"
             android:screenOrientation="fullSensor"
             tools:replace="screenOrientation" />
+
+        <!-- Find my phone: full-screen Stop over the lock screen. -->
+        <activity
+            android:name=".device.RingActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:taskAffinity=""
+            tools:targetApi="o_mr1" />
+
+        <!-- Screen sharing consent (Android asks every session). -->
+        <activity
+            android:name=".screen.ScreenConsentActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Tether.Translucent" />
+
+        <service
+            android:name=".screen.ScreenCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <!-- Screen control from the Mac (gestures, typing). Enabled by the user in Accessibility settings. -->
+        <service
+            android:name=".screen.ControlService"
+            android:exported="true"
+            android:label="@string/control_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/control_service" />
+        </service>
+
+        <!-- Wakes Tether for new screenshots/photos if Android stopped the process. -->
+        <service
+            android:name=".media.MediaJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <receiver
+            android:name=".device.RingStopReceiver"
+            android:exported="false" />
 
         <service
             android:name=".service.TetherService"
