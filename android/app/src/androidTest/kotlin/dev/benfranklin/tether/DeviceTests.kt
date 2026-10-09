@@ -14,7 +14,6 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import dev.benfranklin.tether.core.transfer.TransferRecord
 import dev.benfranklin.tether.core.util.Hex
@@ -43,6 +42,7 @@ class ReplyReceiver : BroadcastReceiver() {
 
     companion object {
         const val KEY = "key_text_reply"
+        const val ACTION = "dev.benfranklin.tether.test.REPLY"
         val received = LinkedBlockingQueue<String>()
     }
 }
@@ -59,16 +59,19 @@ class DeviceTests {
     @get:Rule
     val perms: GrantPermissionRule = GrantPermissionRule.grant(MediaWatcher.permission())
 
-    /** The test APK plays the messaging app: it owns ReplyReceiver and the PendingIntents. */
-    private val testCtx: Context = InstrumentationRegistry.getInstrumentation().context
+    // Instrumented tests run in the app's process, so the "messaging app" is a receiver
+    // registered here for a private action, reached through PendingIntents like a real app's.
+    private val testCtx: Context = ctx
+
+    private fun replyIntent() = Intent(ReplyReceiver.ACTION).setPackage(ctx.packageName)
 
     private fun messagingNotification(): Notification {
         val pi = PendingIntent.getBroadcast(
-            testCtx, 1, Intent(testCtx, ReplyReceiver::class.java),
+            testCtx, 1, replyIntent(),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
         )
         val read = PendingIntent.getBroadcast(
-            testCtx, 2, Intent(testCtx, ReplyReceiver::class.java).putExtra("read", true), PendingIntent.FLAG_IMMUTABLE,
+            testCtx, 2, replyIntent().putExtra("read", true), PendingIntent.FLAG_IMMUTABLE,
         )
         val input = RemoteInput.Builder(ReplyReceiver.KEY).setLabel("Reply").build()
         val reply = Notification.Action.Builder(null, "Reply", pi).addRemoteInput(input).build()
@@ -80,6 +83,18 @@ class DeviceTests {
     @Test
     fun replyFiresRemoteInputWithText() {
         ReplyReceiver.received.clear()
+        val receiver = ReplyReceiver()
+        androidx.core.content.ContextCompat.registerReceiver(
+            ctx, receiver, android.content.IntentFilter(ReplyReceiver.ACTION), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        try {
+            assertReplyPath()
+        } finally {
+            ctx.unregisterReceiver(receiver)
+        }
+    }
+
+    private fun assertReplyPath() {
         val actions = NotificationActions.extract(messagingNotification())
         assertEquals(2, actions.size)
         assertTrue("reply first", actions[0].reply)

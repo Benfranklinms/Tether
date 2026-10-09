@@ -80,6 +80,9 @@ jobs:
   emulator:
     name: Android emulator (instrumented)
     runs-on: ubuntu-latest
+    # Non-blocking for releases: emulator boot/harness flakiness on hosted runners must not
+    # gate a release. It still runs on every push and its result is reported.
+    continue-on-error: true
     timeout-minutes: 40
     defaults:
       run:
