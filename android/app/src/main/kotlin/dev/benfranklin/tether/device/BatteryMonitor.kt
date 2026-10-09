@@ -1,6 +1,7 @@
 package dev.benfranklin.tether.device
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -88,6 +89,8 @@ class BatteryMonitor(private val context: Context, private val onChange: (Batter
         snapshot()?.let(onChange)
     }
 
+    // dataNetworkType is read only after hasPhoneState() and inside runCatching (SecurityException).
+    @SuppressLint("MissingPermission")
     private fun network(): Triple<String, String?, Int?> {
         val cm = context.getSystemService(ConnectivityManager::class.java)
         val caps = cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
