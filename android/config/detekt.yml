@@ -1,0 +1,64 @@
+# Built on detekt's defaults (buildUponDefaultConfig = true); only deliberate deviations here.
+complexity:
+  LongParameterList:
+    functionThreshold: 8
+    constructorThreshold: 10
+    ignoreDefaultParameters: true
+  TooManyFunctions:
+    thresholdInClasses: 25
+    thresholdInFiles: 30
+    thresholdInObjects: 20
+    ignorePrivate: true
+  LongMethod:
+    threshold: 80
+  CyclomaticComplexMethod:
+    threshold: 18
+    ignoreSimpleWhenEntries: true
+  ComplexCondition:
+    threshold: 5
+  NestedBlockDepth:
+    threshold: 5
+  LargeClass:
+    threshold: 700
+style:
+  MagicNumber:
+    # Crypto, wire formats and Compose dimensions are full of literal numbers by nature.
+    excludes: ['**/test/**', '**/crypto/**', '**/link/**', '**/wifi/**', '**/util/**', '**/proto/**', '**/notify/**', '**/ui/**']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreNamedArgument: true
+    ignoreEnums: true
+    ignoreHashCodeFunction: true
+  ReturnCount:
+    max: 6
+    excludeGuardClauses: true
+  MaxLineLength:
+    maxLineLength: 140
+    excludes: ['**/test/**']
+  ThrowsCount:
+    max: 4
+  UnusedPrivateMember:
+    active: true
+  ForbiddenComment:
+    active: false
+  WildcardImport:
+    active: true
+  DestructuringDeclarationWithTooManyEntries:
+    active: true
+naming:
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Z][A-Za-z0-9_]*'
+  MatchingDeclarationName:
+    active: false
+exceptions:
+  SwallowedException:
+    allowedExceptionNameRegex: '_|(ignore|expected).*'
+  TooGenericExceptionCaught:
+    excludes: ['**/test/**']
+  TooGenericExceptionThrown:
+    excludes: ['**/test/**']
+potential-bugs:
+  UnsafeCallOnNullableType:
+    excludes: ['**/test/**']

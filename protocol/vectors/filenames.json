@@ -1,0 +1,34 @@
+[
+ {
+  "raw": "report.pdf",
+  "safe": "report.pdf"
+ },
+ {
+  "raw": "../../etc/passwd",
+  "safe": "passwd"
+ },
+ {
+  "raw": "a\\b\\c.txt",
+  "safe": "c.txt"
+ },
+ {
+  "raw": ".hidden",
+  "safe": "hidden"
+ },
+ {
+  "raw": "con:tr*l?\u0001.txt",
+  "safe": "con_tr_l__.txt"
+ },
+ {
+  "raw": "",
+  "safe": "file"
+ },
+ {
+  "raw": "   ",
+  "safe": "file"
+ },
+ {
+  "raw": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.jpeg",
+  "safe": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.jpeg"
+ }
+]

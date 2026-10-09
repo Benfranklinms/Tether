@@ -1,0 +1,16 @@
+.gradle/
+build/
+.kotlin/
+/android/local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+xcuserdata/
+DerivedData/
+.build/
+.swiftpm/
+/mac/Tether.xcodeproj/
+*.xcworkspace/xcuserdata/
