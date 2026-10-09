@@ -77,6 +77,45 @@ jobs:
           git commit -m "Update Android screenshots [skip ci]"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done
 
+  emulator:
+    name: Android emulator (instrumented)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable KVM
+        working-directory: .
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Build test APKs
+        run: ./gradlew --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Instrumented tests (reply path, MediaStore watcher) on API 34
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: android
+          script: ./gradlew --stacktrace :app:connectedDebugAndroidTest
+      - name: Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-reports
+          path: android/app/build/reports/androidTests
+
   interop:
     name: Interop (Kotlin ↔ Swift)
     runs-on: ubuntu-latest

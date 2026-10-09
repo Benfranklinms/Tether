@@ -16,6 +16,7 @@ android {
         targetSdk = 35
         versionCode = (System.getenv("TETHER_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("TETHER_VERSION_NAME") ?: "0.2.0-dev"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // A key committed to the repo so every CI build (debug and release) is signed the same
@@ -104,6 +105,11 @@ dependencies {
     implementation(libs.zxing.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.core)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
