@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring as springSpec
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -113,6 +114,9 @@ fun TetherTheme(content: @Composable () -> Unit) {
         Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
     }
     CompositionLocalProvider(LocalReduceMotion provides reduce) {
-        MaterialTheme(colorScheme = scheme, typography = TetherType, content = content)
+        MaterialTheme(colorScheme = scheme, typography = TetherType) {
+            // Text outside a Surface would otherwise default to black on our black background.
+            CompositionLocalProvider(LocalContentColor provides Mono.Text, content = content)
+        }
     }
 }
