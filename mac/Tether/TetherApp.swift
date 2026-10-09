@@ -126,7 +126,6 @@ enum Screenshots {
         Shot(name: "settings-phone", scene: .connected) { AnyView(SettingsView(initialSection: .phone)) },
         Shot(name: "settings-about", scene: .connected) { AnyView(SettingsView(initialSection: .about)) },
         Shot(name: "settings-features", scene: .connected) { AnyView(SettingsView(initialSection: .features)) },
-        Shot(name: "menu-glass", scene: .glass) { AnyView(MenuView()) },
         Shot(name: "screen", scene: .screen) { AnyView(ScreenWindow(screen: ScreenModel()).frame(width: 380, height: 760)) },
     ]
 

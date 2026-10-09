@@ -389,7 +389,6 @@ struct ScreenWindow: View {
             Image(systemName: symbol).font(.system(size: 13, weight: .medium))
                 .foregroundColor(enabled ? Mono.text : Mono.muted)
                 .frame(width: 36, height: 32)
-                .tetherControl(Capsule())
                 .contentShape(Capsule())
         }
         .buttonStyle(PressStyle())
