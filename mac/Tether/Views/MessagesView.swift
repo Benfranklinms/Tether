@@ -358,7 +358,7 @@ private struct Composer: View {
     private var canSend: Bool { m.isConnected && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private var simLabel: String {
-        guard let id = m.sms.sim, let s = m.sms.sims.first(where: { $0.id == id }) else { return "SIM ·" }
+        guard let id = m.sms.sim, let s = m.sms.sims.first(where: { $0.id == id }) else { return "Auto SIM" }
         return "SIM \(s.slot + 1)"
     }
 
