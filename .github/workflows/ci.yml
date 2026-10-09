@@ -91,6 +91,11 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Free disk space (the emulator needs ~7 GB for userdata)
+        working-directory: .
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/node_modules /opt/hostedtoolcache/CodeQL || true
+          df -h /
       - name: Enable KVM
         working-directory: .
         run: |
@@ -106,6 +111,7 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
+          disk-size: 4096M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           working-directory: android
           script: ./gradlew --stacktrace :app:connectedDebugAndroidTest
