@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import dev.benfranklin.tether.core.proto.Caps
+import dev.benfranklin.tether.core.proto.Caps3
 import dev.benfranklin.tether.data.AppSettings
 import dev.benfranklin.tether.ui.Card
 import dev.benfranklin.tether.ui.Divider
@@ -40,6 +41,13 @@ data class FeatureStatus(
     val phoneState: Boolean = true,
     val fullScreenAlerts: Boolean = true,
     val controlEnabled: Boolean = false,
+    // 0.3.0
+    val sms: Boolean = true,
+    val contacts: Boolean = true,
+    val callWatch: Boolean = true,
+    val callNumber: Boolean = true,
+    val callDecline: Boolean = true,
+    val dndAccess: Boolean = true,
 )
 
 interface FeatureActions {
@@ -49,6 +57,10 @@ interface FeatureActions {
     fun openFullScreenSettings()
     fun openAccessibility()
     fun openNotificationAccess()
+    fun grantSms()
+    fun grantContacts()
+    fun grantCalls()
+    fun openDndAccess()
 }
 
 /** Next screen-size choice when the row is tapped. Pure; unit-tested. */
@@ -73,7 +85,7 @@ fun FeaturesScreen(s: AppSettings, st: FeatureStatus, a: FeatureActions, onBack:
             if (caps != null && Caps.CURRENT.any { it !in caps }) {
                 item {
                     Text(
-                        "Your Mac runs an older Tether. Update it to use replies, photos, battery, ring and screen sharing.",
+                        "Your Mac runs an older Tether. Update it to use every feature here.",
                         style = MaterialTheme.typography.bodyMedium, color = Mono.Text,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                     )
@@ -174,6 +186,95 @@ fun FeaturesScreen(s: AppSettings, st: FeatureStatus, a: FeatureActions, onBack:
                         }
                     }
                 }
+            }
+            item { SectionHeader("Messages") }
+            item {
+                Card {
+                    Column {
+                        ToggleRow(
+                            "Texts on the Mac", "Read, search and reply to SMS from your Mac. Dual SIM aware", s.shareSms,
+                            enabled = !macLacks(Caps3.SMS),
+                        ) { v -> a.update { it.copy(shareSms = v) } }
+                        Reveal(s.shareSms && !st.sms, reduce) {
+                            Column {
+                                Divider()
+                                NavRow("Allow SMS access", "Needed", onClick = a::grantSms)
+                            }
+                        }
+                        Reveal(s.shareSms && st.sms && !st.contacts, reduce) {
+                            Column {
+                                Divider()
+                                NavRow("Show contact names", "Optional", onClick = a::grantContacts)
+                            }
+                        }
+                    }
+                }
+            }
+            item { SectionHeader("Calls") }
+            item {
+                Card {
+                    Column {
+                        ToggleRow(
+                            "Call alerts on the Mac", "Who's calling, with Decline and Silence. Missed calls too", s.callAlerts,
+                            enabled = !macLacks(Caps3.CALL),
+                        ) { v -> a.update { it.copy(callAlerts = v) } }
+                        Reveal(s.callAlerts && !(st.callWatch && st.callNumber && st.callDecline), reduce) {
+                            Column {
+                                Divider()
+                                NavRow(
+                                    "Allow call access", if (st.callWatch) "For names and Decline" else "Needed",
+                                    onClick = a::grantCalls,
+                                )
+                            }
+                        }
+                        Reveal(s.callAlerts && st.callWatch && !st.contacts, reduce) {
+                            Column {
+                                Divider()
+                                NavRow("Show contact names", "Optional", onClick = a::grantContacts)
+                            }
+                        }
+                        Reveal(s.callAlerts && st.callWatch && !st.dndAccess, reduce) {
+                            Column {
+                                Divider()
+                                NavRow("Silence from the Mac", "Needs Do Not Disturb access", onClick = a::openDndAccess)
+                            }
+                        }
+                    }
+                }
+            }
+            item { SectionHeader("Now playing") }
+            item {
+                Card {
+                    Column {
+                        ToggleRow(
+                            "Media controls on the Mac", "Title, artwork and play, pause, skip, seek and volume", s.shareNowPlaying,
+                            enabled = !macLacks(Caps3.NOW_PLAYING),
+                        ) { v -> a.update { it.copy(shareNowPlaying = v) } }
+                        Reveal(s.shareNowPlaying && !st.listenerEnabled, reduce) {
+                            Column {
+                                Divider()
+                                NavRow("Allow notification access", "Needed", onClick = a::openNotificationAccess)
+                            }
+                        }
+                    }
+                }
+            }
+            item { SectionHeader("Proximity") }
+            item {
+                Card {
+                    ToggleRow(
+                        "Let the Mac sense this phone", "Signal strength only, so the Mac can lock when you walk away. " +
+                            "Turn it on in the Mac's settings", s.allowProximity, enabled = !macLacks(Caps3.PROXIMITY),
+                    ) { v -> a.update { it.copy(allowProximity = v) } }
+                }
+            }
+            item {
+                Text(
+                    "Texts and calls use permissions Android restricts for sideloaded apps. If a permission is greyed out, " +
+                        "open App info › ⋮ › Allow restricted settings, then try again.",
+                    style = MaterialTheme.typography.bodySmall, color = Mono.Muted,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                )
             }
             item {
                 Text(

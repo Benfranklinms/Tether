@@ -109,6 +109,24 @@ object MsgType {
     const val VIDEO_FRAME = 0x83
     const val SCREEN_INPUT = 0x84
     const val VIDEO_FEEDBACK = 0x85
+
+    // ---- revision 3 (0.3.0), gated on Hello.caps ----
+    const val SMS_THREADS_REQ = 0x90
+    const val SMS_THREADS = 0x91
+    const val SMS_THREAD_REQ = 0x92
+    const val SMS_MESSAGES = 0x93
+    const val SMS_SEND = 0x94
+    const val SMS_SEND_RESULT = 0x95
+    const val SMS_NEW = 0x96
+    const val SMS_SEARCH = 0x97
+    const val SIMS = 0x98
+    const val CALL_STATE = 0xA0
+    const val CALL_ACTION = 0xA1
+    const val NOW_PLAYING = 0xB0
+    const val MEDIA_CMD = 0xB1
+    const val NOW_PLAYING_ART = 0xB2
+    const val RSSI = 0xD0
+    const val PROXIMITY_CFG = 0xD1
 }
 
 @Serializable data class Ping(val t: Long) : Message { override val type get() = MsgType.PING }
@@ -268,6 +286,22 @@ object MessageCodec {
             ) to m.data
             is ScreenInput -> enc(ScreenInput.serializer(), m) to EMPTY
             is VideoFeedback -> enc(VideoFeedback.serializer(), m) to EMPTY
+            is SmsThreadsReq -> enc(SmsThreadsReq.serializer(), m) to EMPTY
+            is SmsThreads -> enc(SmsThreads.serializer(), m) to EMPTY
+            is SmsThreadReq -> enc(SmsThreadReq.serializer(), m) to EMPTY
+            is SmsMessages -> enc(SmsMessages.serializer(), m) to EMPTY
+            is SmsSend -> enc(SmsSend.serializer(), m) to EMPTY
+            is SmsSendResult -> enc(SmsSendResult.serializer(), m) to EMPTY
+            is SmsNew -> enc(SmsNew.serializer(), m) to EMPTY
+            is SmsSearch -> enc(SmsSearch.serializer(), m) to EMPTY
+            is Sims -> enc(Sims.serializer(), m) to EMPTY
+            is CallState -> enc(CallState.serializer(), m) to EMPTY
+            is CallAction -> enc(CallAction.serializer(), m) to EMPTY
+            is NowPlaying -> enc(NowPlaying.serializer(), m) to EMPTY
+            is MediaCmd -> enc(MediaCmd.serializer(), m) to EMPTY
+            is NowPlayingArt -> enc(ArtHeader.serializer(), ArtHeader(m.hash)) to m.data
+            is Rssi -> enc(Rssi.serializer(), m) to EMPTY
+            is ProximityCfg -> enc(ProximityCfg.serializer(), m) to EMPTY
             is UnknownMessage -> throw ProtocolException("cannot encode unknown message")
         }
         val buf = ByteBuffer.allocate(PREFIX + header.size + body.size)
@@ -346,8 +380,35 @@ object MessageCodec {
         }
         MsgType.SCREEN_INPUT -> dec(ScreenInput.serializer(), header)
         MsgType.VIDEO_FEEDBACK -> dec(VideoFeedback.serializer(), header)
+        else -> decodeRevision3(type, header, body)
+    }
+
+    @Suppress("CyclomaticComplexMethod")
+    private fun decodeRevision3(type: Int, header: String, body: ByteArray): Message = when (type) {
+        MsgType.SMS_THREADS_REQ -> dec(SmsThreadsReq.serializer(), header)
+        MsgType.SMS_THREADS -> dec(SmsThreads.serializer(), header)
+        MsgType.SMS_THREAD_REQ -> dec(SmsThreadReq.serializer(), header)
+        MsgType.SMS_MESSAGES -> dec(SmsMessages.serializer(), header)
+        MsgType.SMS_SEND -> dec(SmsSend.serializer(), header)
+        MsgType.SMS_SEND_RESULT -> dec(SmsSendResult.serializer(), header)
+        MsgType.SMS_NEW -> dec(SmsNew.serializer(), header)
+        MsgType.SMS_SEARCH -> dec(SmsSearch.serializer(), header)
+        MsgType.SIMS -> dec(Sims.serializer(), header)
+        MsgType.CALL_STATE -> dec(CallState.serializer(), header)
+        MsgType.CALL_ACTION -> dec(CallAction.serializer(), header)
+        MsgType.NOW_PLAYING -> dec(NowPlaying.serializer(), header)
+        MsgType.MEDIA_CMD -> dec(MediaCmd.serializer(), header)
+        MsgType.NOW_PLAYING_ART -> {
+            if (body.size > MAX_ART_BYTES) throw ProtocolException("artwork too large")
+            NowPlayingArt(dec(ArtHeader.serializer(), header).hash, body)
+        }
+        MsgType.RSSI -> dec(Rssi.serializer(), header)
+        MsgType.PROXIMITY_CFG -> dec(ProximityCfg.serializer(), header)
         else -> UnknownMessage(type)
     }
+
+    /** Largest NOW_PLAYING_ART body accepted (the phone sends ≤ 96 KiB JPEGs). */
+    const val MAX_ART_BYTES: Int = 256 * 1024
 
     private fun <T> enc(s: KSerializer<T>, v: T): ByteArray = json.encodeToString(s, v).toByteArray(Charsets.UTF_8)
     private fun <T> dec(s: KSerializer<T>, h: String): T = json.decodeFromString(s, h)

@@ -76,6 +76,8 @@ import dev.benfranklin.tether.media.MediaWatcher
 import dev.benfranklin.tether.screen.ControlService
 import dev.benfranklin.tether.ui.screens.FeatureActions
 import dev.benfranklin.tether.ui.screens.FeatureStatus
+import dev.benfranklin.tether.call.CallMonitor
+import dev.benfranklin.tether.sms.SmsStore
 import dev.benfranklin.tether.ui.screens.FeaturesScreen
 import dev.benfranklin.tether.ui.screens.AppRow
 import dev.benfranklin.tether.ui.screens.AppsScreen
@@ -190,6 +192,22 @@ private fun TetherApp(rt: TetherRuntime) {
                 )
             }
             "accessibility" -> ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            "sms" -> permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.RECEIVE_SMS,
+                    Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CONTACTS,
+                ),
+            )
+            "contacts" -> permissionLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS))
+            "calls" -> permissionLauncher.launch(
+                buildList {
+                    add(Manifest.permission.READ_PHONE_STATE)
+                    add(Manifest.permission.READ_CALL_LOG)
+                    add(Manifest.permission.READ_CONTACTS)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) add(Manifest.permission.ANSWER_PHONE_CALLS)
+                }.toTypedArray(),
+            )
+            "dnd" -> ctx.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
         }
     }
 
@@ -321,6 +339,12 @@ private fun TetherApp(rt: TetherRuntime) {
                     phoneState = BatteryMonitor.hasPhoneState(ctx),
                     fullScreenAlerts = Ringer.canUseFullScreen(ctx),
                     controlEnabled = ControlService.enabledInSettings(ctx),
+                    sms = SmsStore.granted(ctx, Manifest.permission.READ_SMS) && SmsStore.granted(ctx, Manifest.permission.SEND_SMS),
+                    contacts = SmsStore.granted(ctx, Manifest.permission.READ_CONTACTS),
+                    callWatch = CallMonitor.canWatch(ctx),
+                    callNumber = SmsStore.granted(ctx, Manifest.permission.READ_CALL_LOG),
+                    callDecline = CallMonitor.canDecline(ctx) || Build.VERSION.SDK_INT < Build.VERSION_CODES.P,
+                    dndAccess = CallMonitor.canSilence(ctx),
                 )
             }
             FeaturesScreen(
@@ -337,6 +361,10 @@ private fun TetherApp(rt: TetherRuntime) {
                     override fun openFullScreenSettings() = grant("fullscreen")
                     override fun openAccessibility() = grant("accessibility")
                     override fun openNotificationAccess() = grant("listener")
+                    override fun grantSms() = grant("sms")
+                    override fun grantContacts() = grant("contacts")
+                    override fun grantCalls() = grant("calls")
+                    override fun openDndAccess() = grant("dnd")
                 },
                 onBack = { nav.popBackStack() },
             )

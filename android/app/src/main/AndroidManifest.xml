@@ -44,6 +44,20 @@
     <!-- Optional: show 4G/5G next to the battery on the Mac. Asked only from Settings. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
+    <!-- Messages on the Mac (0.3.0): read conversations, send replies, hear about new texts. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- Names instead of numbers for texts and calls (optional). -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- Call alerts on the Mac (0.3.0): caller number, Decline, Silence (mutes the ringer; needs DND access). -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
     <!-- Android 8-9 only: received files go to the public Downloads folder. -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 

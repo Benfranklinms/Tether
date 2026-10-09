@@ -177,6 +177,23 @@ public enum Message: Equatable {
     case videoFrame(VideoFramePayload)
     case screenInput(ScreenInputPayload)
     case videoFeedback(VideoFeedbackPayload)
+    // revision 3 (0.3.0)
+    case smsThreadsReq(SmsThreadsReq)
+    case smsThreads(SmsThreadsPayload)
+    case smsThreadReq(SmsThreadReq)
+    case smsMessages(SmsMessagesPayload)
+    case smsSend(SmsSendPayload)
+    case smsSendResult(SmsSendResultPayload)
+    case smsNew(SmsMessage)
+    case smsSearch(SmsSearchPayload)
+    case sims([SimInfo])
+    case callState(CallStatePayload)
+    case callAction(CallActionPayload)
+    case nowPlaying(NowPlayingPayload)
+    case mediaCmd(MediaCmdPayload)
+    case nowPlayingArt(hash: String, data: Data)
+    case rssi(rssi: Int, ts: Int64)
+    case proximityCfg(ProximityCfgPayload)
     case unknown(type: UInt8)
 
     public var type: UInt8 {
@@ -215,6 +232,22 @@ public enum Message: Equatable {
         case .videoFrame: return 0x83
         case .screenInput: return 0x84
         case .videoFeedback: return 0x85
+        case .smsThreadsReq: return 0x90
+        case .smsThreads: return 0x91
+        case .smsThreadReq: return 0x92
+        case .smsMessages: return 0x93
+        case .smsSend: return 0x94
+        case .smsSendResult: return 0x95
+        case .smsNew: return 0x96
+        case .smsSearch: return 0x97
+        case .sims: return 0x98
+        case .callState: return 0xA0
+        case .callAction: return 0xA1
+        case .nowPlaying: return 0xB0
+        case .mediaCmd: return 0xB1
+        case .nowPlayingArt: return 0xB2
+        case .rssi: return 0xD0
+        case .proximityCfg: return 0xD1
         case .unknown(let t): return t
         }
     }
@@ -282,6 +315,24 @@ public enum MessageCodec {
             body = f.data
         case .screenInput(let p): header = try encoder.encode(p)
         case .videoFeedback(let p): header = try encoder.encode(p)
+        case .smsThreadsReq(let p): header = try encoder.encode(p)
+        case .smsThreads(let p): header = try encoder.encode(p)
+        case .smsThreadReq(let p): header = try encoder.encode(p)
+        case .smsMessages(let p): header = try encoder.encode(p)
+        case .smsSend(let p): header = try encoder.encode(p)
+        case .smsSendResult(let p): header = try encoder.encode(p)
+        case .smsNew(let p): header = try encoder.encode(SmsNewHeader(msg: p))
+        case .smsSearch(let p): header = try encoder.encode(p)
+        case .sims(let p): header = try encoder.encode(SimsHeader(sims: p))
+        case .callState(let p): header = try encoder.encode(p)
+        case .callAction(let p): header = try encoder.encode(p)
+        case .nowPlaying(let p): header = try encoder.encode(p)
+        case .mediaCmd(let p): header = try encoder.encode(p)
+        case .nowPlayingArt(let hash, let d):
+            header = try encoder.encode(ArtHeader(hash: hash))
+            body = d
+        case .rssi(let r, let ts): header = try encoder.encode(RssiHeader(rssi: r, ts: ts))
+        case .proximityCfg(let p): header = try encoder.encode(p)
         case .unknown: throw ProtocolError("cannot encode unknown message")
         }
         var out = Data(capacity: 5 + header.count + body.count)
@@ -358,6 +409,34 @@ public enum MessageCodec {
                                                  config: h.config ?? false, part: part, parts: parts, data: body))
         case 0x84: return .screenInput(try d(ScreenInputPayload.self))
         case 0x85: return .videoFeedback(try d(VideoFeedbackPayload.self))
+        default: return try decodeRevision3(type, h, body)
+        }
+    }
+
+    /// Largest NOW_PLAYING_ART body accepted (the phone sends ≤ 96 KiB JPEGs).
+    public static let maxArtBytes = 256 * 1024
+
+    private static func decodeRevision3(_ type: UInt8, _ h: Data, _ body: Data) throws -> Message {
+        func d<T: Decodable>(_ t: T.Type) throws -> T { try decoder.decode(t, from: h) }
+        switch type {
+        case 0x90: return .smsThreadsReq(try d(SmsThreadsReq.self))
+        case 0x91: return .smsThreads(try d(SmsThreadsPayload.self))
+        case 0x92: return .smsThreadReq(try d(SmsThreadReq.self))
+        case 0x93: return .smsMessages(try d(SmsMessagesPayload.self))
+        case 0x94: return .smsSend(try d(SmsSendPayload.self))
+        case 0x95: return .smsSendResult(try d(SmsSendResultPayload.self))
+        case 0x96: return .smsNew(try d(SmsNewHeader.self).msg)
+        case 0x97: return .smsSearch(try d(SmsSearchPayload.self))
+        case 0x98: return .sims(try d(SimsHeader.self).sims)
+        case 0xA0: return .callState(try d(CallStatePayload.self))
+        case 0xA1: return .callAction(try d(CallActionPayload.self))
+        case 0xB0: return .nowPlaying(try d(NowPlayingPayload.self))
+        case 0xB1: return .mediaCmd(try d(MediaCmdPayload.self))
+        case 0xB2:
+            guard body.count <= maxArtBytes else { throw ProtocolError("artwork too large") }
+            return .nowPlayingArt(hash: try d(ArtHeader.self).hash, data: body)
+        case 0xD0: let x = try d(RssiHeader.self); return .rssi(rssi: x.rssi, ts: x.ts)
+        case 0xD1: return .proximityCfg(try d(ProximityCfgPayload.self))
         default: return .unknown(type: type)
         }
     }

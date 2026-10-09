@@ -37,6 +37,14 @@ data class AppSettings(
     val allowScreen: Boolean = true,
     /** Longest edge of the shared screen video, in pixels (720, 1080, 1280 or 1600). */
     val screenMaxSize: Int = 1280,
+    /** Show and send text messages from the Mac (0.3.0). */
+    val shareSms: Boolean = true,
+    /** Show incoming calls on the Mac, with Decline and Silence (0.3.0). */
+    val callAlerts: Boolean = true,
+    /** Show what's playing on the phone on the Mac, with controls (0.3.0). */
+    val shareNowPlaying: Boolean = true,
+    /** Let the Mac measure Bluetooth signal strength to lock itself when the phone is away (0.3.0). */
+    val allowProximity: Boolean = true,
 )
 
 /** App settings as a hot flow, persisted atomically on every change. */

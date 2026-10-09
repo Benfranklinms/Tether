@@ -4,6 +4,30 @@ import dev.benfranklin.tether.core.crypto.Role
 import dev.benfranklin.tether.core.features.AnnexB
 import dev.benfranklin.tether.core.features.FrameSplitter
 import dev.benfranklin.tether.core.features.GestureMapper
+import dev.benfranklin.tether.core.proto.CallAction
+import dev.benfranklin.tether.core.proto.CallActions
+import dev.benfranklin.tether.core.proto.CallState
+import dev.benfranklin.tether.core.proto.CallStates
+import dev.benfranklin.tether.core.proto.Caps3
+import dev.benfranklin.tether.core.proto.MediaCmd
+import dev.benfranklin.tether.core.proto.MediaCmds
+import dev.benfranklin.tether.core.proto.NowPlaying
+import dev.benfranklin.tether.core.proto.NowPlayingArt
+import dev.benfranklin.tether.core.proto.ProximityCfg
+import dev.benfranklin.tether.core.proto.Rssi
+import dev.benfranklin.tether.core.proto.SimInfo
+import dev.benfranklin.tether.core.proto.Sims
+import dev.benfranklin.tether.core.proto.SmsAttachment
+import dev.benfranklin.tether.core.proto.SmsMessage
+import dev.benfranklin.tether.core.proto.SmsMessages
+import dev.benfranklin.tether.core.proto.SmsNew
+import dev.benfranklin.tether.core.proto.SmsSearch
+import dev.benfranklin.tether.core.proto.SmsSend
+import dev.benfranklin.tether.core.proto.SmsSendResult
+import dev.benfranklin.tether.core.proto.SmsThread
+import dev.benfranklin.tether.core.proto.SmsThreadReq
+import dev.benfranklin.tether.core.proto.SmsThreads
+import dev.benfranklin.tether.core.proto.SmsThreadsReq
 import dev.benfranklin.tether.core.proto.Battery
 import dev.benfranklin.tether.core.proto.Caps
 import dev.benfranklin.tether.core.proto.Clip
@@ -149,7 +173,7 @@ class InteropTest {
     @Test
     fun phoneToMacFeatureMessagesRoundTrip() = session(185, 185, qr = true) { loop, phone, peer ->
         assertTrue(phone.controller.peerSupports(Caps.SCREEN))
-        loop.runUntil(5_000) { peer.has("CAPS", "battery,clip,file,media,notif,reply,ring,screen") }
+        loop.runUntil(5_000) { peer.has("CAPS", "battery,call,clip,file,media,notif,nowplaying,proximity,reply,ring,screen,sms") }
         peer.send("ECHO on")
         val sent: List<Message> = listOf(
             Battery(83, true, "usb", "cellular", "5G", 3, 1_700_000_000_000),
@@ -183,6 +207,63 @@ class InteropTest {
             Ring(60), RingStop("user"), ScreenStart(1280, 60, 6_000_000), ScreenStop("user"),
             VideoFeedback(kbps = 5200, lagMs = 35, dropped = 1, keyframe = true),
             ScreenInput(InputKinds.TEXT, text = "héllo wörld"), ScreenInput(InputKinds.BACK),
+        )
+        for (m in fromMac) {
+            val before = phone.messages.size
+            peer.send("SEND " + Hex.encode(MessageCodec.encode(m)))
+            loop.runUntil(10_000) { phone.messages.size > before }
+            assertEquals(m, phone.messages.last())
+        }
+        assertFalse(peer.has("DECODE_ERROR"))
+    }
+
+    // ---------------- revision 3 ----------------
+
+    /** Phone -> Mac 0.3.0 messages: Swift decodes, re-encodes and echoes; Kotlin decodes the same value. */
+    @Test
+    fun phoneToMacRevision3RoundTrip() = session(185, 185, qr = true) { loop, phone, peer ->
+        assertTrue(phone.controller.peerSupports(Caps3.SMS))
+        peer.send("ECHO on")
+        val msg = SmsMessage(
+            "s42", 7, "+919847012345", "Asha", "Running late — 10 min 🚲", 1_700_000_000_000, sub = 2,
+            att = listOf(SmsAttachment("p1", "image/jpeg")), read = false,
+        )
+        val sent: List<Message> = listOf(
+            SmsThreads(listOf(SmsThread(7, listOf("+919847012345", "12345"), listOf("Asha", null), "hi", 9, 2, true)), more = true),
+            SmsThreads(emptyList(), needs = "sms"),
+            SmsMessages(7, listOf(msg, msg.copy(id = "s43", out = true, status = "sent", att = emptyList())), more = true),
+            SmsMessages(-1, listOf(msg), search = "late"),
+            SmsNew(msg), SmsSendResult("r1", true), SmsSendResult("r2", false, "no_service"),
+            Sims(listOf(SimInfo(1, 0, "Jio"), SimInfo(2, 1, "Airtel", "+91 98470 12345"))),
+            CallState("c1", CallStates.RINGING, "+919847012345", "Asha", 5), CallState("c1", CallStates.MISSED, ts = 6),
+            CallState("c1", CallStates.RINGING, ts = 7, reason = "not_allowed"),
+            NowPlaying(
+                true, "com.spotify.music", "Spotify", "Song ♪", "Artist", "Album", 200_000, 12_000, true, 1f,
+                canSeek = true, canNext = true, canPrev = true, volume = 0.5f, art = "abcd", ts = 9,
+            ),
+            NowPlaying(false, ts = 10),
+            NowPlayingArt("abcd", ByteArray(1500) { (it * 13).toByte() }),
+            Rssi(-67, 11),
+        )
+        for (m in sent) {
+            val before = phone.messages.size
+            loop.execute { assertTrue(phone.controller.send(m)) }
+            loop.runUntil(10_000) { phone.messages.size > before }
+            assertEquals(m, phone.messages.last())
+        }
+        val raws = peer.lines.filter { it.startsWith("RAW ") }.map { MessageCodec.decode(Hex.decode(it.substring(4))) }
+        assertTrue(raws.containsAll(sent))
+    }
+
+    /** Mac -> phone 0.3.0 messages: encoded by Kotlin, decoded + re-sent by the Swift controller. */
+    @Test
+    fun macToPhoneRevision3() = session(244, 244, qr = false) { loop, phone, peer ->
+        val fromMac: List<Message> = listOf(
+            SmsThreadsReq(40), SmsThreadsReq(40, 1_699_000_000_000, "asha"), SmsThreadReq(7, 40, 1_699_000_000_000),
+            SmsSend("r1", listOf("+919847012345"), "On my way 🚲", 7, 2), SmsSearch("late", 25),
+            CallAction("c1", CallActions.DECLINE), CallAction("c1", CallActions.SILENCE),
+            MediaCmd(MediaCmds.TOGGLE), MediaCmd(MediaCmds.SEEK, pos = 61_000), MediaCmd(MediaCmds.VOLUME, vol = 0.25f),
+            ProximityCfg(true, 2000), ProximityCfg(false),
         )
         for (m in fromMac) {
             val before = phone.messages.size
@@ -271,6 +352,7 @@ class InteropTest {
     fun legacyMacHidesNewFeatures() = session(185, 185, qr = false, "legacy") { loop, phone, peer ->
         assertFalse(phone.controller.peerSupports(Caps.SCREEN))
         assertFalse(phone.controller.peerSupports(Caps.RING))
+        assertFalse(phone.controller.peerSupports(Caps3.SMS))
         assertTrue(phone.controller.peerSupports(Caps.FILE))
         clipBothWays(loop, phone, peer)
     }

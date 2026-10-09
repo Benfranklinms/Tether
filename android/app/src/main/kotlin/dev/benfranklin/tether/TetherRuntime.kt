@@ -74,6 +74,27 @@ import kotlinx.coroutines.flow.update
 import java.io.IOException
 import java.net.Socket
 import java.security.MessageDigest
+import dev.benfranklin.tether.call.CallMonitor
+import dev.benfranklin.tether.core.proto.CallAction
+import dev.benfranklin.tether.core.proto.CallState
+import dev.benfranklin.tether.core.proto.Caps3
+import dev.benfranklin.tether.core.proto.MediaCmd
+import dev.benfranklin.tether.core.proto.MessageCodec
+import dev.benfranklin.tether.core.proto.NowPlaying
+import dev.benfranklin.tether.core.proto.ProximityCfg
+import dev.benfranklin.tether.core.proto.Rssi
+import dev.benfranklin.tether.core.proto.Sims
+import dev.benfranklin.tether.core.proto.SmsMessage
+import dev.benfranklin.tether.core.proto.SmsMessages
+import dev.benfranklin.tether.core.proto.SmsNew
+import dev.benfranklin.tether.core.proto.SmsSearch
+import dev.benfranklin.tether.core.proto.SmsSend
+import dev.benfranklin.tether.core.proto.SmsSendResult
+import dev.benfranklin.tether.core.proto.SmsThreadReq
+import dev.benfranklin.tether.core.proto.SmsThreads
+import dev.benfranklin.tether.core.proto.SmsThreadsReq
+import dev.benfranklin.tether.media.NowPlayingMonitor
+import dev.benfranklin.tether.sms.SmsBridge
 import java.util.UUID
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.ScheduledThreadPoolExecutor
@@ -180,6 +201,21 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     private var abr = AdaptiveBitrate()
     private var lastFeedback: VideoFeedback? = null
     @Volatile private var foreground = false
+
+    // ---- 0.3.0 features ----
+    private val sms = SmsBridge(
+        app,
+        onNew = { m -> engine.execute { pushSms(m) } },
+        onSent = { ref, ok, reason -> engine.execute { controller.send(SmsSendResult(ref, ok, reason)) } },
+        onSimsChanged = { engine.execute { pushSims() } },
+    )
+    private val calls = CallMonitor(app) { ev -> engine.execute { pushCall(ev) } }
+    private val nowPlaying = NowPlayingMonitor(
+        app,
+        onState = { np -> engine.execute { pushNowPlaying(np) } },
+        onArt = { art -> engine.execute { if (nowPlayingAllowed()) controller.send(art) } },
+    )
+    private var rssiTask: ScheduledFuture<*>? = null
 
     init {
         engine.execute {
@@ -335,6 +371,11 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         media.configure(MediaWatcher.Prefs(paired && s.sendScreenshots, paired && s.sendPhotos))
         if (!s.allowScreen && (screenLive || screenPending)) stopScreen("disabled")
         if (!s.allowRing && ringer.ringing) ringer.stop("disabled")
+        // 0.3.0
+        sms.watch(paired && s.shareSms)
+        main.post { if (paired && s.callAlerts) calls.start() else calls.stop() }
+        if (paired && s.shareNowPlaying) nowPlaying.start() else nowPlaying.stop()
+        if (!s.allowProximity) stopRssi()
     }
 
     /** Permissions changed (the app came back from a permission screen). */
@@ -511,6 +552,132 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         if (settings.current.notifications.dismissSync) controller.send(NotifRemoved(key))
     }
 
+    // ===================== 0.3.0 features =====================
+
+    private fun smsAllowed() = settings.current.shareSms && controller.peerSupports(Caps3.SMS)
+
+    /** Why SMS can't be read right now ("disabled", "sms"), or null. */
+    private fun smsBlocker(): String? = when {
+        !settings.current.shareSms -> "disabled"
+        !sms.store.canRead() -> "sms"
+        else -> null
+    }
+
+    private fun onSmsThreads(r: SmsThreadsReq) {
+        val blocker = smsBlocker()
+        if (blocker != null) {
+            controller.send(SmsThreads(emptyList(), query = r.query, needs = blocker))
+            return
+        }
+        sms.io.execute {
+            val (threads, more) = sms.store.threads(r.limit, r.before, r.query)
+            val fitted = fit(threads) { SmsThreads(it, more, r.query) }
+            engine.execute { controller.send(fitted) }
+        }
+    }
+
+    private fun onSmsThread(r: SmsThreadReq) {
+        if (smsBlocker() != null) return
+        sms.io.execute {
+            val (msgs, more) = sms.store.messages(r.thread, r.limit, r.before)
+            // Too big for one record: drop the oldest and let the Mac page for them.
+            val fitted = fit(msgs.reversed()) { SmsMessages(r.thread, it.reversed(), more || it.size < msgs.size) }
+            engine.execute { controller.send(fitted) }
+        }
+    }
+
+    private fun onSmsSearch(r: SmsSearch) {
+        if (smsBlocker() != null) return
+        sms.io.execute {
+            val found = sms.store.search(r.query, r.limit)
+            val fitted = fit(found) { SmsMessages(-1, it, it.size < found.size, search = r.query) }
+            engine.execute { controller.send(fitted) }
+        }
+    }
+
+    private fun onSmsSend(r: SmsSend) {
+        if (settings.current.shareSms) {
+            sms.send(r.ref, r.to, r.body, r.sub)
+        } else {
+            controller.send(SmsSendResult(r.ref, false, "disabled"))
+        }
+    }
+
+    private fun pushSms(m: SmsMessage) {
+        if (smsAllowed()) controller.send(SmsNew(m))
+    }
+
+    private fun pushSims() {
+        if (!smsAllowed()) return
+        sms.io.execute {
+            val list = sms.sims()
+            engine.execute { controller.send(Sims(list)) }
+        }
+    }
+
+    private fun pushCall(ev: CallState) {
+        if (settings.current.callAlerts && controller.peerSupports(Caps3.CALL)) controller.send(ev)
+    }
+
+    private fun onCallAction(a: CallAction) {
+        if (!settings.current.callAlerts) {
+            controller.send(CallState(a.id, "ended", ts = System.currentTimeMillis(), reason = "disabled"))
+            return
+        }
+        main.post {
+            val reason = calls.act(a.id, a.action)
+            if (reason != null) {
+                engine.execute { controller.send(CallState(a.id, "ringing", ts = System.currentTimeMillis(), reason = reason)) }
+            }
+        }
+    }
+
+    /** The Mac shows calls itself, so the dialer's call notifications aren't mirrored. */
+    val callAlertsActive: Boolean
+        get() = settings.current.callAlerts && CallMonitor.canWatch(app) && Caps3.CALL in state.value.peerCaps &&
+            state.value.link is LinkState.Connected
+
+    /** The dialer's incoming-call notification, for the caller's name when contacts can't be read. */
+    fun dialerNotification(title: String?) = main.post { calls.dialerTitle(title) }
+
+    private fun nowPlayingAllowed() = settings.current.shareNowPlaying && controller.peerSupports(Caps3.NOW_PLAYING)
+
+    private fun pushNowPlaying(np: NowPlaying) {
+        if (nowPlayingAllowed()) controller.send(np)
+    }
+
+    private fun onMediaCmd(c: MediaCmd) {
+        if (!settings.current.shareNowPlaying) return
+        main.post {
+            val reason = nowPlaying.command(c)
+            if (reason != null) Log.i("media.cmd_failed", "cmd" to c.cmd, "reason" to reason)
+        }
+    }
+
+    private fun onProximityCfg(c: ProximityCfg) {
+        stopRssi()
+        if (!c.on || !settings.current.allowProximity) return
+        val period = c.intervalMs.toLong().coerceIn(RSSI_MIN_MS, RSSI_MAX_MS)
+        rssiTask = engine.scheduleWithFixedDelay({ central.readRssi() }, 0, period, TimeUnit.MILLISECONDS)
+        Log.i("proximity.on", "ms" to period)
+    }
+
+    private fun stopRssi() {
+        rssiTask?.cancel(false)
+        rssiTask = null
+    }
+
+    /** Largest list prefix whose message fits comfortably in one record. */
+    private fun <T> fit(items: List<T>, build: (List<T>) -> Message): Message {
+        var n = items.size
+        var m = build(items)
+        while (n > 1 && MessageCodec.encode(m).size > MAX_LIST_BYTES) {
+            n -= maxOf(1, n / FIT_STEP)
+            m = build(items.take(n))
+        }
+        return m
+    }
+
     // ===================== ControllerListener =====================
 
     override fun onState(state: LinkState) {
@@ -521,8 +688,11 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             batteryThrottle.reset()
             battery.snapshot()?.let(::pushBattery)
             media.poke()
-        } else if (screenLive || screenPending) {
-            stopScreen("link")
+            pushSims()
+            nowPlaying.resend()
+        } else {
+            stopRssi()
+            if (screenLive || screenPending) stopScreen("link")
         }
         retick(state)
         if (state is LinkState.Connected) {
@@ -543,6 +713,13 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             is ScreenStop -> stopScreen("mac")
             is ScreenInput -> onScreenInput(message)
             is VideoFeedback -> onVideoFeedback(message)
+            is SmsThreadsReq -> onSmsThreads(message)
+            is SmsThreadReq -> onSmsThread(message)
+            is SmsSearch -> onSmsSearch(message)
+            is SmsSend -> onSmsSend(message)
+            is CallAction -> onCallAction(message)
+            is MediaCmd -> onMediaCmd(message)
+            is ProximityCfg -> onProximityCfg(message)
             else -> Log.i("msg.ignored", "type" to message.type)
         }
     }
@@ -651,6 +828,10 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         Log.i("ble.link_down", "reason" to reason)
     }
 
+    override fun onRssi(rssi: Int) {
+        if (rssiTask != null) controller.send(Rssi(rssi, System.currentTimeMillis()))
+    }
+
     override fun onDiag(diag: BleCentral.Diag) {
         state.update { it.copy(diag = diag) }
     }
@@ -731,6 +912,10 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         B64.encode(MessageDigest.getInstance("SHA-256").digest(s.toByteArray(Charsets.UTF_8)))
 
     companion object {
+        private const val MAX_LIST_BYTES = 60 * 1024
+        private const val FIT_STEP = 4
+        private const val RSSI_MIN_MS = 1000L
+        private const val RSSI_MAX_MS = 10_000L
         private const val AVOID_MINUTES = 10L
         private const val PAIRING_TIMEOUT_S = 90L
         private const val WIFI_RETRY_S = 10L

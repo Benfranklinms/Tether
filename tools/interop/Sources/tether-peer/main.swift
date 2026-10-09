@@ -93,7 +93,7 @@ let mem = Mem()
 let listener = L()
 controller = TetherController(role: .responder, identity: mem,
                               localHello: {
-                                  var h = Hello(name: "Ben’s MacBook Air", platform: "macos", app: legacy ? "0.1.1" : "0.2.0",
+                                  var h = Hello(name: "Ben’s MacBook Air", platform: "macos", app: legacy ? "0.1.1" : "0.3.0",
                                                 caps: legacy ? Caps.v1 : Caps.current)
                                   if future { h.v = 2 }
                                   return h

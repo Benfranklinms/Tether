@@ -42,6 +42,9 @@ class MirrorListenerService : NotificationListenerService() {
         if (rt.ui.value.peer == null) return
         val facts = facts(sbn, rankingMap) ?: return
         rt.seenApps.saw(facts.pkg, facts.appLabel, facts.isSystemApp, System.currentTimeMillis())
+        if (facts.category == Notification.CATEGORY_CALL) rt.dialerNotification(facts.title)
+        // With call alerts on, the Mac shows its own incoming/missed call UI; don't mirror the dialer's too.
+        if (rt.callAlertsActive && (facts.category == Notification.CATEGORY_CALL || facts.category == CATEGORY_MISSED_CALL)) return
         val decision = NotificationFilter.decide(facts, rt.settings.current.notifications, deviceContext(), packageName)
         if (decision is FilterDecision.Forward) {
             val actions = if (rt.settings.current.notificationActions) {
@@ -110,6 +113,8 @@ class MirrorListenerService : NotificationListenerService() {
     }
 
     companion object {
+        /** Notification.CATEGORY_MISSED_CALL (API 30). */
+        private const val CATEGORY_MISSED_CALL = "missed_call"
         private const val MINUTES = 60
         @Volatile private var instance: WeakReference<MirrorListenerService>? = null
 

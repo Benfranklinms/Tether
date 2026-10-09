@@ -65,6 +65,8 @@ class BleCentral(
         fun onLinkDown(reason: String)
         fun onRadioState(state: RadioState)
         fun onDiag(diag: Diag) {}
+        /** Signal strength of the Mac link in dBm (answer to [readRssi]). */
+        fun onRssi(rssi: Int) {}
     }
 
     enum class RadioState { OFF, NO_PERMISSION, SCANNING, CONNECTING, CONNECTED, IDLE }
@@ -197,6 +199,13 @@ class BleCentral(
     }
 
     /** Queue a fragment; written one at a time as the stack acknowledges each. */
+    /** Asks the controller for the link's RSSI; the answer arrives on [Listener.onRssi]. */
+    @SuppressLint("MissingPermission")
+    fun readRssi() = engine.execute {
+        if (!linkUp || !hasPermissions()) return@execute
+        gatt?.readRemoteRssi()
+    }
+
     fun write(fragment: ByteArray) {
         engine.execute {
             if (!linkUp) return@execute
@@ -440,6 +449,10 @@ class BleCentral(
                 if (status != BluetoothGatt.GATT_SUCCESS) Log.w("ble.write_status", "status" to status)
                 pump()
             }
+        }
+
+        override fun onReadRemoteRssi(g: BluetoothGatt, rssi: Int, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) engine.execute { if (g == gatt && linkUp) listener.onRssi(rssi) }
         }
 
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {

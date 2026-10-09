@@ -170,6 +170,10 @@ class ScreenshotTest {
                 override fun openFullScreenSettings() = Unit
                 override fun openAccessibility() = Unit
                 override fun openNotificationAccess() = Unit
+                override fun grantSms() = Unit
+                override fun grantContacts() = Unit
+                override fun grantCalls() = Unit
+                override fun openDndAccess() = Unit
             },
             onBack = {},
         )
