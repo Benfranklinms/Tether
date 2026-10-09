@@ -1,4 +1,4 @@
-# Tether protocol v1 (revision 2)
+# Tether protocol v1 (revision 3)
 
 Tether links one Android phone and one Mac directly: no server, no account, no cloud.
 Everything below is implemented twice, independently, and cross-checked with shared test vectors:
@@ -164,3 +164,43 @@ Older builds ignore the new message types and the new optional JSON fields. A `H
 - **Screen**: SCREEN_START answers `needs_wifi` when only Bluetooth is up. Otherwise the phone asks the user (Android's capture consent, every session) and reports `consent`, then `live` with the encoded size and display rotation (sent again after every rotation, with new SPS/PPS). Every keyframe carries its SPS/PPS. Access units larger than 1 MiB are split into `parts` (same `seq`); the receiver drops an incomplete frame when a newer one starts and waits for the next keyframe. The phone adapts the bitrate from its socket backlog and VIDEO_FEEDBACK (×0.7 on congestion at most once a second, ×1.15 after 3 s calm at most every 2 s) and drops non-key frames when more than 768 KiB are queued.
 - **Input** coordinates are normalised to the shown frame (0..1, origin top-left) and `rot` names the frame rotation they refer to; the phone maps them through the natural orientation to the current display, so a tap lands on the same physical spot even if the phone rotated in between. `k` ∈ `tap`, `long`, `swipe`, `scroll` (with `x2`,`y2`,`dur`), `text` (`text`), `backspace`, `enter`, `back`, `home`, `recents`.
 - Video, input, feedback and screen control prefer the Wi-Fi session; everything else in this section prefers Bluetooth.
+
+## 13. Revision 3 (app 0.3.0)
+
+Same rules as revision 2: `Hello.v` stays 1, features are announced in `Hello.caps`, and 0.2.x peers ignore everything here.
+
+| Cap | Feature |
+|---|---|
+| `sms` | text-message conversations, search and sending |
+| `call` | incoming-call alerts, Decline / Silence, missed calls |
+| `nowplaying` | the phone's current media session and remote control |
+| `proximity` | Bluetooth signal-strength reports for "lock when the phone walks away" |
+
+### New messages
+
+| Type | Name | Direction | Header | Body |
+|---|---|---|---|---|
+| 0x90 | SMS_THREADS_REQ | Mac → phone | `{"limit":50,"before"?:ms,"query"?}` | |
+| 0x91 | SMS_THREADS | phone → Mac | `{"threads":[Thread],"more","query"?,"needs"?}` (`needs` = `sms` permission missing, or `disabled`) | |
+| 0x92 | SMS_THREAD_REQ | Mac → phone | `{"thread","limit":60,"before"?:ms}` | |
+| 0x93 | SMS_MESSAGES | phone → Mac | `{"thread","msgs":[Msg] (oldest first),"more","search"?}` (`thread` = -1 for search results) | |
+| 0x94 | SMS_SEND | Mac → phone | `{"ref","to":[addr],"body","thread"?,"sub"?}` (`sub` = Android subscription id; absent = default SMS SIM) | |
+| 0x95 | SMS_SEND_RESULT | phone → Mac | `{"ref","ok","reason"?}` (`needs_permission`, `no_service`, `radio_off`, `no_sim`, `limit`, `short_code`, `invalid`, `disabled`, `failed`) | |
+| 0x96 | SMS_NEW | phone → Mac | `{"msg":Msg}`: a new message, or one of ours whose status changed | |
+| 0x97 | SMS_SEARCH | Mac → phone | `{"query","limit":50}`, answered by SMS_MESSAGES with `search` | |
+| 0x98 | SIMS | phone → Mac | `{"sims":[{"id","slot","name","number"?}]}` on connect and when SIMs change | |
+| 0xA0 | CALL_STATE | phone → Mac | `{"id","state","number"?,"name"?,"ts","reason"?}`; state ∈ `ringing`, `offhook`, `ended`, `missed` | |
+| 0xA1 | CALL_ACTION | Mac → phone | `{"id","action"}`; action ∈ `decline`, `silence` | |
+| 0xB0 | NOW_PLAYING | phone → Mac | `{"active","pkg","app","title","artist","album","durationMs","positionMs","playing","speed","canSeek","canNext","canPrev","volume"?:0-1,"art"?,"ts"}` | |
+| 0xB1 | MEDIA_CMD | Mac → phone | `{"cmd","pos"?:ms,"vol"?:0-1}`; cmd ∈ `play`, `pause`, `toggle`, `next`, `prev`, `seek`, `volume` | |
+| 0xB2 | NOW_PLAYING_ART | phone → Mac | `{"hash"}` | JPEG ≤ 96 KiB (decoders accept ≤ 256 KiB) |
+| 0xD0 | RSSI | phone → Mac | `{"rssi":dBm,"ts"}` | |
+| 0xD1 | PROXIMITY_CFG | Mac → phone | `{"on","intervalMs":2000}` (phone clamps to 1–10 s) | |
+
+`Thread` = `{"id","addrs":[..],"names":[name|null],"snippet","date","unread","outLast"}`.
+`Msg` = `{"id" ("s<n>" SMS / "m<n>" MMS),"thread","addr","name"?,"body","date","out","status" (received|sent|pending|failed),"sub"?,"att":[{"id","mime","w","h"}],"read"}`.
+
+- **SMS**: the phone reads the system SMS/MMS provider (it is not the default SMS app and never writes to it). Lists are trimmed so one message stays under ~60 KiB (`more` is then true and the Mac pages with `before`). The phone watches the provider and pushes SMS_NEW for new rows and for its own pending rows when they become sent/failed. Android records messages Tether sends, so they come back as SMS_NEW; the Mac replaces its placeholder with that copy. MMS text is included; attachments are listed (`att`) but their data is not transferred in revision 3.
+- **Calls**: `ringing` may be sent more than once for one `id` as the number or name becomes known. A call that rang and went idle without being answered is `missed` (unless the Mac declined it, then `ended`). Outgoing calls are never reported. A failed CALL_ACTION is answered with the current state plus `reason` (`not_allowed`, `needs_dnd_access`, `no_call`).
+- **Now playing**: sent at once on track/state changes (at most every 300 ms) and re-sent every 15 s; the Mac extrapolates the position from `positionMs`, `speed` and `ts`. Artwork is sent once per hash per connection.
+- **Proximity**: the Mac turns reports on with PROXIMITY_CFG only while its lock feature is enabled; the phone reads the GATT link RSSI (`BluetoothGatt.readRemoteRssi`). Smoothing, thresholds, hysteresis and the dwell time are decided on the Mac (see `Proximity.swift`); losing the Bluetooth link after the phone was known to be near counts as away. The Mac never unlocks.

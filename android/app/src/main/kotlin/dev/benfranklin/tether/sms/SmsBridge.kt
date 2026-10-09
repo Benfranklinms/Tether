@@ -159,6 +159,7 @@ class SmsBridge(
     fun canSend() = SmsStore.granted(context, Manifest.permission.SEND_SMS)
 
     /** Sends [body] to each of [to] from SIM [sub] (default SIM when null). Reports once through onSent. */
+    @SuppressLint("MissingPermission") // checked by canSend()
     fun send(ref: String, to: List<String>, body: String, sub: Int?) = io.execute {
         val recipients = to.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         val reason = when {

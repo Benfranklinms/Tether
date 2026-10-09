@@ -1,14 +1,14 @@
 # Tether
 
-**Your Android phone and your Mac, linked directly.** Notifications you can answer, clipboard, files, screenshots, battery, find-my-phone and screen control, over Bluetooth LE with a Wi-Fi fast path. End-to-end encrypted. No server, no account, no cloud.
+**Your Android phone and your Mac, linked directly.** Texts and calls on the Mac, notifications you can answer, media controls, clipboard, files, screenshots, battery, find-my-phone, screen control and lock-when-you-walk-away, over Bluetooth LE with a Wi-Fi fast path. End-to-end encrypted. No server, no account, no cloud.
 
 <p>
   <img src="docs/screenshots/mac/menu.png" width="300" alt="Tether in the Mac menu bar: phone battery, quick actions and mirrored notifications with Reply">
   <img src="docs/screenshots/android/home.png" width="230" alt="Tether on Android">
-  <img src="docs/screenshots/mac/settings-features.png" width="330" alt="Mac feature settings">
+  <img src="docs/screenshots/mac/messages.png" width="440" alt="Messages on the Mac: the phone's SMS conversations with dual-SIM reply">
 </p>
 
-**Download v0.2.0:** [Mac (.dmg)](https://github.com/Benfranklinms/Tether/releases/download/v0.2.0/Tether-0.2.0.dmg) · [Mac (.zip)](https://github.com/Benfranklinms/Tether/releases/download/v0.2.0/Tether-0.2.0.zip) · [Android (.apk)](https://github.com/Benfranklinms/Tether/releases/download/v0.2.0/Tether-0.2.0.apk) · [all releases](https://github.com/Benfranklinms/Tether/releases)
+**Download v0.3.0:** [Mac (.dmg)](https://github.com/Benfranklinms/Tether/releases/download/v0.3.0/Tether-0.3.0.dmg) · [Mac (.zip)](https://github.com/Benfranklinms/Tether/releases/download/v0.3.0/Tether-0.3.0.zip) · [Android (.apk)](https://github.com/Benfranklinms/Tether/releases/download/v0.3.0/Tether-0.3.0.apk) · [all releases](https://github.com/Benfranklinms/Tether/releases)
 
 macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 
@@ -22,6 +22,10 @@ macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 
 | | What it does |
 |---|---|
+| **Messages** *(0.3)* | Your phone's SMS conversations in a Mac window: thread list with unread counts, full conversations (MMS text too), search across all messages, reply or start a new text, choose the SIM on dual-SIM phones, live updates as texts arrive and as yours go from *Sending…* to sent (or *Retry*). Nothing is stored on the Mac. |
+| **Calls** *(0.3)* | Incoming calls show on the Mac with the caller's name (from your contacts), **Decline** and **Silence**, in the menu panel and as a notification. Missed calls become a Mac notification. |
+| **Now playing** *(0.3)* | Whatever plays on the phone (Spotify, YouTube Music, podcasts…) with artwork, a live progress bar, play/pause, next/previous, seek and phone volume. Optionally the Mac's media keys and Control Center drive it. |
+| **Lock when you walk away** *(0.3)* | Off by default. The Mac watches the Bluetooth signal of your phone (smoothed, with hysteresis and a delay you choose) and locks itself when you leave. Never while Screen Sharing or the phone-screen window is open. It never unlocks anything. |
 | **Notifications** | Phone notifications appear on the Mac (per-app rules on both sides, quiet hours, muted words, hide contents). Dismiss on one, it clears on the other. |
 | **Reply from the Mac** *(0.2)* | Inline reply for any app that offers one in its notification (WhatsApp, Messages, Telegram, Signal, Slack, Gmail…), from the banner or the menu. Other buttons such as *Mark as read* show up too. |
 | **Clipboard** | Copy on the Mac, paste on the phone. Phone → Mac from the quick tile, share sheet or app. Password-manager items are skipped. |
@@ -37,22 +41,22 @@ macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 
 ### Mac
 
-1. Download `Tether-0.2.0.dmg` (or the `.zip`), open it and drag **Tether** to **Applications**.
+1. Download `Tether-0.3.0.dmg` (or the `.zip`), open it and drag **Tether** to **Applications**.
 2. Tether is **ad-hoc signed and not notarized** (no paid Apple Developer account), so the first open is blocked:
    - **Right-click** Tether in Applications → **Open** → **Open**.
    - macOS 15 Sequoia and later: open it once, then **System Settings › Privacy & Security** → **Open Anyway**.
    - Or in Terminal: `xattr -dr com.apple.quarantine /Applications/Tether.app`
 3. Allow **Bluetooth** when asked (required) and **Notifications** (to show your phone's notifications). On macOS 15+, allow **Local Network** for the Wi-Fi fast path.
-4. Tether lives in the menu bar (two rings); no Dock icon. Click it for the panel; drag the panel's header to detach it as a floating window. **Updating** from 0.1.x: replace the app; you stay paired.
+4. Tether lives in the menu bar (two rings); no Dock icon. Click it for the panel; drag the panel's header to detach it as a floating window. **Updating** from 0.1.x/0.2.x: replace the app; you stay paired.
 
 Liquid Glass needs **macOS 26 Tahoe**. On older macOS the Liquid Glass option uses translucent vibrancy instead.
 
 ### Android
 
-1. Download `Tether-0.2.0.apk` on the phone and open it. Allow *Install unknown apps* for your browser or file manager.
+1. Download `Tether-0.3.0.apk` on the phone and open it. Allow *Install unknown apps* for your browser or file manager.
 2. **Play Protect** may warn about an app from an unknown developer: tap **More details → Install anyway**. Tether has no internet servers; the APK is built in public CI from this repository.
-3. Open Tether and follow the setup. Updating from 0.1.x installs over it (same signing key) and keeps the pairing.
-4. **Allow restricted settings** (Android 13+, sideloaded apps): before Android lets you turn on **Notification access** or **Accessibility** for Tether, go to **Settings › Apps › Tether › ⋮ (top right) › Allow restricted settings**, confirm, then enable the access. You only do this once.
+3. Open Tether and follow the setup. Updating from 0.1.x/0.2.x installs over it (same signing key) and keeps the pairing.
+4. **Allow restricted settings** (Android 13+, sideloaded apps): before Android lets you turn on **Notification access** or **Accessibility**, or grant **SMS** and **Call logs / Phone** permissions to Tether (they appear greyed out or the request is silently refused), go to **Settings › Apps › Tether › ⋮ (top right) › Allow restricted settings**, confirm, then grant them. You only do this once. On Android 15 some phones ask again per permission group.
 
 ## Pair
 
@@ -72,6 +76,10 @@ Everything new is on the phone in **Tether › Settings › On your Mac**, and o
 | Link (required) | Nearby devices (Bluetooth); Location on Android ≤ 11 | Bluetooth | Allow battery "Unrestricted" on the phone for reliable background links |
 | Notifications | Notification access (*restricted setting*) | Notifications | |
 | Reply and actions | Notification access | Notifications | Works when the app's notification has an inline reply |
+| **Messages** *(0.3)* | **SMS** (`READ_SMS`, `SEND_SMS`, `RECEIVE_SMS`, *restricted*), **Phone** (`READ_PHONE_STATE`, for the SIM list), **Contacts** (optional, names) | — | Phone: Settings › On your Mac › *Texts on the Mac* › Allow SMS access. Mac: menu → **Messages**. Tether is not your default SMS app and doesn't need to be |
+| **Calls** *(0.3)* | **Phone** (`READ_PHONE_STATE`), **Call logs** (`READ_CALL_LOG`, *restricted*, for the number), **Contacts** (names), **Answer phone calls** (`ANSWER_PHONE_CALLS`, for Decline), **Do Not Disturb access** (for Silence) | Notifications | Without call logs/contacts the caller's name comes from the dialer's notification when possible |
+| **Now playing** *(0.3)* | Notification access (already granted for notifications) | — | Mac media keys: Settings › Features › *Mac media keys control the phone* |
+| **Proximity lock** *(0.3)* | — (on the phone: *Let the Mac sense this phone*, on by default) | — | Mac: Settings › Features › *Lock this Mac when the phone is away* (off by default); pick distance and delay |
 | Screenshots / photos | Photos (`READ_MEDIA_IMAGES`; choose **Allow all**) | — | Saved to `~/Downloads/Tether` (Mac Settings › Features to change) |
 | Battery | — (optional *Phone* permission adds 4G/5G) | Notifications for the 20 % alert | |
 | Find my phone | Notifications; **Full-screen alerts** recommended (Android 14+) | — | Uses the alarm stream: rings in silent/vibrate; most phones let alarms through Do Not Disturb |
@@ -79,11 +87,19 @@ Everything new is on the phone in **Tether › Settings › On your Mac**, and o
 | Screen control | **Accessibility › Tether screen control** (*restricted setting*) | — | Without it the Mac can view but not control |
 | Files, clipboard | Notifications (progress); Camera only for QR pairing | Local Network (macOS 15+) for Wi-Fi | |
 
+*Restricted* = on a sideloaded APK, Android 13+ blocks it until you **Allow restricted settings** (Install, step 4).
+
+**Messages, step by step:** phone → Tether › Settings › On your Mac → *Texts on the Mac* → **Allow SMS access** (allow restricted settings first if Android refuses) → Mac menu → **Messages**. Pick a conversation, type, Return (or ⌘↩) sends. On a dual-SIM phone the SIM chip next to the field picks the SIM. ✎ starts a new text; the search field searches every message on the phone.
+
+**Calls, step by step:** phone → *Call alerts on the Mac* → **Allow call access** (Phone, Call logs, Contacts, Answer calls) and, for Silence, **Do Not Disturb access** (Tether in the list → Allow). When a call rings, the Mac panel and a notification show the caller with Decline and Silence; the dialer's own call notification is not mirrored twice.
+
+**Lock when you walk away:** Mac → Settings › Features → turn on *Lock this Mac when the phone is away*, choose **Near / Medium / Far** (≈1–2 m, 3–5 m, 8–10 m) and **Away for** (10 s – 2 min). *Signal now* shows the live reading so you can check it at your desk. Bluetooth signal varies a lot with pockets, bodies and walls: start with Medium and 30 s.
+
 **Screen sharing, step by step:** Mac menu → **Phone screen** → on the phone tap the *Your Mac wants to see this screen* notification (or it opens directly if Tether is on screen) → **Start now**. A *Sharing your screen* notification with **Stop** stays while it runs. In the Mac window: click = tap, hold = long-press, drag = swipe, two-finger scroll = scroll, type into the focused field, ⌘V pastes, Return = enter, Esc or right-click = Back.
 
 ## Bluetooth vs Wi-Fi
 
-- **Bluetooth LE** is always on: pairing, notifications, replies, clipboard, battery, ring, and files up to 100 MB (about 30–100 KB/s).
+- **Bluetooth LE** is always on: pairing, notifications, replies, texts, calls, now playing, clipboard, battery, ring, proximity and files up to 100 MB (about 30–100 KB/s).
 - **Wi-Fi fast path**: when both are on the same network, or the **Mac is on the phone's hotspot**, Tether opens a direct TCP link (still Noise-encrypted, never via the internet). Big files, photos and the **screen stream** use it. If it drops, transfers continue over Bluetooth from the last verified byte.
 - Many campus, office and guest networks block device-to-device traffic. If the Wi-Fi chip never appears, turn on the phone's **hotspot** and join it from the Mac.
 
@@ -93,6 +109,7 @@ Everything new is on the phone in **Tether › Settings › On your Mac**, and o
 - **Pairing** by QR (Mac key + one-time token, checked in the handshake) or 6-digit code comparison. Wi-Fi sessions only accept the paired key plus a single-use token offered over Bluetooth.
 - **Key rotation** from Settings; **unpair** on either side forgets on both.
 - **No servers, no account, no analytics.** Logs record events and sizes only: never clipboard text, notification content, file names or screen content.
+- Texts, call details and now-playing data are shown on the Mac only while connected and are never written to disk on the Mac or logged on either side. Proximity uses only the signal strength of the existing encrypted link.
 - Screen control acts only while you are sharing your screen, only on input from the paired Mac, and the accessibility service does not read or keep screen content.
 
 Wire protocol: [docs/PROTOCOL.md](docs/PROTOCOL.md).
@@ -110,6 +127,14 @@ Wire protocol: [docs/PROTOCOL.md](docs/PROTOCOL.md).
 | Photos stay "Waiting for Wi-Fi" | Expected on Bluetooth: join the same Wi-Fi or the phone's hotspot |
 | Screen says "needs Wi-Fi" | Same as above; screen video never goes over Bluetooth |
 | Screen shows but clicks do nothing | Enable *Tether screen control* in phone Accessibility settings (allow restricted settings first) and *Control with mouse and keyboard* on the Mac |
+| Messages window says "Allow SMS" / SMS permission greyed out | Phone: Settings › Apps › Tether › ⋮ › **Allow restricted settings**, then Tether › Settings › On your Mac › Allow SMS access |
+| A text shows "Not sent" | Signal, airplane mode or the chosen SIM; press **Retry**. Short codes may be blocked by your carrier |
+| Calls show a number instead of a name | Grant **Contacts** and **Call logs** to Tether on the phone |
+| Decline does nothing / "Allow Decline" | Grant **Answer phone calls** (Allow call access row) |
+| Silence says it needs Do Not Disturb access | Phone Settings › Notifications › Do Not Disturb access (or Special app access) › Tether › Allow |
+| No now-playing card | The app must publish a media session (most players do); notification access must be on; *Media controls on the Mac* on in both apps |
+| Mac locks while I'm at my desk | Choose a farther distance or a longer delay; check *Signal now*; phone in a back pocket or behind a laptop lid reads much weaker |
+| Mac didn't lock when I left | The phone may still be in range (Bluetooth reaches 10 m+ through walls); choose Near. It also never locks during Screen Sharing or the phone-screen window |
 | Phone doesn't ring loudly in Do Not Disturb | Allow alarms in your DND settings; allow Tether full-screen alerts |
 | Link drops in the background | Phone: Tether › Settings › Battery optimization → Unrestricted (OnePlus/Oppo: also allow background activity) |
 | Anything else | **Export diagnostics**: phone Settings › Export logs; Mac Settings › Diagnostics › Export… (no personal content) |
@@ -120,8 +145,9 @@ Wire protocol: [docs/PROTOCOL.md](docs/PROTOCOL.md).
 Android (Kotlin, Compose)                         macOS (Swift, SwiftUI)
 ┌──────────────────────────────┐                  ┌──────────────────────────────┐
 │ App: BLE central, NotificationListener,         │ App: CoreBluetooth peripheral,│
-│ MediaStore watcher, battery, ringer,            │ UserNotifications, Bonjour,   │
-│ MediaProjection + MediaCodec, accessibility     │ VideoToolbox screen viewer    │
+│ MediaStore watcher, battery, ringer, SMS        │ UserNotifications, Bonjour,   │
+│ provider + SmsManager, call state, MediaSession,│ VideoToolbox viewer, Messages,│
+│ MediaProjection + MediaCodec, accessibility     │ MediaPlayer keys, proximity   │
 ├──────────────────────────────┤                  ├──────────────────────────────┤
 │ android/core (pure JVM)      │  same protocol   │ mac/TetherCore (Swift pkg)   │
 │ Noise XX · framing · messages│◄───────────────►│ Noise XX · framing · messages │
@@ -130,7 +156,7 @@ Android (Kotlin, Compose)                         macOS (Swift, SwiftUI)
           Bluetooth LE (GATT, fragments)  ·  Wi-Fi TCP (length-prefixed records)
 ```
 
-The protocol is implemented twice, independently, and cross-checked: shared JSON test vectors, Noise test vectors, and an **interop harness** that runs the real Kotlin phone core against the real Swift Mac core over a pipe (pairing, every message type in both directions, a Wi-Fi session, media transfers, split H.264 frames, input mapping, old and future peers).
+The protocol is implemented twice, independently, and cross-checked: shared JSON test vectors, Noise test vectors, and an **interop harness** that runs the real Kotlin phone core against the real Swift Mac core over a pipe (pairing, every message type of all three revisions in both directions, a Wi-Fi session, media transfers, split H.264 frames, input mapping, old and future peers). The proximity filter (smoothing, hysteresis, dwell, lock policy) has its own unit tests.
 
 ```
 android/core      Kotlin protocol core + tests (incl. InteropTest)
@@ -163,7 +189,11 @@ cd android && TETHER_SWIFT_PEER=$PWD/../tools/interop/.build/debug/tether-peer .
 
 ## Limitations
 
-- **Tested on real hardware only for 0.1.x** (pairing and notification mirroring on a MacBook Air + OnePlus Nord CE5). The 0.2 features are covered by unit, interop and build tests in CI but have not yet run on a real phone and Mac.
+- **Tested on real hardware only for 0.1.x** (pairing and notification mirroring on a MacBook Air + OnePlus Nord CE5). The 0.2 and 0.3 features are covered by unit, interop and build tests in CI (and the 0.2 reply/media paths by an emulator test) but have not yet run on a real phone and Mac.
+- **Messages** reads and sends SMS through Android's own provider; Tether is not the default SMS app, so it can't mark messages as read on the phone, delete them, or send MMS (pictures/group MMS). MMS text is shown and attachments are labelled ("Photo") but not transferred. RCS / Google Messages chat messages aren't SMS and don't appear (their notifications are still mirrored, with Reply). OEM SMS providers differ; a few phones store messages where other apps can't read them.
+- **Calls**: Decline uses `TelecomManager.endCall`, which some OEM dialers ignore; Silence mutes the ring stream (needs Do Not Disturb access) and the phone may still vibrate. Answering from the Mac isn't possible: call audio stays on the phone. Only incoming calls are shown.
+- **Now playing** follows the phone's active media session; apps without one (some browsers, games) don't appear. Volume changes the phone's media volume (or a cast device's).
+- **Proximity lock** relies on Bluetooth RSSI, which is noisy and differs between phones: treat the distances as rough. It locks via the system's lock-screen call (falling back to display sleep, which locks only if your Mac asks for the password immediately after sleep). It never unlocks.
 - **Replies** work only where the phone app's notification offers an inline reply (RemoteInput). Some apps hide it on the lock screen or for certain chats; SMS apps vary. Tether can't start new conversations.
 - **Screen sharing** needs Wi-Fi/hotspot. Android requires consent every session and shows its own capture indicator. Apps that set `FLAG_SECURE` (banking, some video apps, password fields) appear black. Latency target is under ~150 ms on a good network; busy Wi-Fi lowers quality first. Long-press and drags are sent when you release the mouse, not live. Typing uses accessibility text replacement: it works in normal text fields, not in games or custom keyboards' own fields.
 - **Find my phone** can't override a phone with alarm volume locked by the OEM or a DND mode that blocks alarms; full-screen alerts may need permission on Android 14+.

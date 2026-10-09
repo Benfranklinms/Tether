@@ -277,7 +277,7 @@ jobs:
           files=$(find dist -type f \( -name "Tether-$v.apk" -o -name "Tether-$v.dmg" -o -name "Tether-$v.zip" \))
           test "$(echo "$files" | wc -l)" -eq 3 || { echo "expected 3 assets, got: $files"; exit 1; }
           cat > notes.md <<NOTES
-          Tether $v: Android phone ↔ Mac clipboard, notifications and files over Bluetooth LE (+ Wi-Fi fast path), end-to-end encrypted with Noise XX.
+          Tether $v: your Android phone and your Mac linked directly — texts, calls, notifications with reply, media controls, clipboard, files, screen and more over Bluetooth LE (+ Wi-Fi fast path), end-to-end encrypted with Noise XX. See the README for setup and permissions.
 
           - **Android**: \`Tether-$v.apk\` (Android 8.0+). Signed with the repo's committed key, see README.
           - **macOS**: \`Tether-$v.dmg\` or \`Tether-$v.zip\` (macOS 13+, universal). Ad-hoc signed, not notarized: right-click → Open the first time, or run \`xattr -dr com.apple.quarantine /Applications/Tether.app\`.

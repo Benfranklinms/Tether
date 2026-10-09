@@ -30,8 +30,6 @@ final class WindowRouter: NSObject, NSWindowDelegate {
         self.model = model
     }
 
-    func isOpen(_ id: WindowID) -> Bool { windows[id]?.isVisible == true }
-
     func show(_ id: WindowID) {
         NSApp.activate(ignoringOtherApps: true)
         if let w = windows[id] {

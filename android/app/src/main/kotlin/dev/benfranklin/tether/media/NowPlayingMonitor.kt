@@ -1,5 +1,6 @@
 package dev.benfranklin.tether.media
 
+import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
@@ -59,6 +60,7 @@ class NowPlayingMonitor(
     }
 
     /** Start (needs notification access; silently does nothing without it). */
+    @SuppressLint("MissingPermission") // the notification-listener grant authorises getActiveSessions
     fun start() = main.post {
         if (running) return@post
         val msm = context.getSystemService(MediaSessionManager::class.java) ?: return@post
@@ -89,6 +91,7 @@ class NowPlayingMonitor(
         push(force = true)
     }
 
+    @SuppressLint("MissingPermission")
     private fun refresh() {
         val msm = context.getSystemService(MediaSessionManager::class.java) ?: return
         try {
