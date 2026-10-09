@@ -19,85 +19,47 @@ enum Launch {
 @main
 struct TetherApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var model: AppModel
 
     init() {
         Typo.registerFonts()
-        let m = AppModel(demo: Launch.demo)
-        if Launch.demo && Launch.screenshotDir == nil { Demo.load(m, .connected) }
-        _model = StateObject(wrappedValue: m)
     }
 
     var body: some Scene {
-        MenuBarExtra {
-            MenuView().environmentObject(model).environment(\.tetherStyle, model.settings.appearance)
-        } label: {
-            MenuLabel(linked: model.isConnected, unpaired: model.peer == nil,
-                      battery: model.settings.batteryInMenuBar && model.isConnected ? model.battery : nil)
-        }
-        .menuBarExtraStyle(.window)
-
-        Window("Pair a phone", id: "pair") {
-            PairView().environmentObject(model).environment(\.tetherStyle, model.settings.appearance)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultPosition(.center)
-
-        Window("Tether Settings", id: "settings") {
-            SettingsView().environmentObject(model).environment(\.tetherStyle, model.settings.appearance)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultPosition(.center)
-
-        Window("Phone screen", id: "screen") {
-            ScreenWindow(screen: model.screen).environmentObject(model).environment(\.tetherStyle, model.settings.appearance)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: 420, height: 860)
-        .defaultPosition(.center)
-    }
-}
-
-/// Menu-bar glyph. On the very first launch with no phone paired it also opens the pairing window.
-private struct MenuLabel: View {
-    var linked: Bool
-    var unpaired: Bool
-    var battery: BatteryPayload?
-    @Environment(\.openWindow) private var openWindow
-    @AppStorage("didOfferPairing") private var didOfferPairing = false
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(nsImage: MenuIcon.image(linked: linked))
-            if let b = battery { Text("\(b.level)%\(b.charging ? "⚡︎" : "")").font(.system(size: 12, weight: .medium).monospacedDigit()) }
-        }
-            .onAppear {
-                guard unpaired, !didOfferPairing, Launch.screenshotDir == nil else { return }
-                didOfferPairing = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    NSApp.activate(ignoringOtherApps: true)
-                    openWindow(id: "pair")
-                }
-            }
+        // The menu-bar item, its (detachable) panel and the windows are AppKit-managed;
+        // see Support/Windows.swift. SwiftUI needs at least one scene.
+        Settings { EmptyView() }
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var model: AppModel?
+    private var status: StatusController?
+    private var router: WindowRouter?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let dir = Launch.screenshotDir {
             Screenshots.run(into: dir) { NSApp.terminate(nil) }
             return
         }
-        // SwiftUI may restore Window scenes at launch; a menu-bar app starts quiet.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            for w in NSApp.windows {
-                let id = w.identifier?.rawValue ?? ""
-                if id.contains("settings") || id.contains("screen") { w.close() }
-            }
+        let m = AppModel(demo: Launch.demo)
+        if Launch.demo { Demo.load(m, .connected) }
+        let r = WindowRouter(model: m)
+        m.windows = r
+        model = m
+        router = r
+        status = StatusController(model: m)
+        // First launch with no phone paired: open the pairing window.
+        let d = UserDefaults.standard
+        if m.peer == nil, !d.bool(forKey: "didOfferPairing") {
+            d.set(true, forKey: "didOfferPairing")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { r.show(.pair) }
         }
+    }
+
+    /// Opening the app again from Finder/Spotlight shows the panel or settings.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { router?.show(.settings) }
+        return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -126,6 +88,11 @@ enum Screenshots {
         Shot(name: "settings-phone", scene: .connected) { AnyView(SettingsView(initialSection: .phone)) },
         Shot(name: "settings-about", scene: .connected) { AnyView(SettingsView(initialSection: .about)) },
         Shot(name: "settings-features", scene: .connected) { AnyView(SettingsView(initialSection: .features)) },
+        Shot(name: "menu-detached", scene: .connected) {
+            AnyView(MenuView(panel: PanelControls(detached: true, onTop: true, detach: {}, attach: {}, toggleOnTop: {}, open: { _ in }))
+                .frame(width: 380, height: 640)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous)))
+        },
         Shot(name: "screen", scene: .screen) { AnyView(ScreenWindow(screen: ScreenModel()).frame(width: 380, height: 760)) },
     ]
 

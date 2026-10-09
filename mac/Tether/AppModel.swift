@@ -31,6 +31,8 @@ final class AppModel: ObservableObject {
     /// Per notification key: "sending", "sent" or an error, for the reply field.
     @Published var actionStatus: [String: String] = [:]
     let screen = ScreenModel()
+    /// Owns the pair / settings / screen windows (set by the app delegate).
+    var windows: WindowRouter?
     var lowBattery = LowBatteryMonitor()
 
     /// How long the pair window waits for the secure link once the phone has connected.

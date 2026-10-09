@@ -73,6 +73,9 @@ struct MacSettings: Codable, Equatable {
     var lowBatteryAlert = true
     var screenQuality = 1280
     var screenControl = true
+    /// The menu-bar panel is torn off into a floating window (remembered across launches).
+    var panelDetached = false
+    var panelOnTop = true
 
     init() {}
 
@@ -92,6 +95,8 @@ struct MacSettings: Codable, Equatable {
         lowBatteryAlert = try c.decodeIfPresent(Bool.self, forKey: .lowBatteryAlert) ?? true
         screenQuality = try c.decodeIfPresent(Int.self, forKey: .screenQuality) ?? 1280
         screenControl = try c.decodeIfPresent(Bool.self, forKey: .screenControl) ?? true
+        panelDetached = try c.decodeIfPresent(Bool.self, forKey: .panelDetached) ?? false
+        panelOnTop = try c.decodeIfPresent(Bool.self, forKey: .panelOnTop) ?? true
     }
 
     var mediaURL: URL { mediaFolder.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? downloadURL }

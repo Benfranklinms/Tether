@@ -6,21 +6,25 @@ import UniformTypeIdentifiers
 /// The menu-bar popover: status, quick actions, notifications and transfers.
 struct MenuView: View {
     @EnvironmentObject var m: AppModel
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduce
     @State private var tab: Tab = .notifications
+    /// Set when hosted in the menu-bar panel (attach/detach controls); nil in screenshots.
+    var panel: PanelControls?
     @State private var dropping = false
     @Namespace private var ns
 
-    init(initialTab: Tab = .notifications) {
+    init(initialTab: Tab = .notifications, panel: PanelControls? = nil) {
         _tab = State(initialValue: initialTab)
+        self.panel = panel
     }
+
+    private var detached: Bool { panel?.detached == true }
 
     enum Tab: String, CaseIterable { case notifications = "Notifications", transfers = "Transfers" }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            header.background(panel.map { p in PanelDragArea(onTearOff: p.detach) })
             if m.peer == nil {
                 unpaired
             } else {
@@ -30,7 +34,9 @@ struct MenuView: View {
             }
             footer
         }
-        .frame(width: 360)
+        .frame(minWidth: 360, idealWidth: 360, maxWidth: detached ? .infinity : 360,
+               maxHeight: detached ? .infinity : nil, alignment: .top)
+        .overlay(alignment: .topTrailing) { panelButtons }
         .tetherBackground()
         .tetherWindowChrome()
         .preferredColorScheme(.dark)
@@ -82,6 +88,7 @@ struct MenuView: View {
                 .animation(Motion.spring(reduce), value: statusLine)
                 Spacer()
             }
+            .padding(.trailing, panel == nil ? 0 : 34)
             if m.isConnected {
                 HStack(spacing: 6) {
                     Chip(text: "Bluetooth", on: !m.onWifi)
@@ -208,7 +215,7 @@ struct MenuView: View {
             .animation(Motion.spring(reduce), value: m.history.items.map(\.key))
             .animation(Motion.spring(reduce), value: m.transfers.map(\.id))
         }
-        .frame(height: 300)
+        .frame(minHeight: 300, idealHeight: 300, maxHeight: detached ? .infinity : 300)
         .transition(.opacity)
     }
 
@@ -265,8 +272,25 @@ struct MenuView: View {
     }
 
     private func open(_ id: String) {
-        NSApp.activate(ignoringOtherApps: true)
-        openWindow(id: id)
+        guard let w = WindowID(rawValue: id) else { return }
+        if let panel { panel.open(w) } else { m.open(w) }
+    }
+
+    /// Pin = tear off into a floating panel. Detached: keep-on-top toggle and close (docks back).
+    @ViewBuilder private var panelButtons: some View {
+        if let p = panel {
+            HStack(spacing: 4) {
+                if p.detached {
+                    PanelButton(symbol: p.onTop ? "pin.fill" : "pin", label: p.onTop ? "Don't keep on top" : "Keep on top",
+                                action: p.toggleOnTop)
+                    PanelButton(symbol: "xmark", label: "Dock to menu bar", action: p.attach)
+                } else {
+                    PanelButton(symbol: "rectangle.portrait.on.rectangle.portrait", label: "Detach (or drag the header)",
+                                action: p.detach)
+                }
+            }
+            .padding(10)
+        }
     }
 
     private func drop(_ providers: [NSItemProvider]) -> Bool {
@@ -602,5 +626,27 @@ struct FluidProgress: View {
             withAnimation(.linear(duration: 1.6).repeatForever(autoreverses: false)) { sheen = true }
         }
         .accessibilityValue("\(Int(value * 100)) percent")
+    }
+}
+
+/// Small round header button of the panel (detach, keep on top, dock).
+private struct PanelButton: View {
+    var symbol: String
+    var label: String
+    var action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 10, weight: .semibold))
+                .foregroundColor(hover ? Mono.text : Mono.muted)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(hover ? Mono.surfaceHigh : Color.clear))
+                .contentShape(Circle())
+        }
+        .buttonStyle(PressStyle())
+        .onHover { hover = $0 }
+        .help(label)
+        .accessibilityLabel(label)
     }
 }

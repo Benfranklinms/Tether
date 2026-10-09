@@ -8,7 +8,6 @@ import TetherCore
 struct PairView: View {
     @EnvironmentObject var m: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduce
-    @Environment(\.dismiss) private var dismiss
     @Namespace private var ns
 
     enum Stage: Equatable {
@@ -92,7 +91,7 @@ struct PairView: View {
 
     private func close() {
         m.justPaired = false
-        dismiss()
+        m.closeWindow(.pair)
     }
 }
 

@@ -30,6 +30,7 @@ macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 | **Phone battery** *(0.2)* | Level, charging and network in the menu (optionally the % in the menu bar), with a Mac alert at 20 %. |
 | **Find my phone** *(0.2)* | The phone rings at full alarm volume, even on silent, with a full-screen Stop. Stops after 60 s or from the Mac. |
 | **Phone screen** *(0.2)* | See the phone's screen in a resizable Mac window (hardware H.264, adaptive bitrate) and control it: click, long-press, drag, scroll, type, Back/Home/Recents. Needs Wi-Fi. |
+| **Movable panel** *(0.2)* | Drag the menu panel's header (or press its detach button) to tear it off into a floating window: move and resize it, keep it on top (pin), and it remembers where it was. Its × docks it back under the menu-bar icon; clicking the icon while it's detached brings it to the front. |
 | **Appearance** *(0.2)* | Pure Mono (solid black and greys) or Liquid Glass (real macOS 26 glass, monochrome; translucent vibrancy on macOS 13–15). Follows Reduce Motion and Reduce Transparency. |
 
 ## Install
@@ -42,7 +43,7 @@ macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
    - macOS 15 Sequoia and later: open it once, then **System Settings › Privacy & Security** → **Open Anyway**.
    - Or in Terminal: `xattr -dr com.apple.quarantine /Applications/Tether.app`
 3. Allow **Bluetooth** when asked (required) and **Notifications** (to show your phone's notifications). On macOS 15+, allow **Local Network** for the Wi-Fi fast path.
-4. Tether lives in the menu bar (two rings); no Dock icon. **Updating** from 0.1.x: replace the app; you stay paired.
+4. Tether lives in the menu bar (two rings); no Dock icon. Click it for the panel; drag the panel's header to detach it as a floating window. **Updating** from 0.1.x: replace the app; you stay paired.
 
 Liquid Glass needs **macOS 26 Tahoe**. On older macOS the Liquid Glass option uses translucent vibrancy instead.
 

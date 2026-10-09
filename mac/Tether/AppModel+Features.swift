@@ -4,6 +4,15 @@ import TetherCore
 
 /// 0.2.0 features: notification actions, battery, find my phone, media, screen sharing.
 extension AppModel {
+    /// Open (or bring forward) one of the app's windows.
+    func open(_ id: WindowID) {
+        windows?.show(id)
+    }
+
+    func closeWindow(_ id: WindowID) {
+        windows?.close(id)
+    }
+
     func supports(_ cap: String) -> Bool { isConnected && peerCaps.contains(cap) }
 
     /// Reply / notification button from the menu or a banner.

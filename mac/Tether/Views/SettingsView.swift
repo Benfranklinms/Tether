@@ -238,7 +238,6 @@ private struct AppPrefRow: View {
 
 private struct FeaturesPage: View {
     @EnvironmentObject var m: AppModel
-    @Environment(\.openWindow) private var openWindow
 
     private var olderPhone: Bool { m.isConnected && !Caps.current.allSatisfy { m.peerCaps.contains($0) } }
 
@@ -280,8 +279,7 @@ private struct FeaturesPage: View {
                       isOn: $m.settings.screenControl)
             Row(title: "Phone screen", detail: "Needs Wi-Fi or your phone's hotspot.", divider: false) {
                 GhostButton(title: "Open…") {
-                    NSApp.activate(ignoringOtherApps: true)
-                    openWindow(id: "screen")
+                    m.open(.screen)
                     m.startScreen()
                 }
                 .disabled(!m.supports(Caps.screen))
@@ -301,7 +299,6 @@ private struct FeaturesPage: View {
 
 private struct PhonePage: View {
     @EnvironmentObject var m: AppModel
-    @Environment(\.openWindow) private var openWindow
     @State private var confirmUnpair = false
 
     var body: some View {
@@ -353,7 +350,7 @@ private struct PhonePage: View {
 
     private func open() {
         NSApp.activate(ignoringOtherApps: true)
-        openWindow(id: "pair")
+        m.open(.pair)
     }
 }
 
