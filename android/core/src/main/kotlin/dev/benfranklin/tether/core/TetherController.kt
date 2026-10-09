@@ -19,6 +19,12 @@ import dev.benfranklin.tether.core.proto.Unpair
 import dev.benfranklin.tether.core.proto.WifiBind
 import dev.benfranklin.tether.core.proto.WifiOffer
 import dev.benfranklin.tether.core.proto.WifiRevoke
+import dev.benfranklin.tether.core.proto.ScreenInput
+import dev.benfranklin.tether.core.proto.ScreenStart
+import dev.benfranklin.tether.core.proto.ScreenState
+import dev.benfranklin.tether.core.proto.ScreenStop
+import dev.benfranklin.tether.core.proto.VideoFeedback
+import dev.benfranklin.tether.core.proto.VideoFrame
 import dev.benfranklin.tether.core.session.PairingContext
 import dev.benfranklin.tether.core.session.PeerRecord
 import dev.benfranklin.tether.core.session.Session
@@ -144,6 +150,22 @@ class TetherController(
     val bleReady: Boolean get() = ble?.state == SessionState.ESTABLISHED
 
     fun restoreTransfers(saved: List<TransferRecord>) = engine.restore(saved)
+
+    /**
+     * Features the connected peer announced in its Hello (`caps`), empty while offline. A
+     * 0.1.x peer announces only clip/notif/file, so new features stay hidden until it updates.
+     */
+    val peerCaps: Set<String>
+        get() {
+            val s = ble?.takeIf { it.state == SessionState.ESTABLISHED } ?: wifi?.takeIf { wifiReady }
+            return s?.remoteHello?.caps?.toSet().orEmpty()
+        }
+
+    /** The peer's app version string from its Hello (for diagnostics), null while offline. */
+    val peerApp: String?
+        get() = (ble?.takeIf { it.state == SessionState.ESTABLISHED } ?: wifi?.takeIf { wifiReady })?.remoteHello?.app
+
+    fun peerSupports(cap: String): Boolean = cap in peerCaps
 
     // ================= Bluetooth link =================
 
@@ -282,7 +304,10 @@ class TetherController(
      * Returns false if no link can carry it.
      */
     fun send(message: Message): Boolean {
-        val useWifi = wifiReady && (message is Clip || !bleReady)
+        // Screen video never goes over Bluetooth; its control messages prefer Wi-Fi for latency.
+        val wifiOnly = message is VideoFrame
+        if (wifiOnly && !wifiReady) return false
+        val useWifi = wifiReady && (wifiOnly || prefersWifi(message) || !bleReady)
         val s = (if (useWifi) wifi else ble)?.takeIf { it.state == SessionState.ESTABLISHED } ?: return false
         if (message is Clip && !useWifi && message.text.toByteArray(Charsets.UTF_8).size > Protocol.MAX_CLIP_BYTES) {
             return false
@@ -290,6 +315,9 @@ class TetherController(
         s.send(message)
         return true
     }
+
+    private fun prefersWifi(m: Message): Boolean =
+        m is Clip || m is ScreenInput || m is VideoFeedback || m is ScreenStart || m is ScreenStop || m is ScreenState
 
     fun sendFile(record: TransferRecord) = engine.enqueue(record)
 

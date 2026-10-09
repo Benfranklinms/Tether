@@ -115,6 +115,21 @@ public final class TetherController {
 
     public func restoreTransfers(_ saved: [TransferRecord]) { transfers.restore(saved) }
 
+    private var liveSession: Session? {
+        if let b = ble, b.state == .established { return b }
+        if wifiReady { return wifi }
+        return nil
+    }
+
+    /// Features the connected peer announced in its Hello; empty while offline. A 0.1.x phone
+    /// announces only clip/notif/file, so newer features stay hidden until it updates.
+    public var peerCaps: Set<String> { Set(liveSession?.remoteHello?.caps ?? []) }
+
+    /// The peer's app version (diagnostics); nil while offline.
+    public var peerApp: String? { liveSession?.remoteHello?.app }
+
+    public func peerSupports(_ cap: String) -> Bool { peerCaps.contains(cap) }
+
     // MARK: Bluetooth
 
     public func bleConnected(maxFragment: Int, writer: @escaping (Data) -> Void, pairing: PairingContext = .closed) {
@@ -237,7 +252,16 @@ public final class TetherController {
             isClip = true
             clipBytes = text.utf8.count
         }
-        let useWifi = wifiReady && (isClip || !bleReady)
+        // Screen video never goes over Bluetooth; screen control prefers Wi-Fi for latency.
+        var wifiOnly = false
+        var prefersWifi = isClip
+        switch message {
+        case .videoFrame: wifiOnly = true
+        case .screenInput, .videoFeedback, .screenStart, .screenStop, .screenState: prefersWifi = true
+        default: break
+        }
+        if wifiOnly && !wifiReady { return false }
+        let useWifi = wifiReady && (wifiOnly || prefersWifi || !bleReady)
         guard let s = useWifi ? wifi : ble, s.state == .established else { return false }
         if isClip && !useWifi && clipBytes > TetherProtocol.maxClipBytes { return false }
         do { try s.send(message) } catch { return false }

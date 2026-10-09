@@ -48,7 +48,7 @@ public struct Hello: Codable, Equatable {
     public var app: String
     public var caps: [String]
 
-    public init(name: String, platform: String, app: String, caps: [String] = ["clip", "notif", "file"]) {
+    public init(name: String, platform: String, app: String, caps: [String] = Caps.v1) {
         self.v = TetherProtocol.version
         self.name = name
         self.platform = platform
@@ -62,7 +62,7 @@ public struct Hello: Codable, Equatable {
         name = try c.decode(String.self, forKey: .name)
         platform = try c.decode(String.self, forKey: .platform)
         app = try c.decode(String.self, forKey: .app)
-        caps = try c.decodeIfPresent([String].self, forKey: .caps) ?? ["clip", "notif", "file"]
+        caps = try c.decodeIfPresent([String].self, forKey: .caps) ?? Caps.v1
     }
 }
 
@@ -73,14 +73,18 @@ public struct NotifPayload: Codable, Equatable {
     public var title: String
     public var text: String
     public var ts: Int64
+    /// Buttons offered by the phone (0.2.0+); empty from older phones.
+    public var actions: [NotifActionInfo]
 
-    public init(key: String, pkg: String, app: String, title: String = "", text: String = "", ts: Int64) {
+    public init(key: String, pkg: String, app: String, title: String = "", text: String = "", ts: Int64,
+                actions: [NotifActionInfo] = []) {
         self.key = key
         self.pkg = pkg
         self.app = app
         self.title = title
         self.text = text
         self.ts = ts
+        self.actions = actions
     }
 
     public init(from decoder: Decoder) throws {
@@ -91,6 +95,7 @@ public struct NotifPayload: Codable, Equatable {
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
         text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
         ts = try c.decode(Int64.self, forKey: .ts)
+        actions = try c.decodeIfPresent([NotifActionInfo].self, forKey: .actions) ?? []
     }
 }
 
@@ -100,13 +105,17 @@ public struct FileOfferPayload: Codable, Equatable {
     public var size: Int64
     public var sha256: String
     public var mime: String
+    /// "screenshot" / "photo" for automatic media sends (0.2.0+), nil for a user's file.
+    public var kind: String?
 
-    public init(id: String, name: String, size: Int64, sha256: String, mime: String = "application/octet-stream") {
+    public init(id: String, name: String, size: Int64, sha256: String, mime: String = "application/octet-stream",
+                kind: String? = nil) {
         self.id = id
         self.name = name
         self.size = size
         self.sha256 = sha256
         self.mime = mime
+        self.kind = kind
     }
 
     public init(from decoder: Decoder) throws {
@@ -116,6 +125,7 @@ public struct FileOfferPayload: Codable, Equatable {
         size = try c.decode(Int64.self, forKey: .size)
         sha256 = try c.decode(String.self, forKey: .sha256)
         mime = try c.decodeIfPresent(String.self, forKey: .mime) ?? "application/octet-stream"
+        kind = try c.decodeIfPresent(String.self, forKey: .kind)
     }
 }
 
@@ -154,6 +164,19 @@ public enum Message: Equatable {
     case wifiOffer(WifiOfferPayload)
     case wifiRevoke(reason: String)
     case wifiBind(token: String)
+    // revision 2 (0.2.0)
+    case notifAction(NotifActionPayload)
+    case notifActionResult(NotifActionResultPayload)
+    case battery(BatteryPayload)
+    case ring(timeoutS: Int)
+    case ringStop(reason: String)
+    case ringState(ringing: Bool, reason: String?)
+    case screenStart(ScreenStartPayload)
+    case screenState(ScreenStatePayload)
+    case screenStop(reason: String)
+    case videoFrame(VideoFramePayload)
+    case screenInput(ScreenInputPayload)
+    case videoFeedback(VideoFeedbackPayload)
     case unknown(type: UInt8)
 
     public var type: UInt8 {
@@ -180,6 +203,18 @@ public enum Message: Equatable {
         case .wifiOffer: return 0x60
         case .wifiRevoke: return 0x61
         case .wifiBind: return 0x62
+        case .notifAction: return 0x43
+        case .notifActionResult: return 0x44
+        case .battery: return 0x70
+        case .ring: return 0x71
+        case .ringStop: return 0x72
+        case .ringState: return 0x73
+        case .screenStart: return 0x80
+        case .screenState: return 0x81
+        case .screenStop: return 0x82
+        case .videoFrame: return 0x83
+        case .screenInput: return 0x84
+        case .videoFeedback: return 0x85
         case .unknown(let t): return t
         }
     }
@@ -199,6 +234,8 @@ private struct IdHeader: Codable { var id: String }
 private struct IdOffsetHeader: Codable { var id: String; var offset: Int64 }
 private struct IdReasonHeader: Codable { var id: String; var reason: String? }
 private struct CompleteHeader: Codable { var id: String; var ok: Bool; var reason: String? }
+private struct RingHeader: Codable { var timeoutS: Int? }
+private struct RingStateHeader: Codable { var ringing: Bool; var reason: String? }
 
 public enum MessageCodec {
     private static let encoder: JSONEncoder = {
@@ -231,6 +268,20 @@ public enum MessageCodec {
         case .fileComplete(let id, let ok, let r): header = try encoder.encode(CompleteHeader(id: id, ok: ok, reason: r))
         case .wifiOffer(let w): header = try encoder.encode(w)
         case .wifiBind(let t): header = try encoder.encode(TokenHeader(token: t))
+        case .notifAction(let p): header = try encoder.encode(p)
+        case .notifActionResult(let p): header = try encoder.encode(p)
+        case .battery(let p): header = try encoder.encode(p)
+        case .ring(let t): header = try encoder.encode(RingHeader(timeoutS: t))
+        case .ringStop(let r), .screenStop(let r): header = try encoder.encode(ReasonHeader(reason: r))
+        case .ringState(let on, let r): header = try encoder.encode(RingStateHeader(ringing: on, reason: r))
+        case .screenStart(let p): header = try encoder.encode(p)
+        case .screenState(let p): header = try encoder.encode(p)
+        case .videoFrame(let f):
+            header = try encoder.encode(VideoHeader(src: f.src, seq: f.seq, pts: f.pts, key: f.key, config: f.config,
+                                                    part: f.part, parts: f.parts))
+            body = f.data
+        case .screenInput(let p): header = try encoder.encode(p)
+        case .videoFeedback(let p): header = try encoder.encode(p)
         case .unknown: throw ProtocolError("cannot encode unknown message")
         }
         var out = Data(capacity: 5 + header.count + body.count)
@@ -289,6 +340,24 @@ public enum MessageCodec {
         case 0x62:
             guard let t = try d(TokenHeader.self).token else { throw ProtocolError("missing token") }
             return .wifiBind(token: t)
+        case 0x43: return .notifAction(try d(NotifActionPayload.self))
+        case 0x44: return .notifActionResult(try d(NotifActionResultPayload.self))
+        case 0x70: return .battery(try d(BatteryPayload.self))
+        case 0x71: return .ring(timeoutS: try d(RingHeader.self).timeoutS ?? 60)
+        case 0x72: return .ringStop(reason: try d(ReasonHeader.self).reason ?? "user")
+        case 0x73: let x = try d(RingStateHeader.self); return .ringState(ringing: x.ringing, reason: x.reason)
+        case 0x80: return .screenStart(try d(ScreenStartPayload.self))
+        case 0x81: return .screenState(try d(ScreenStatePayload.self))
+        case 0x82: return .screenStop(reason: try d(ReasonHeader.self).reason ?? "user")
+        case 0x83:
+            let h = try d(VideoHeader.self)
+            let parts = h.parts ?? 1
+            let part = h.part ?? 0
+            guard parts >= 1, (0..<parts).contains(part) else { throw ProtocolError("bad frame part") }
+            return .videoFrame(VideoFramePayload(src: h.src, seq: h.seq, pts: h.pts, key: h.key ?? false,
+                                                 config: h.config ?? false, part: part, parts: parts, data: body))
+        case 0x84: return .screenInput(try d(ScreenInputPayload.self))
+        case 0x85: return .videoFeedback(try d(VideoFeedbackPayload.self))
         default: return .unknown(type: type)
         }
     }

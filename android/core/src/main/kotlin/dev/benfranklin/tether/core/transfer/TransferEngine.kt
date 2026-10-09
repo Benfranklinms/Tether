@@ -47,6 +47,10 @@ data class TransferRecord(
     val retries: Int = 0,
     /** Link the transfer last moved over. */
     val via: Transport? = null,
+    /** "screenshot" / "photo" for automatic media sends (see [FileOffer.kind]); null otherwise. */
+    val kind: String? = null,
+    /** OUT: never send over Bluetooth; wait for the Wi-Fi fast path (camera photos). */
+    val wifiOnly: Boolean = false,
 ) {
     val progress: Float get() = if (size <= 0) 1f else (transferred.toFloat() / size).coerceIn(0f, 1f)
 }
@@ -240,11 +244,12 @@ class TransferEngine(
         val pending = records.values.filter {
             it.direction == Direction.OUT && (it.status == TransferStatus.WAITING || it.status == TransferStatus.QUEUED)
         }
-        val next = pending.firstOrNull { ch.transport == Transport.WIFI || it.size <= maxOverBle }
-        // Files too big for Bluetooth wait for Wi-Fi instead of crawling over BLE.
+        val next = pending.firstOrNull { ch.transport == Transport.WIFI || bleAllowed(it) }
+        // Files too big for Bluetooth (and Wi-Fi-only media) wait for Wi-Fi instead of crawling over BLE.
         for (r in pending) {
-            if (r !== next && ch.transport == Transport.BLE && r.size > maxOverBle && r.error != WAITING_FOR_WIFI) {
-                put(r.copy(status = TransferStatus.WAITING, error = WAITING_FOR_WIFI), important = true)
+            if (r !== next && ch.transport == Transport.BLE && !bleAllowed(r)) {
+                val why = if (r.wifiOnly) WAITING_FOR_WIFI_ONLY else WAITING_FOR_WIFI
+                if (r.error != why) put(r.copy(status = TransferStatus.WAITING, error = why), important = true)
             }
         }
         if (next == null) return
@@ -253,7 +258,15 @@ class TransferEngine(
         acked = 0
         doneSent = false
         put(next.copy(status = TransferStatus.OFFERED, via = ch.transport, error = null), important = true)
-        tx(FileOffer(next.id, next.name, next.size, next.sha256, next.mime))
+        tx(FileOffer(next.id, next.name, next.size, next.sha256, next.mime, next.kind))
+    }
+
+    private fun bleAllowed(r: TransferRecord): Boolean = !r.wifiOnly && r.size <= maxOverBle
+
+    /** True when an outgoing transfer with this content hash is queued, in flight or done (dedupe). */
+    fun hasOutgoing(sha256: String): Boolean = records.values.any {
+        it.direction == Direction.OUT && it.sha256.equals(sha256, ignoreCase = true) &&
+            it.status != TransferStatus.FAILED && it.status != TransferStatus.CANCELLED
     }
 
     private fun onAccept(m: FileAccept) {
@@ -375,7 +388,7 @@ class TransferEngine(
         val record = TransferRecord(
             id = m.id, direction = Direction.IN, name = safeFileName(m.name), size = m.size,
             sha256 = m.sha256.lowercase(), mime = m.mime, status = TransferStatus.ACTIVE, createdAt = now,
-            via = from.transport,
+            via = from.transport, kind = m.kind?.take(MAX_KIND),
         )
         if (m.size < 0 || m.size > maxIncoming || !SHA256_HEX.matches(m.sha256)) {
             put(record.copy(status = TransferStatus.FAILED, error = "Too large (limit ${maxIncoming / MIB} MB)"), true)
@@ -478,6 +491,8 @@ class TransferEngine(
         const val DEFAULT_WINDOW = 4
         const val WIFI_WINDOW = 16
         const val WAITING_FOR_WIFI = "Waiting for Wi-Fi (too large for Bluetooth)"
+        const val WAITING_FOR_WIFI_ONLY = "Waiting for Wi-Fi"
+        private const val MAX_KIND = 32
         const val MAX_INTEGRITY_RETRIES = 1
         private const val MIB = 1024 * 1024
         private const val MAX_NAME = 180

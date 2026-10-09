@@ -131,9 +131,12 @@ class Side(val name: String, val role: Role, val loop: Loop) : ControllerListene
     val wifiOffers = ArrayList<WifiOffer>()
     var unpairedByRemote: Boolean? = null
     var rotated = 0
+    /** What this side announces; set to Caps.V1 to play a 0.1.x build. */
+    var caps: List<String> = dev.benfranklin.tether.core.proto.Caps.CURRENT
 
     val controller = TetherController(
-        role, identity, { Hello(name = name, platform = if (role == Role.INITIATOR) "android" else "macos", app = "test") },
+        role, identity,
+        { Hello(name = name, platform = if (role == Role.INITIATOR) "android" else "macos", app = "test", caps = caps) },
         files, files, this, clock = { loop.now },
     )
 

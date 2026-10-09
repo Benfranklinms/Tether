@@ -117,6 +117,8 @@ final class Side: ControllerListener {
     var wifiOffers: [WifiOfferPayload] = []
     var unpairedByRemote: Bool?
     var rotated = 0
+    /// What this side announces; Caps.v1 plays a 0.1.x build.
+    var caps = Caps.current
     var controller: TetherController!
 
     init(_ name: String, _ role: Role, _ loop: Loop) {
@@ -125,7 +127,9 @@ final class Side: ControllerListener {
         self.loop = loop
         controller = TetherController(
             role: role, identity: identity,
-            localHello: { Hello(name: name, platform: role == .initiator ? "android" : "macos", app: "test") },
+            localHello: { [unowned self] in
+                Hello(name: name, platform: role == .initiator ? "android" : "macos", app: "test", caps: self.caps)
+            },
             outgoing: files, incoming: files, listener: self, clock: { loop.now }
         )
     }

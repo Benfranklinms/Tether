@@ -41,10 +41,15 @@ public struct TransferRecord: Codable, Equatable, Identifiable {
     public var ref: String?
     public var retries: Int = 0
     public var via: Transport?
+    /// "screenshot" / "photo" for automatic media sends (0.2.0+).
+    public var kind: String?
+    /// OUT: never send over Bluetooth; wait for Wi-Fi.
+    public var wifiOnly: Bool = false
 
     public init(id: String, direction: Direction, name: String, size: Int64, sha256: String, mime: String,
                 status: TransferStatus, transferred: Int64 = 0, error: String? = nil, createdAt: Int64,
-                updatedAt: Int64? = nil, ref: String? = nil, retries: Int = 0, via: Transport? = nil) {
+                updatedAt: Int64? = nil, ref: String? = nil, retries: Int = 0, via: Transport? = nil,
+                kind: String? = nil, wifiOnly: Bool = false) {
         self.id = id
         self.direction = direction
         self.name = name
@@ -59,6 +64,34 @@ public struct TransferRecord: Codable, Equatable, Identifiable {
         self.ref = ref
         self.retries = retries
         self.via = via
+        self.kind = kind
+        self.wifiOnly = wifiOnly
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, direction, name, size, sha256, mime, status, transferred, error, createdAt, updatedAt, ref, retries, via
+        case kind, wifiOnly
+    }
+
+    // Tolerant decoding: transfers.json written by 0.1.x lacks the newer keys.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        direction = try c.decode(Direction.self, forKey: .direction)
+        name = try c.decode(String.self, forKey: .name)
+        size = try c.decode(Int64.self, forKey: .size)
+        sha256 = try c.decode(String.self, forKey: .sha256)
+        mime = try c.decodeIfPresent(String.self, forKey: .mime) ?? "application/octet-stream"
+        status = try c.decode(TransferStatus.self, forKey: .status)
+        transferred = try c.decodeIfPresent(Int64.self, forKey: .transferred) ?? 0
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        createdAt = try c.decode(Int64.self, forKey: .createdAt)
+        updatedAt = try c.decodeIfPresent(Int64.self, forKey: .updatedAt) ?? createdAt
+        ref = try c.decodeIfPresent(String.self, forKey: .ref)
+        retries = try c.decodeIfPresent(Int.self, forKey: .retries) ?? 0
+        via = try c.decodeIfPresent(Transport.self, forKey: .via)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        wifiOnly = try c.decodeIfPresent(Bool.self, forKey: .wifiOnly) ?? false
     }
 
     public var progress: Double { size <= 0 ? 1 : min(1, max(0, Double(transferred) / Double(size))) }
@@ -93,6 +126,7 @@ public final class TransferEngine {
     public static let wifiWindow = 16
     public static let maxIntegrityRetries = 1
     public static let waitingForWifi = "Waiting for Wi-Fi (too large for Bluetooth)"
+    public static let waitingForWifiOnly = "Waiting for Wi-Fi"
 
     private let outgoing: OutgoingFiles
     private let incoming: IncomingFiles
@@ -220,11 +254,12 @@ public final class TransferEngine {
     private func startNextOutgoing() {
         guard let ch = channel, activeOut == nil else { return }
         let pending = all.filter { $0.direction == .OUT && ($0.status == .WAITING || $0.status == .QUEUED) }
-        let next = pending.first { ch.transport == .WIFI || $0.size <= maxOverBle }
-        for var r in pending where r.id != next?.id && ch.transport == .BLE && r.size > maxOverBle
-            && r.error != Self.waitingForWifi {
+        let next = pending.first { ch.transport == .WIFI || bleAllowed($0) }
+        for var r in pending where r.id != next?.id && ch.transport == .BLE && !bleAllowed(r) {
+            let why = r.wifiOnly ? Self.waitingForWifiOnly : Self.waitingForWifi
+            guard r.error != why else { continue }
             r.status = .WAITING
-            r.error = Self.waitingForWifi
+            r.error = why
             put(r, important: true)
         }
         guard var n = next else { return }
@@ -236,7 +271,16 @@ public final class TransferEngine {
         n.via = ch.transport
         n.error = nil
         put(n, important: true)
-        ch.send(.fileOffer(FileOfferPayload(id: n.id, name: n.name, size: n.size, sha256: n.sha256, mime: n.mime)))
+        ch.send(.fileOffer(FileOfferPayload(id: n.id, name: n.name, size: n.size, sha256: n.sha256, mime: n.mime, kind: n.kind)))
+    }
+
+    private func bleAllowed(_ r: TransferRecord) -> Bool { !r.wifiOnly && r.size <= maxOverBle }
+
+    /// True when an outgoing transfer with this hash is queued, in flight or done (dedupe).
+    public func hasOutgoing(sha256: String) -> Bool {
+        records.values.contains {
+            $0.direction == .OUT && $0.sha256.lowercased() == sha256.lowercased() && $0.status != .FAILED && $0.status != .CANCELLED
+        }
     }
 
     private func onAccept(_ id: String, _ offset: Int64) {
@@ -366,7 +410,8 @@ public final class TransferEngine {
         let now = clock()
         var record = TransferRecord(
             id: m.id, direction: .IN, name: TransferEngine.safeFileName(m.name), size: m.size,
-            sha256: m.sha256.lowercased(), mime: m.mime, status: .ACTIVE, createdAt: now, via: from.transport
+            sha256: m.sha256.lowercased(), mime: m.mime, status: .ACTIVE, createdAt: now, via: from.transport,
+            kind: m.kind.map { String($0.prefix(32)) }
         )
         let validSha = Self.shaPattern?.firstMatch(in: m.sha256, range: NSRange(m.sha256.startIndex..., in: m.sha256)) != nil
         if m.size < 0 || m.size > maxIncoming || !validSha {

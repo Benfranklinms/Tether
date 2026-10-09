@@ -63,7 +63,7 @@ data class Hello(
     val name: String,
     val platform: String,
     val app: String,
-    val caps: List<String> = listOf("clip", "notif", "file"),
+    val caps: List<String> = Caps.V1,
 )
 
 class ProtocolException(message: String, cause: Throwable? = null) : Exception(message, cause)
@@ -95,6 +95,20 @@ object MsgType {
     const val WIFI_OFFER = 0x60
     const val WIFI_REVOKE = 0x61
     const val WIFI_BIND = 0x62
+
+    // ---- revision 2 (0.2.0), gated on Hello.caps ----
+    const val NOTIF_ACTION = 0x43
+    const val NOTIF_ACTION_RESULT = 0x44
+    const val BATTERY = 0x70
+    const val RING = 0x71
+    const val RING_STOP = 0x72
+    const val RING_STATE = 0x73
+    const val SCREEN_START = 0x80
+    const val SCREEN_STATE = 0x81
+    const val SCREEN_STOP = 0x82
+    const val VIDEO_FRAME = 0x83
+    const val SCREEN_INPUT = 0x84
+    const val VIDEO_FEEDBACK = 0x85
 }
 
 @Serializable data class Ping(val t: Long) : Message { override val type get() = MsgType.PING }
@@ -129,6 +143,8 @@ data class Clip(val id: String, val ts: Long, val text: String) : Message {
     val title: String = "",
     val text: String = "",
     val ts: Long,
+    /** Buttons the Mac may offer (0.2.0+; older Macs ignore the field). */
+    val actions: List<NotifActionInfo> = emptyList(),
 ) : Message { override val type get() = MsgType.NOTIF }
 
 @Serializable data class NotifRemoved(val key: String) : Message { override val type get() = MsgType.NOTIF_REMOVED }
@@ -140,6 +156,8 @@ data class Clip(val id: String, val ts: Long, val text: String) : Message {
     val size: Long,
     val sha256: String,
     val mime: String = "application/octet-stream",
+    /** "screenshot" or "photo" for automatic media sends (0.2.0+); null for a user's file. */
+    val kind: String? = null,
 ) : Message { override val type get() = MsgType.FILE_OFFER }
 
 @Serializable data class FileAccept(val id: String, val offset: Long) : Message {
@@ -236,6 +254,20 @@ object MessageCodec {
             is WifiOffer -> enc(WifiOffer.serializer(), m) to EMPTY
             is WifiRevoke -> enc(WifiRevoke.serializer(), m) to EMPTY
             is WifiBind -> enc(WifiBind.serializer(), m) to EMPTY
+            is NotifAction -> enc(NotifAction.serializer(), m) to EMPTY
+            is NotifActionResult -> enc(NotifActionResult.serializer(), m) to EMPTY
+            is Battery -> enc(Battery.serializer(), m) to EMPTY
+            is Ring -> enc(Ring.serializer(), m) to EMPTY
+            is RingStop -> enc(RingStop.serializer(), m) to EMPTY
+            is RingState -> enc(RingState.serializer(), m) to EMPTY
+            is ScreenStart -> enc(ScreenStart.serializer(), m) to EMPTY
+            is ScreenState -> enc(ScreenState.serializer(), m) to EMPTY
+            is ScreenStop -> enc(ScreenStop.serializer(), m) to EMPTY
+            is VideoFrame -> enc(
+                VideoHeader.serializer(), VideoHeader(m.src, m.seq, m.pts, m.key, m.config, m.part, m.parts),
+            ) to m.data
+            is ScreenInput -> enc(ScreenInput.serializer(), m) to EMPTY
+            is VideoFeedback -> enc(VideoFeedback.serializer(), m) to EMPTY
             is UnknownMessage -> throw ProtocolException("cannot encode unknown message")
         }
         val buf = ByteBuffer.allocate(PREFIX + header.size + body.size)
@@ -294,6 +326,26 @@ object MessageCodec {
         MsgType.WIFI_OFFER -> dec(WifiOffer.serializer(), header)
         MsgType.WIFI_REVOKE -> dec(WifiRevoke.serializer(), header)
         MsgType.WIFI_BIND -> dec(WifiBind.serializer(), header)
+        else -> decodeRevision2(type, header, body)
+    }
+
+    private fun decodeRevision2(type: Int, header: String, body: ByteArray): Message = when (type) {
+        MsgType.NOTIF_ACTION -> dec(NotifAction.serializer(), header)
+        MsgType.NOTIF_ACTION_RESULT -> dec(NotifActionResult.serializer(), header)
+        MsgType.BATTERY -> dec(Battery.serializer(), header)
+        MsgType.RING -> dec(Ring.serializer(), header)
+        MsgType.RING_STOP -> dec(RingStop.serializer(), header)
+        MsgType.RING_STATE -> dec(RingState.serializer(), header)
+        MsgType.SCREEN_START -> dec(ScreenStart.serializer(), header)
+        MsgType.SCREEN_STATE -> dec(ScreenState.serializer(), header)
+        MsgType.SCREEN_STOP -> dec(ScreenStop.serializer(), header)
+        MsgType.VIDEO_FRAME -> {
+            val h = dec(VideoHeader.serializer(), header)
+            if (h.parts < 1 || h.part !in 0 until h.parts) throw ProtocolException("bad frame part")
+            VideoFrame(h.src, h.seq, h.pts, h.key, h.config, h.part, h.parts, body)
+        }
+        MsgType.SCREEN_INPUT -> dec(ScreenInput.serializer(), header)
+        MsgType.VIDEO_FEEDBACK -> dec(VideoFeedback.serializer(), header)
         else -> UnknownMessage(type)
     }
 
