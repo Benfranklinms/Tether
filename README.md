@@ -47,6 +47,14 @@ Download from the [latest release](https://github.com/Benfranklinms/Tether/relea
    - No camera? Tap **Pair without camera**. Both screens show a 6-digit code; confirm on both if they match.
 3. Keep the phone within Bluetooth range. Tether reconnects by itself.
 
+### If pairing doesn't finish
+
+Both pairing screens show a live status line ("Visible over Bluetooth · waiting for your phone", "Found your Mac · connecting", "securing the link…") and, when something fails, say why.
+
+- **Mac says Bluetooth is off or not allowed:** turn Bluetooth on, or enable Tether in System Settings › Privacy & Security › Bluetooth, then reopen Tether.
+- **Phone says it couldn't find your Mac:** keep the Mac's pairing window open (it is what makes the Mac visible), keep the devices within a few metres, and if the phone heard no Bluetooth signals at all, turn on Location (some phones need it to scan).
+- **Still stuck:** tap **Export diagnostics** on the phone's pairing screen and on the Mac's (or Settings › Diagnostics). The logs hold connection events only, never content.
+
 ## Permissions
 
 **Android**
