@@ -1,4 +1,4 @@
-# Tether protocol v1
+# Tether protocol v1 (revision 2)
 
 Tether links one Android phone and one Mac directly: no server, no account, no cloud.
 Everything below is implemented twice, independently, and cross-checked with shared test vectors:
@@ -94,7 +94,7 @@ u8  type ‖ u32 headerLength ‖ header (UTF-8 JSON) ‖ body (raw bytes, may b
 | 0x61 | WIFI_REVOKE | `{"reason"}` | |
 | 0x62 | WIFI_BIND (Mac → phone, first TCP message) | `{"token":B64}` | |
 
-Unknown types are ignored, so either side can add messages later.
+Unknown types are ignored, so either side can add messages later. Revision 2 (app 0.2.0) adds the messages in §12.
 
 ## 7. Key rotation
 
@@ -122,3 +122,45 @@ The phone decides what to forward (per-app allow/block, muted keywords, quiet ho
 ## 11. Privacy
 
 Logs on both sides record events and sizes only, never clipboard text, notification content or file names. The Mac skips pasteboard items marked concealed or transient (nspasteboard.org conventions, used by password managers).
+
+## 12. Revision 2 (app 0.2.0)
+
+The handshake and record format are unchanged (`Hello.v` stays 1), so 0.1.x and 0.2.x still pair and sync. Each new feature is announced in `Hello.caps`, and a device only uses a feature the peer announced:
+
+| Cap | Feature |
+|---|---|
+| `clip`, `notif`, `file` | 0.1.x features (also assumed when `caps` is missing) |
+| `reply` | notification buttons and inline replies |
+| `media` | automatic screenshots/photos (`FILE_OFFER.kind`) |
+| `battery` | phone battery/network |
+| `ring` | find my phone |
+| `screen` | screen view and control |
+
+Older builds ignore the new message types and the new optional JSON fields. A `Hello.v` other than 1 still closes with *version mismatch*.
+
+### Additions to existing messages
+
+- `NOTIF` gains `actions: [{"id","title","reply":bool}]` (at most 4; a reply action has a free-form RemoteInput on the phone).
+- `FILE_OFFER` gains `kind`: `"screenshot"` or `"photo"` for automatic media; absent for a user's file. Photos are queued *Wi-Fi only*: they wait for the Wi-Fi session and never cross Bluetooth. The phone de-duplicates by SHA-256 and never sends media older than the moment the feature was turned on.
+
+### New messages
+
+| Type | Name | Direction | Header | Body |
+|---|---|---|---|---|
+| 0x43 | NOTIF_ACTION | Mac → phone | `{"key","action","text"?}` | |
+| 0x44 | NOTIF_ACTION_RESULT | phone → Mac | `{"key","action","ok","reason"?}` (`gone`, `denied`, `empty`, `disabled`) | |
+| 0x70 | BATTERY | phone → Mac | `{"level":0-100,"charging","plug"?,"net"?,"gen"?,"signal"?:0-4,"ts"}` | |
+| 0x71 | RING | Mac → phone | `{"timeoutS":60}` (capped at 60 s) | |
+| 0x72 | RING_STOP | either | `{"reason"}` | |
+| 0x73 | RING_STATE | phone → Mac | `{"ringing","reason"?}` | |
+| 0x80 | SCREEN_START | Mac → phone | `{"maxSize","fps","bitrate"}` (upper bounds) | |
+| 0x81 | SCREEN_STATE | phone → Mac | `{"state","w","h","rotation","control","reason"?}`; state ∈ `consent`, `live`, `stopped`, `denied`, `needs_wifi`, `error` | |
+| 0x82 | SCREEN_STOP | either | `{"reason"}` | |
+| 0x83 | VIDEO_FRAME | phone → Mac, **Wi-Fi only** | `{"src":"screen","seq","pts"(µs),"key","config","part","parts"}` | H.264 Annex B access unit (or part of one) |
+| 0x84 | SCREEN_INPUT | Mac → phone | `{"k","x","y","x2"?,"y2"?,"dur"?,"text"?,"rot"?}` | |
+| 0x85 | VIDEO_FEEDBACK | Mac → phone | `{"src","kbps","lagMs","dropped","keyframe"}` | |
+
+- **Battery** is pushed on change and throttled: charging/plug changes and reaching 20/10/5 % go at once, other changes at most once a minute, and an unchanged state is repeated every 10 minutes. The Mac alerts once at ≤ 20 % while not charging and re-arms after charging or > 25 %.
+- **Screen**: SCREEN_START answers `needs_wifi` when only Bluetooth is up. Otherwise the phone asks the user (Android's capture consent, every session) and reports `consent`, then `live` with the encoded size and display rotation (sent again after every rotation, with new SPS/PPS). Every keyframe carries its SPS/PPS. Access units larger than 1 MiB are split into `parts` (same `seq`); the receiver drops an incomplete frame when a newer one starts and waits for the next keyframe. The phone adapts the bitrate from its socket backlog and VIDEO_FEEDBACK (×0.7 on congestion at most once a second, ×1.15 after 3 s calm at most every 2 s) and drops non-key frames when more than 768 KiB are queued.
+- **Input** coordinates are normalised to the shown frame (0..1, origin top-left) and `rot` names the frame rotation they refer to; the phone maps them through the natural orientation to the current display, so a tap lands on the same physical spot even if the phone rotated in between. `k` ∈ `tap`, `long`, `swipe`, `scroll` (with `x2`,`y2`,`dur`), `text` (`text`), `backspace`, `enter`, `back`, `home`, `recents`.
+- Video, input, feedback and screen control prefer the Wi-Fi session; everything else in this section prefers Bluetooth.

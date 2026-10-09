@@ -21,13 +21,16 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
     private var transfers: [TransferRecord] = []
     private var lastTransferWrite = Date.distantPast
     private var wakeObserver: NSObjectProtocol?
+    private var screenSink: ScreenSink?
 
     init(model: AppModel, settings: MacSettings) {
         self.model = model
         self.settings = settings
         identity = FileIdentityStore()
         let downloads = settings.downloadURL
+        let media = settings.mediaURL
         files = MacFiles(downloadFolder: { downloads })
+        files.mediaFolder = { media }
         transfers = transfersFile.read() ?? []
     }
 
@@ -39,7 +42,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         queue.async { [self] in
             controller = TetherController(
                 role: .responder, identity: identity, localHello: { Hello(name: Host.current().localizedName ?? "Mac",
-                                                                      platform: "macos", app: Engine.version) },
+                                                                      platform: "macos", app: Engine.version, caps: Caps.current) },
                 outgoing: files, incoming: files, listener: self
             )
             controller.restoreTransfers(transfers)
@@ -69,7 +72,9 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         queue.async { [self] in
             settings = s
             let downloads = s.downloadURL
+            let media = s.mediaURL
             files.downloadFolder = { downloads }
+            files.mediaFolder = { media }
             if !s.wifiFastPath { wifi?.revoke(); controller?.wifiDisconnected() }
         }
     }
@@ -131,6 +136,56 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
     func retry(_ id: String) { queue.async { self.controller.retryTransfer(id) } }
     func remove(_ id: String) { queue.async { self.controller.removeTransfer(id) } }
 
+    // MARK: 0.2.0 features
+
+    /// Fire a notification button on the phone (reply text for an inline-reply button).
+    func notifAction(key: String, action: String, text: String?) {
+        queue.async { [self] in
+            let ok = controller.send(.notifAction(NotifActionPayload(key: key, action: action, text: text)))
+            Log.info("notify.action_sent", ["ok": "\(ok)", "reply": "\(text != nil)"])
+            if !ok { DispatchQueue.main.async { self.model?.actionResult(key: key, ok: false, reason: "offline") } }
+        }
+    }
+
+    func ring(_ on: Bool) {
+        queue.async { [self] in
+            let ok = controller.send(on ? .ring(timeoutS: 60) : .ringStop(reason: "user"))
+            Log.info(on ? "ring.request" : "ring.stop_request", ["ok": "\(ok)"])
+            if !ok { DispatchQueue.main.async { self.model?.toast("Not connected") } }
+        }
+    }
+
+    /// Ask the phone to share its screen; frames arrive on Wi-Fi only.
+    func startScreen(maxSize: Int) {
+        queue.async { [self] in
+            screenSink?.reset()
+            let ok = controller.send(.screenStart(ScreenStartPayload(maxSize: maxSize, fps: 60, bitrate: 8_000_000)))
+            Log.info("screen.request", ["ok": "\(ok)", "wifi": "\(controller.wifiReady)"])
+            if !ok { DispatchQueue.main.async { self.model?.screenUpdate(ScreenStatePayload(state: "ended", reason: "Not connected")) } }
+        }
+    }
+
+    func stopScreen() {
+        queue.async { [self] in
+            _ = controller.send(.screenStop(reason: "user"))
+            Log.info("screen.stop_request")
+        }
+    }
+
+    func screenInput(_ input: ScreenInputPayload) {
+        queue.async { [self] in _ = controller.send(.screenInput(input)) }
+    }
+
+    /// Wire the video sink: frames go straight to it (never via the main thread).
+    func attach(sink: ScreenSink) {
+        queue.async { [self] in
+            screenSink = sink
+            sink.onFeedback = { [weak self] fb in
+                self?.queue.async { _ = self?.controller.send(.videoFeedback(fb)) }
+            }
+        }
+    }
+
     func dismissOnPhone(_ key: String) {
         queue.async { [self] in
             if settings.notifications.dismissSync { controller.send(.notifDismiss(key: key)) }
@@ -160,10 +215,18 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         if case .connected = state {
             wifi.browse(phoneId: peer.map { Self.wifiId($0.keyBytes) })
         }
-        DispatchQueue.main.async { self.model?.apply(link: state, peer: peer) }
+        let caps = controller?.peerCaps ?? []
+        let app = controller?.peerApp
+        let wifiUp = controller?.wifiReady ?? false
+        if case .connected = state { Log.info("peer.caps", ["caps": caps.sorted().joined(separator: ","), "app": app ?? "-"]) }
+        DispatchQueue.main.async { self.model?.apply(link: state, peer: peer, caps: caps, peerApp: app, wifi: wifiUp) }
     }
 
     func controllerMessage(_ message: Message) {
+        if case .videoFrame(let f) = message {
+            screenSink?.receive(f)
+            return
+        }
         let s = settings
         DispatchQueue.main.async {
             guard let m = self.model else { return }
@@ -171,6 +234,11 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             case .clip(_, _, let text): if s.receiveClipboard { m.receiveClip(text) }
             case .notif(let n): m.receiveNotification(n)
             case .notifRemoved(let key): m.notificationRemoved(key)
+            case .notifActionResult(let r): m.actionResult(key: r.key, ok: r.ok, reason: r.reason)
+            case .battery(let b): m.batteryUpdate(b)
+            case .ringState(let on, let reason): m.ringUpdate(on, reason: reason)
+            case .screenState(let st): m.screenUpdate(st)
+            case .screenStop(let reason): m.screenUpdate(ScreenStatePayload(state: ScreenStates.stopped, reason: reason))
             default: Log.info("msg.ignored", ["type": "\(message.type)"])
             }
         }
@@ -184,10 +252,14 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             transfersFile.write(transfers)
         }
         let snapshot = transfers
-        let notify = important && record.direction == .IN && record.status == .DONE && settings.notifyOnReceive
+        let done = important && record.direction == .IN && record.status == .DONE
+        let isMedia = record.kind != nil
+        let notify = done && (isMedia ? settings.mediaNotify : settings.notifyOnReceive)
+        if done && isMedia { Log.info("media.received", ["kind": record.kind ?? "-", "size": "\(record.size)"]) }
         DispatchQueue.main.async {
-            self.model?.transfers = snapshot
-            if notify { self.model?.fileReceived(record) }
+            guard let m = self.model else { return }
+            m.transfers = snapshot
+            if notify { if isMedia { m.mediaReceived(record) } else { m.fileReceived(record) } }
         }
     }
 
