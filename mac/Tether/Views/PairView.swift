@@ -170,6 +170,7 @@ private struct CodeStage: View {
 
 /// Six digits that drop in one after another, grouped 3 + 3.
 struct SasCode: View {
+    private static let drop = Animation.spring(response: 0.5, dampingFraction: 0.7)
     var code: String
     @Environment(\.accessibilityReduceMotion) private var reduce
     @State private var revealed = false
@@ -187,7 +188,7 @@ struct SasCode: View {
                     .offset(y: revealed || reduce ? 0 : 14)
                     .opacity(revealed || reduce ? 1 : 0)
                     .blur(radius: revealed || reduce ? 0 : 5)
-                    .animation(reduce ? nil : .spring(response: 0.5, dampingFraction: 0.7).delay(Double(i) * 0.07), value: revealed)
+                    .animation(reduce ? nil : Self.drop.delay(Double(i) * 0.07), value: revealed)
                     .padding(.leading, i == 3 ? 10 : 0)
             }
         }

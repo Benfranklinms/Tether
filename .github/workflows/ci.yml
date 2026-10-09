@@ -113,7 +113,7 @@ jobs:
             MARKETING_VERSION="$TETHER_VERSION_NAME" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             build | tee xcodebuild.log | grep -E "error:|warning: .*Tether/|BUILD (SUCCEEDED|FAILED)" || true
-          test -d "$APP" || { grep -E "error:" -A3 xcodebuild.log | head -150; exit 1; }
+          test -x "$APP/Contents/MacOS/Tether" || { grep -E "error:" -A3 xcodebuild.log | head -150; exit 1; }
       - name: Ad-hoc sign
         run: |
           codesign --force --deep --sign - --timestamp=none "$APP"

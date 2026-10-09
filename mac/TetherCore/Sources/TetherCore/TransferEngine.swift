@@ -64,7 +64,10 @@ public struct TransferRecord: Codable, Equatable, Identifiable {
     public var progress: Double { size <= 0 ? 1 : min(1, max(0, Double(transferred) / Double(size))) }
 }
 
-public struct IntegrityError: Error { public let message: String }
+public struct IntegrityError: Error {
+    public let message: String
+    public init(message: String) { self.message = message }
+}
 
 public protocol OutgoingFiles: AnyObject {
     func read(_ record: TransferRecord, offset: Int64, length: Int) throws -> Data
