@@ -14,3 +14,4 @@ DerivedData/
 .swiftpm/
 /mac/Tether.xcodeproj/
 *.xcworkspace/xcuserdata/
+/mac/TetherCore/Package.resolved
