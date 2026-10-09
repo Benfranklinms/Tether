@@ -1,0 +1,414 @@
+import SwiftUI
+import TetherCore
+import UniformTypeIdentifiers
+
+/// The menu-bar popover: status, quick actions, notifications and transfers.
+struct MenuView: View {
+    @EnvironmentObject var m: AppModel
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduce
+    @State private var tab: Tab = .notifications
+    @State private var dropping = false
+    @Namespace private var ns
+
+    init(initialTab: Tab = .notifications) {
+        _tab = State(initialValue: initialTab)
+    }
+
+    enum Tab: String, CaseIterable { case notifications = "Notifications", transfers = "Transfers" }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            if m.peer == nil {
+                unpaired
+            } else {
+                actions
+                tabs
+                content
+            }
+            footer
+        }
+        .frame(width: 360)
+        .background(Mono.bg)
+        .preferredColorScheme(.dark)
+        .overlay(dropOverlay)
+        .overlay(alignment: .bottom) { noticeView }
+        .onDrop(of: [UTType.fileURL], isTargeted: $dropping, perform: drop)
+        .animation(Motion.spring(reduce), value: m.peer?.key)
+        .animation(Motion.spring(reduce), value: dropping)
+        .animation(Motion.spring(reduce), value: m.notice)
+    }
+
+    // MARK: header
+
+    private var statusTitle: String {
+        switch m.link {
+        case .connected(let name, _): return name
+        case .pairing(_, let name, _): return name
+        default: return m.peer?.name ?? "Tether"
+        }
+    }
+
+    private var statusLine: String {
+        switch m.link {
+        case .connected(_, let wifi): return wifi ? "Connected · Wi-Fi fast path" : "Connected over Bluetooth"
+        case .pairing: return "Pairing…"
+        case .handshaking: return "Connecting…"
+        case .offline:
+            switch m.bluetooth {
+            case .off: return "Bluetooth is off"
+            case .unauthorized: return "Allow Bluetooth in System Settings"
+            case .unsupported: return "This Mac has no Bluetooth LE"
+            default: return m.peer == nil ? "Not paired" : "Waiting for your phone"
+            }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                TetherMark(linked: m.isConnected, pulse: !m.isConnected && m.peer != nil, size: 44)
+                    .matchedGeometryEffect(id: "mark", in: ns)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(statusTitle).font(Typo.sans(17, .regular)).foregroundColor(Mono.text).lineLimit(1)
+                        .id(statusTitle)
+                        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                    Text(statusLine).font(Typo.sans(12)).foregroundColor(Mono.muted)
+                        .id(statusLine).transition(.opacity)
+                }
+                .animation(Motion.spring(reduce), value: statusLine)
+                Spacer()
+            }
+            if m.isConnected {
+                HStack(spacing: 6) {
+                    Chip(text: "Bluetooth", on: !m.onWifi)
+                    if m.onWifi { Chip(text: "Wi-Fi", on: true).transition(.scale(scale: 0.6).combined(with: .opacity)) }
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if let err = m.lastError {
+                Text(err).font(Typo.sans(12)).foregroundColor(Mono.text)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Mono.line))
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .padding(16)
+        .animation(Motion.spring(reduce), value: m.isConnected)
+        .animation(Motion.spring(reduce), value: m.onWifi)
+        .animation(Motion.spring(reduce), value: m.lastError)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(statusTitle). \(statusLine)")
+    }
+
+    private var unpaired: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Clipboard, notifications and files between your phone and this Mac. No cloud, no account.")
+                .font(Typo.sans(12)).foregroundColor(Mono.muted).fixedSize(horizontal: false, vertical: true)
+            MonoButton(title: "Pair a phone") { open("pair") }
+        }
+        .padding(.horizontal, 16).padding(.bottom, 16)
+        .transition(.opacity)
+    }
+
+    // MARK: actions
+
+    private var actions: some View {
+        HStack(spacing: 8) {
+            ActionTile(title: "Send clipboard", symbol: "doc.on.clipboard", enabled: m.isConnected) { m.sendClipboardNow() }
+            ActionTile(title: "Send file…", symbol: "arrow.up.doc") { m.chooseFiles() }
+            ActionTile(title: "Downloads", symbol: "folder") { m.openDownloads() }
+        }
+        .padding(.horizontal, 16).padding(.bottom, 12)
+    }
+
+    private var tabs: some View {
+        HStack(spacing: 18) {
+            ForEach(Tab.allCases, id: \.self) { t in
+                Button {
+                    withAnimation(Motion.spring(reduce)) { tab = t }
+                } label: {
+                    VStack(spacing: 6) {
+                        HStack(spacing: 5) {
+                            Text(t.rawValue).font(Typo.sans(12, tab == t ? .semibold : .regular))
+                            let count = t == .notifications ? m.history.items.count : activeTransfers
+                            if count > 0 {
+                                Text("\(count)").font(Typo.mono(10, .medium)).foregroundColor(Mono.muted)
+                                    .contentTransition(.numericText())
+                            }
+                        }
+                        .foregroundColor(tab == t ? Mono.text : Mono.muted)
+                        ZStack {
+                            Rectangle().fill(Color.clear).frame(height: 2)
+                            if tab == t { Capsule().fill(Mono.text).frame(height: 2).matchedGeometryEffect(id: "tab", in: ns) }
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(tab == t ? .isSelected : [])
+            }
+            Spacer()
+            if tab == .notifications && !m.history.items.isEmpty {
+                Button("Clear") { withAnimation(Motion.spring(reduce)) { m.clearHistory() } }
+                    .buttonStyle(.plain).font(Typo.sans(11)).foregroundColor(Mono.muted)
+            }
+        }
+        .padding(.horizontal, 16)
+        .overlay(alignment: .bottom) { Rectangle().fill(Mono.line).frame(height: 1) }
+    }
+
+    private var activeTransfers: Int { m.transfers.filter { !$0.status.isFinal }.count }
+
+    @ViewBuilder private var content: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                switch tab {
+                case .notifications:
+                    if m.history.items.isEmpty {
+                        empty("bell", "Your phone's notifications appear here.")
+                    }
+                    ForEach(m.history.items, id: \.key) { n in
+                        NotificationRow(n: n, privacy: m.settings.notifications.privacyMode) {
+                            withAnimation(Motion.spring(reduce)) { m.dismiss(n.key) }
+                        }
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
+                    }
+                case .transfers:
+                    if m.transfers.isEmpty {
+                        empty("arrow.up.arrow.down", "Drop files here to send them.\nFiles from your phone land in Downloads/Tether.")
+                    }
+                    ForEach(m.transfers, id: \.id) { t in
+                        TransferRow(t: t)
+                            .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
+                    }
+                }
+            }
+            .animation(Motion.spring(reduce), value: m.history.items.map(\.key))
+            .animation(Motion.spring(reduce), value: m.transfers.map(\.id))
+        }
+        .frame(height: 300)
+        .transition(.opacity)
+    }
+
+    private func empty(_ symbol: String, _ text: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: symbol).font(.system(size: 20, weight: .light)).foregroundColor(Mono.muted)
+            Text(text).font(Typo.sans(12)).foregroundColor(Mono.muted).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 60)
+    }
+
+    // MARK: footer
+
+    private var footer: some View {
+        HStack {
+            Button("Settings…") { open("settings") }.keyboardShortcut(",")
+            Spacer()
+            if m.peer != nil { Button("Pair…") { open("pair") } }
+            Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
+        }
+        .buttonStyle(.plain)
+        .font(Typo.sans(12))
+        .foregroundColor(Mono.muted)
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .overlay(alignment: .top) { Rectangle().fill(Mono.line).frame(height: 1) }
+    }
+
+    @ViewBuilder private var dropOverlay: some View {
+        if dropping {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Mono.text, style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+                .background(RoundedRectangle(cornerRadius: 14).fill(Mono.bg.opacity(0.85)))
+                .overlay(
+                    VStack(spacing: 8) {
+                        Image(systemName: "arrow.down.doc").font(.system(size: 26, weight: .light))
+                        Text(m.isConnected ? "Drop to send to your phone" : "Drop to send when your phone connects")
+                            .font(Typo.sans(13))
+                    }.foregroundColor(Mono.text)
+                )
+                .padding(8)
+                .transition(.scale(scale: 0.96).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder private var noticeView: some View {
+        if let n = m.notice {
+            Text(n).font(Typo.sans(12, .medium)).foregroundColor(Mono.bg)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Capsule().fill(Mono.accent))
+                .padding(.bottom, 52)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .accessibilityAddTraits(.updatesFrequently)
+        }
+    }
+
+    private func open(_ id: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: id)
+    }
+
+    private func drop(_ providers: [NSItemProvider]) -> Bool {
+        let group = DispatchGroup()
+        var urls: [URL] = []
+        let lock = NSLock()
+        for p in providers where p.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            group.enter()
+            p.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                defer { group.leave() }
+                guard let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                var isDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), !isDir.boolValue else { return }
+                lock.lock()
+                urls.append(url)
+                lock.unlock()
+            }
+        }
+        group.notify(queue: .main) {
+            m.sendFiles(urls)
+            withAnimation(Motion.spring(reduce)) { tab = .transfers }
+        }
+        return true
+    }
+}
+
+struct NotificationRow: View {
+    let n: MirroredNotification
+    let privacy: Bool
+    let onDismiss: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(String(n.app.prefix(1)).uppercased())
+                .font(Typo.sans(12, .semibold)).foregroundColor(Mono.muted)
+                .frame(width: 28, height: 28).background(RoundedRectangle(cornerRadius: 7).fill(Mono.surfaceHigh))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(n.app).font(Typo.sans(11)).foregroundColor(Mono.muted)
+                    Spacer()
+                    Text(relativeTime(n.ts)).font(Typo.sans(10)).foregroundColor(Mono.muted)
+                }
+                if privacy {
+                    Text("New notification").font(Typo.sans(13)).foregroundColor(Mono.text)
+                } else {
+                    if !n.title.isEmpty { Text(n.title).font(Typo.sans(13, .medium)).foregroundColor(Mono.text).lineLimit(1) }
+                    if !n.text.isEmpty { Text(n.text).font(Typo.sans(12)).foregroundColor(Mono.muted).lineLimit(3) }
+                }
+            }
+            Button(action: onDismiss) {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).foregroundColor(Mono.muted)
+                    .frame(width: 20, height: 20).background(Circle().fill(Mono.surfaceHigh))
+            }
+            .buttonStyle(PressStyle())
+            .opacity(hover ? 1 : 0)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(hover ? Mono.surface : Color.clear)
+        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: "Dismiss", onDismiss)
+    }
+}
+
+struct TransferRow: View {
+    @EnvironmentObject var m: AppModel
+    let t: TransferRecord
+    @Environment(\.accessibilityReduceMotion) private var reduce
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: t.direction == .OUT ? "arrow.up.right" : "arrow.down.left")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(t.status == .DONE ? Mono.text : Mono.muted)
+                .frame(width: 28, height: 28).background(RoundedRectangle(cornerRadius: 7).fill(Mono.surfaceHigh))
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(t.name).font(Typo.sans(13)).foregroundColor(Mono.text).lineLimit(1).truncationMode(.middle)
+                    if let via = t.via { Chip(text: via == .WIFI ? "Wi-Fi" : "BT", on: via == .WIFI && !t.status.isFinal) }
+                }
+                Text(status).font(Typo.sans(11)).foregroundColor(Mono.muted).lineLimit(1)
+                if !t.status.isFinal {
+                    FluidProgress(value: t.progress).frame(height: 3).transition(.opacity)
+                }
+            }
+            Spacer(minLength: 4)
+            actionButton
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .animation(Motion.spring(reduce), value: t.status)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(t.direction == .OUT ? "Sending" : "Receiving") \(t.name). \(status)")
+    }
+
+    @ViewBuilder private var actionButton: some View {
+        if !t.status.isFinal {
+            iconButton("xmark", "Cancel") { m.cancel(t.id) }
+        } else if t.status == .FAILED && t.direction == .OUT {
+            iconButton("arrow.clockwise", "Retry") { m.retry(t.id) }
+        } else if t.status == .DONE {
+            iconButton("magnifyingglass", "Show in Finder") { m.reveal(t) }
+        } else {
+            iconButton("trash", "Remove") { m.remove(t.id) }
+        }
+    }
+
+    private func iconButton(_ symbol: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 11)).foregroundColor(Mono.muted).frame(width: 24, height: 24)
+        }
+        .buttonStyle(PressStyle())
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
+    private var status: String {
+        switch t.status {
+        case .QUEUED: return "Queued · \(formatBytes(t.size))"
+        case .OFFERED: return "Starting…"
+        case .ACTIVE: return "\(formatBytes(t.transferred)) of \(formatBytes(t.size))"
+        case .WAITING: return t.error ?? "Paused · resumes when connected"
+        case .VERIFYING: return "Verifying…"
+        case .DONE: return (t.direction == .OUT ? "Sent · " : "Received · ") + formatBytes(t.size)
+        case .FAILED: return t.error ?? "Failed"
+        case .CANCELLED: return t.error ?? "Cancelled"
+        }
+    }
+}
+
+/// A progress bar whose fill chases each update on a critically-damped spring, so chunky
+/// acknowledgements read as smooth motion. Shows a moving sheen while active.
+struct FluidProgress: View {
+    var value: Double
+    @Environment(\.accessibilityReduceMotion) private var reduce
+    @State private var sheen = false
+
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Mono.line)
+                Capsule().fill(Mono.accent)
+                    .frame(width: max(3, g.size.width * value))
+                    .overlay(
+                        LinearGradient(colors: [.clear, .white.opacity(0.55), .clear], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 40)
+                            .offset(x: sheen ? g.size.width : -40)
+                            .opacity(reduce ? 0 : 1),
+                        alignment: .leading
+                    )
+                    .clipShape(Capsule())
+                    .animation(Motion.soft(reduce), value: value)
+            }
+        }
+        .onAppear {
+            guard !reduce else { return }
+            withAnimation(.linear(duration: 1.6).repeatForever(autoreverses: false)) { sheen = true }
+        }
+        .accessibilityValue("\(Int(value * 100)) percent")
+    }
+}

@@ -76,3 +76,120 @@ jobs:
           if git diff --cached --quiet; then echo "no changes"; exit 0; fi
           git commit -m "Update Android screenshots [skip ci]"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done
+
+  mac:
+    name: macOS
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mac
+    env:
+      APP: build/Build/Products/Release/Tether.app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          brew install xcodegen swiftlint
+          xcodebuild -version
+          swift --version
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-ci.${GITHUB_RUN_NUMBER}"; fi
+          echo "TETHER_VERSION_NAME=$v" >> "$GITHUB_ENV"
+      - name: SwiftLint
+        run: swiftlint lint --strict
+      - name: TetherCore tests
+        working-directory: mac/TetherCore
+        run: swift test
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build (universal, Release)
+        run: |
+          set -o pipefail
+          xcodebuild -project Tether.xcodeproj -scheme Tether -configuration Release -derivedDataPath build \
+            -destination 'generic/platform=macOS' \
+            ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+            MARKETING_VERSION="$TETHER_VERSION_NAME" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            build | tee xcodebuild.log | grep -E "error:|warning: .*Tether/|BUILD (SUCCEEDED|FAILED)" || true
+          test -d "$APP" || { grep -E "error:" -A3 xcodebuild.log | head -150; exit 1; }
+      - name: Ad-hoc sign
+        run: |
+          codesign --force --deep --sign - --timestamp=none "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          lipo -archs "$APP/Contents/MacOS/Tether"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
+      - name: Package zip + dmg
+        run: |
+          mkdir -p ../out dmg
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "../out/Tether-${TETHER_VERSION_NAME}.zip"
+          cp -R "$APP" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Tether" -srcfolder dmg -ov -format UDZO "../out/Tether-${TETHER_VERSION_NAME}.dmg"
+          ls -la ../out
+      - name: Screenshots (demo mode)
+        continue-on-error: true
+        run: |
+          mkdir -p ../docs/screenshots/mac
+          "$APP/Contents/MacOS/Tether" --screenshots "$PWD/../docs/screenshots/mac" &
+          pid=$!
+          for i in $(seq 1 120); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+          kill $pid 2>/dev/null || true
+          ls -la ../docs/screenshots/mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: |
+            out/*.zip
+            out/*.dmg
+            docs/screenshots/mac/*.png
+      - name: Logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-logs
+          path: mac/xcodebuild.log
+      - name: Commit screenshots
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/mac || true
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "Update macOS screenshots [skip ci]"
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done
+
+  release:
+    name: Release
+    needs: [android, mac]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          find dist -type f | sort
+          files=$(find dist -type f \( -name "Tether-$v.apk" -o -name "Tether-$v.dmg" -o -name "Tether-$v.zip" \))
+          test "$(echo "$files" | wc -l)" -eq 3 || { echo "expected 3 assets, got: $files"; exit 1; }
+          cat > notes.md <<NOTES
+          Tether $v: Android phone ↔ Mac clipboard, notifications and files over Bluetooth LE (+ Wi-Fi fast path), end-to-end encrypted with Noise XX.
+
+          - **Android**: \`Tether-$v.apk\` (Android 8.0+). Signed with the repo's committed key, see README.
+          - **macOS**: \`Tether-$v.dmg\` or \`Tether-$v.zip\` (macOS 13+, universal). Ad-hoc signed, not notarized: right-click → Open the first time, or run \`xattr -dr com.apple.quarantine /Applications/Tether.app\`.
+
+          Built by CI and not yet tested on real devices. See README → Limitations.
+          NOTES
+          sed -i 's/^          //' notes.md
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" $files --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" $files --title "Tether $v" --notes-file notes.md
+          fi
