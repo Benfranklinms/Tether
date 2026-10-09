@@ -152,6 +152,17 @@ jobs:
             CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             build | tee xcodebuild.log | grep -E "error:|warning: .*Tether/|BUILD (SUCCEEDED|FAILED)" || true
           test -x "$APP/Contents/MacOS/Tether" || { grep -E "error:" -A3 xcodebuild.log | head -150; exit 1; }
+      - name: Liquid Glass compiled in
+        run: |
+          sdk=$(xcrun --sdk macosx --show-sdk-version)
+          echo "macOS SDK $sdk"
+          if nm -u "$APP/Contents/MacOS/Tether" | grep -q glassEffect; then
+            echo "Liquid Glass APIs (glassEffect) are linked"
+          elif [ "${sdk%%.*}" -ge 26 ]; then
+            echo "SDK $sdk has Liquid Glass but the binary does not reference glassEffect"; exit 1
+          else
+            echo "SDK $sdk predates macOS 26: Liquid Glass is compiled out (material fallback only)"
+          fi
       - name: Ad-hoc sign
         run: |
           codesign --force --deep --sign - --timestamp=none "$APP"
