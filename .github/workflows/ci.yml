@@ -77,6 +77,44 @@ jobs:
           git commit -m "Update Android screenshots [skip ci]"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done
 
+  interop:
+    name: Interop (Kotlin ↔ Swift)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TETHER_CORE_ONLY: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Swift toolchain
+        run: |
+          if ! command -v swift >/dev/null; then
+            curl -fsSL https://download.swift.org/swift-6.0.3-release/ubuntu2404/swift-6.0.3-RELEASE/swift-6.0.3-RELEASE-ubuntu24.04.tar.gz | tar xz -C "$RUNNER_TEMP"
+            echo "$RUNNER_TEMP/swift-6.0.3-RELEASE-ubuntu24.04/usr/bin" >> "$GITHUB_PATH"
+          fi
+      - name: Build the Swift peer (real TetherCore)
+        working-directory: tools/interop
+        run: swift --version && swift build
+      - name: Kotlin phone core ↔ Swift Mac core
+        working-directory: android
+        run: |
+          export TETHER_SWIFT_PEER="$GITHUB_WORKSPACE/tools/interop/.build/debug/tether-peer"
+          ./gradlew --stacktrace :core:test --tests '*InteropTest*'
+          # Fail if the tests were skipped (peer not found) instead of silently passing.
+          f=core/build/test-results/test/TEST-dev.benfranklin.tether.core.InteropTest.xml
+          grep -o 'tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*" errors="[0-9]*"' "$f"
+          grep -q 'skipped="0" failures="0" errors="0"' "$f"
+      - name: Reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interop-reports
+          path: android/core/build/reports
+
   mac:
     name: macOS
     runs-on: macos-latest
@@ -163,7 +201,7 @@ jobs:
 
   release:
     name: Release
-    needs: [android, mac]
+    needs: [android, mac, interop]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

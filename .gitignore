@@ -15,3 +15,4 @@ DerivedData/
 /mac/Tether.xcodeproj/
 *.xcworkspace/xcuserdata/
 /mac/TetherCore/Package.resolved
+/tools/interop/Package.resolved
