@@ -1,0 +1,50 @@
+# SwiftLint defaults plus a few opt-ins. CI runs `swiftlint lint --strict` (warnings fail the build).
+included:
+  - Tether
+  - TetherCore/Sources
+  - TetherCore/Tests
+excluded:
+  - TetherCore/.build
+opt_in_rules:
+  - closure_spacing
+  - empty_count
+  - first_where
+  - modifier_order
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+  - unused_optional_binding
+  - vertical_whitespace_closing_braces
+line_length:
+  warning: 140
+  error: 160
+  ignores_comments: true
+identifier_name:
+  min_length: 1
+  max_length: 50
+type_name:
+  min_length: 2
+  max_length: 50
+function_body_length:
+  warning: 80
+  error: 120
+type_body_length:
+  warning: 400
+  error: 600
+file_length:
+  warning: 700
+  error: 900
+cyclomatic_complexity:
+  warning: 18
+  error: 25
+  ignores_case_statements: true
+large_tuple:
+  warning: 4
+nesting:
+  type_level: 2
+function_parameter_count:
+  warning: 8
+  error: 10
+disabled_rules:
+  - todo
+  - trailing_comma

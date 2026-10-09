@@ -85,7 +85,6 @@ public protocol TransferListener: AnyObject {
     func transferRemoved(_ id: String)
 }
 
-// swiftlint:disable:next type_body_length
 public final class TransferEngine {
     public static let defaultWindow = 4
     public static let wifiWindow = 16
@@ -420,11 +419,11 @@ public final class TransferEngine {
         r.transferred = have
         put(r, important: true)
         do {
-            let where_ = try incoming.finish(r)
+            let location = try incoming.finish(r)
             received[id] = nil
             r.status = .DONE
             r.transferred = r.size
-            r.ref = where_
+            r.ref = location
             r.error = nil
             put(r, important: true)
             tx(.fileComplete(id: id, ok: true, reason: nil))

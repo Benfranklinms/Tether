@@ -2,17 +2,21 @@
 complexity:
   LongParameterList:
     functionThreshold: 8
+    ignoreAnnotated: ['Composable']
     constructorThreshold: 10
     ignoreDefaultParameters: true
   TooManyFunctions:
+    thresholdInInterfaces: 16
     thresholdInClasses: 25
     thresholdInFiles: 30
     thresholdInObjects: 20
     ignorePrivate: true
   LongMethod:
     threshold: 80
+    ignoreAnnotated: ['Composable']
   CyclomaticComplexMethod:
     threshold: 18
+    ignoreAnnotated: ['Composable']
     ignoreSimpleWhenEntries: true
   ComplexCondition:
     threshold: 5

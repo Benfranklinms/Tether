@@ -258,7 +258,6 @@ public enum MessageCodec {
         }
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     private static func decodeTyped(_ type: UInt8, _ h: Data, _ body: Data) throws -> Message {
         func d<T: Decodable>(_ t: T.Type) throws -> T { try decoder.decode(t, from: h) }
         switch type {
@@ -272,7 +271,8 @@ public enum MessageCodec {
         case 0x30:
             guard body.count <= TetherProtocol.maxClipBytesWifi else { throw ProtocolError("clip too large") }
             let c = try d(ClipHeader.self)
-            return .clip(id: c.id, ts: c.ts, text: String(decoding: body, as: UTF8.self))
+            guard let text = String(bytes: body, encoding: .utf8) else { throw ProtocolError("clip is not UTF-8") }
+            return .clip(id: c.id, ts: c.ts, text: text)
         case 0x40: return .notif(try d(NotifPayload.self))
         case 0x41: return .notifRemoved(key: try d(KeyHeader.self).key)
         case 0x42: return .notifDismiss(key: try d(KeyHeader.self).key)

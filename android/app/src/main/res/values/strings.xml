@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tether</string>
+    <string name="share_target">Send to Mac</string>
+    <string name="tile_send_clip">Send clipboard</string>
+    <string name="channel_link">Connection</string>
+    <string name="channel_link_desc">Keeps the Bluetooth link to your Mac alive.</string>
+    <string name="channel_transfers">Transfers</string>
+    <string name="channel_transfers_desc">Files moving between your phone and Mac.</string>
+    <string name="channel_alerts">Alerts</string>
+    <string name="channel_alerts_desc">Pairing requests and problems that need you.</string>
+</resources>

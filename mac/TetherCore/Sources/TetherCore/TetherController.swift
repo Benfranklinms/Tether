@@ -53,7 +53,6 @@ public final class WifiBindGate {
     }
 }
 
-// swiftlint:disable:next type_body_length
 public final class TetherController {
     public static let defaultFragment = 20
     public static let handshakeTimeoutMs: Int64 = 15_000
@@ -285,7 +284,6 @@ public final class TetherController {
         }
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     fileprivate func handleCommon(_ s: Session, _ message: Message, _ channel: Channel) {
         switch message {
         case .ping(let t): try? s.send(.pong(t: t))
