@@ -205,7 +205,7 @@ struct PhotosPage: View {
     }
 
     private var skeleton: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: tile, maximum: tile), spacing: 4)], spacing: 4) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: tile, maximum: tile * 1.35), spacing: 4)], spacing: 4) {
             ForEach(0..<24, id: \.self) { _ in
                 Shimmer().aspectRatio(1, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 4))
             }
@@ -216,7 +216,7 @@ struct PhotosPage: View {
         let sections = PhotoSections.group(v5.library.items, zoom: v5.photoZoom, now: Date())
         let order = v5.library.items.map(\.id)
         return ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: tile, maximum: tile), spacing: 4)], spacing: 4,
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: tile, maximum: tile * 1.35), spacing: 4)], spacing: 4,
                       pinnedViews: [.sectionHeaders]) {
                 ForEach(Array(sections.enumerated()), id: \.element.title) { si, section in
                     Section {
@@ -588,9 +588,10 @@ struct PhoneFileCell: View {
                 .overlay(alignment: .bottomTrailing) {
                     if entry.isVideo { Image(systemName: "play.fill").font(.system(size: 9)).foregroundColor(.white).padding(6) }
                 }
-            Text(entry.name).font(Typo.sans(11)).foregroundColor(Mono.text).lineLimit(2).multilineTextAlignment(.center)
-                .truncationMode(.middle)
-                .frame(height: 30, alignment: .top)
+            // One line, shortened in the middle (keeps the extension), never broken mid-word.
+            Text(entry.name).font(Typo.sans(11)).foregroundColor(Mono.text).lineLimit(1).truncationMode(.middle)
+                .frame(maxWidth: .infinity)
+                .help(entry.name)
         }
         .padding(6)
         .background(RoundedRectangle(cornerRadius: 12).fill(hover ? Mono.surfaceHigh.opacity(0.6) : .clear))

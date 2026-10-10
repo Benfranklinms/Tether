@@ -46,6 +46,8 @@ struct MonoSegmented<T: Hashable>: View {
                 } label: {
                     Text(label(option))
                         .font(mono ? Typo.mono(11, .medium) : Typo.sans(11, on ? .semibold : .medium))
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundColor(on ? Mono.bg : Mono.muted)
                         .padding(.horizontal, 10)
                         .frame(minHeight: 22)
