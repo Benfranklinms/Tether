@@ -9,9 +9,11 @@
   <img src="docs/screenshots/mac/messages.png" width="440" alt="Messages on the Mac: the phone's SMS conversations with dual-SIM reply">
 </p>
 
-**Download v0.4.0:** [Mac (.dmg)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.0/Tether-0.4.0.dmg) · [Mac (.zip)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.0/Tether-0.4.0.zip) · [Android (.apk)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.0/Tether-0.4.0.apk) · [all releases](https://github.com/Benfranklinms/Tether/releases)
+**Download v0.4.1:** [Mac (.dmg)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.1/Tether-0.4.1.dmg) · [Mac (.zip)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.1/Tether-0.4.1.zip) · [Android (.apk)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.1/Tether-0.4.1.apk) · [all releases](https://github.com/Benfranklinms/Tether/releases)
 
 macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
+
+**New in 0.4.1 (Mac):** **Panel only** — keep phone alerts, texts and calls in the panel with no Mac banners (tap **Panel only** on the notifications-off message, or Settings › Notifications).
 
 **New in 0.4.0 (update both devices):** **calling from the Mac** — a dial pad and contact search in the panel, recent calls with call back and a missed-call badge, a **Call** button in Messages, phone-number links anywhere on the Mac (tel:), a SIM picker on dual-SIM phones, **Answer** (optionally straight onto the phone's speaker), Decline and Silence for incoming calls, and a live call card with a timer, **End**, **Speaker** and **Mute** where your phone allows them. Call audio stays on the phone or its earbuds (Android can't send phone-call audio to a computer). A **tidier panel**: collapse the player to one compact row, and keep three pinned actions with the rest under **More** (choose and order them in Settings). On **Android 15+**, Tether now notices when Android hides one-time codes ("Sensitive notification content hidden") and walks you through the one-time fix.
 
@@ -46,7 +48,7 @@ macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 
 ### Mac
 
-1. Download `Tether-0.4.0.dmg` (or the `.zip`), open it and drag **Tether** to **Applications**.
+1. Download `Tether-0.4.1.dmg` (or the `.zip`), open it and drag **Tether** to **Applications**.
 2. Tether is **ad-hoc signed and not notarized** (no paid Apple Developer account), so the first open is blocked:
    - **Right-click** Tether in Applications → **Open** → **Open**.
    - macOS 15 Sequoia and later: open it once, then **System Settings › Privacy & Security** → **Open Anyway**.
@@ -58,7 +60,7 @@ Liquid Glass needs **macOS 26 Tahoe**. On older macOS the Liquid Glass option us
 
 ### Android
 
-1. Download `Tether-0.4.0.apk` on the phone and open it. Allow *Install unknown apps* for your browser or file manager.
+1. Download `Tether-0.4.1.apk` on the phone and open it. Allow *Install unknown apps* for your browser or file manager.
 2. **Play Protect** may warn about an app from an unknown developer: tap **More details → Install anyway**. Tether has no internet servers; the APK is built in public CI from this repository.
 3. Open Tether and follow the setup. Updating from any earlier version installs over it (same signing key) and keeps the pairing.
 4. **Allow restricted settings** (Android 13+, sideloaded apps): before Android lets you turn on **Notification access** or **Accessibility**, or grant **SMS** and **Call logs / Phone** permissions to Tether (they appear greyed out or the request is silently refused), go to **Settings › Apps › Tether › ⋮ (top right) › Allow restricted settings**, confirm, then grant them. You only do this once. On Android 15 some phones ask again per permission group.

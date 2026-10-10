@@ -161,7 +161,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Settings › Notifications › Panel only (0.4.1): alerts live in the panel, no Mac banners.
-    static var panelOnly: Bool { UserDefaults.standard.bool(forKey: "panelOnlyAlerts") }
+    static var panelOnly: Bool { PanelOnlyAlerts.isOn() }
 
     func post(key: String, threadId: String, title: String, subtitle: String?, body: String, banner: Bool, sound: Bool,
               actions: [NotifActionInfo] = []) {
@@ -236,6 +236,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func postSms(id: String, thread: Int64, title: String, body: String, sound: Bool) {
+        guard !Self.panelOnly else { return }
         let c = UNMutableNotificationContent()
         c.title = title
         c.body = body

@@ -5,6 +5,14 @@
 
 import Foundation
 
+/// Settings › Notifications › Panel only (0.4.1): phone alerts, texts and calls stay in the panel and the
+/// Mac posts no banners. Stored in UserDefaults so the app's `@AppStorage` toggles and `Notifier` agree.
+public enum PanelOnlyAlerts {
+    public static let key = "panelOnlyAlerts"
+
+    public static func isOn(_ defaults: UserDefaults = .standard) -> Bool { defaults.bool(forKey: key) }
+}
+
 public enum MacAppVisibility: String, Codable, CaseIterable { case show, hide }
 public enum MacAppDelivery: String, Codable, CaseIterable { case banner, silent }
 
