@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -165,12 +166,21 @@ interface More5Actions {
     fun update(change: (AppSettings) -> AppSettings)
     fun openSetup()
     fun updateAction()
+    /** Saves the GitHub update token (Keystore-encrypted); false when it doesn't look like one. */
+    fun saveToken(token: String): Boolean = false
+    fun removeToken() = Unit
+    fun openTokenPage() = Unit
 }
 
 /** Settings for everything 0.5 added on the phone. */
 @Composable
-fun More5Screen(s: AppSettings, setup: String, upd: UpdateUi, version: String, a: More5Actions, onBack: () -> Unit) {
+fun More5Screen(
+    s: AppSettings, setup: String, upd: UpdateUi, version: String, a: More5Actions, onBack: () -> Unit,
+    hasToken: Boolean = false,
+) {
     var feed by rememberSaveable { mutableStateOf(s.updateFeed.orEmpty()) }
+    var token by remember { mutableStateOf("") }
+    var tokenSaved by remember(hasToken) { mutableStateOf(hasToken) }
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Continue, files & updates", onBack) }) { pad ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding(), bottom = 40.dp)) {
             item { SectionHeader("Setup") }
@@ -253,10 +263,42 @@ fun More5Screen(s: AppSettings, setup: String, upd: UpdateUi, version: String, a
                         upd.action?.let { label ->
                             TextButton(onClick = a::updateAction) { Text(label, color = Mono.Text) }
                         }
+                        if (tokenSaved) {
+                            Text("GitHub token saved (encrypted on this phone)", style = MaterialTheme.typography.bodySmall, color = Mono.Text)
+                            TextButton(onClick = {
+                                a.removeToken()
+                                tokenSaved = false
+                            }) { Text("Remove token", color = Mono.Text) }
+                        } else {
+                            Text(
+                                "Add a GitHub token to check for updates. Create a fine-grained token with access to only the " +
+                                    "Tether repository and Contents: Read-only, then paste it here once.",
+                                style = MaterialTheme.typography.bodySmall, color = Mono.Muted,
+                            )
+                            OutlinedTextField(
+                                value = token, onValueChange = { token = it }, singleLine = true,
+                                label = { Text("GitHub token") },
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Mono.Text, unfocusedBorderColor = Mono.Line, cursorColor = Mono.Text,
+                                    focusedLabelColor = Mono.Text, unfocusedLabelColor = Mono.Muted,
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Row {
+                                TextButton(onClick = {
+                                    if (a.saveToken(token)) {
+                                        tokenSaved = true
+                                        token = ""
+                                    }
+                                }) { Text("Save token", color = Mono.Text) }
+                                TextButton(onClick = a::openTokenPage) { Text("Create a token on GitHub", color = Mono.Text) }
+                            }
+                        }
                         OutlinedTextField(
                             value = feed, onValueChange = { feed = it }, singleLine = true,
                             label = { Text("Update feed (https)") },
-                            placeholder = { Text("Default public feed", fontFamily = FontFamily.Default) },
+                            placeholder = { Text("Optional: custom public feed", fontFamily = FontFamily.Default) },
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Mono.Text, unfocusedBorderColor = Mono.Line, cursorColor = Mono.Text,
                                 focusedLabelColor = Mono.Text, unfocusedLabelColor = Mono.Muted,
@@ -284,4 +326,6 @@ fun updateUi(state: dev.benfranklin.tether.v5.Updater.State): UpdateUi = when (s
         UpdateUi("Downloading ${state.info.version}… ${(state.progress * 100).toInt()}%", null, state.progress)
     is dev.benfranklin.tether.v5.Updater.State.Installing -> UpdateUi("Installing ${state.info.version}… confirm on screen", null)
     is dev.benfranklin.tether.v5.Updater.State.Failed -> UpdateUi(state.reason, "Try again")
+    dev.benfranklin.tether.v5.Updater.State.NeedsToken ->
+        UpdateUi(dev.benfranklin.tether.core.features.GitHubReleases.NO_TOKEN_MESSAGE, "Create a token on GitHub")
 }

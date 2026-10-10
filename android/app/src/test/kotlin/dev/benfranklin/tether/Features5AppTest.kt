@@ -49,6 +49,8 @@ class Features5AppTest {
         assertEquals(0.5f, updateUi(Updater.State.Downloading(info, 0.5f)).progress)
         assertTrue(updateUi(Updater.State.Downloading(info, 0.5f)).line.contains("50%"))
         assertEquals("Try again", updateUi(Updater.State.Failed("x")).action)
+        assertEquals("Add a GitHub token to check for updates", updateUi(Updater.State.NeedsToken).line)
+        assertEquals("Create a token on GitHub", updateUi(Updater.State.NeedsToken).action)
         assertTrue(updateUi(Updater.State.UpToDate("0.5.0")).line.contains("0.5.0"))
     }
 }

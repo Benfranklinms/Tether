@@ -274,4 +274,33 @@ class Features5LogicTest {
         assertNull(UpdateFeed.parse("""{"tag_name":"v9","prerelease":true,"assets":[]}"""))
         assertNull(UpdateFeed.parse("""{"message":"Not Found","documentation_url":"https://docs.github.com"}"""))
     }
+
+    @Test
+    fun privateReleasesAuthPolicyAndAssetUrls() {
+        val gh = """
+            {"tag_name":"v0.5.0","assets":[
+             {"name":"Tether-0.5.0.apk","url":"https://api.github.com/repos/Benfranklinms/Tether/releases/assets/7",
+              "browser_download_url":"https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.apk",
+              "size":10,"digest":"sha256:ABCD"},
+             {"name":"Tether-0.5.0.zip","url":"https://evil.example/repos/Benfranklinms/Tether/releases/assets/8",
+              "browser_download_url":"https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.zip","size":5}]}
+        """.trimIndent()
+        val u = dev.benfranklin.tether.core.features.UpdateFeed.parse(gh)!!
+        assertEquals("https://api.github.com/repos/Benfranklinms/Tether/releases/assets/7", u.android?.apiUrl)
+        assertEquals("abcd", u.android?.sha256)
+        assertEquals(null, u.macZip?.apiUrl)
+        val g = dev.benfranklin.tether.core.features.GitHubReleases
+        assertEquals("Bearer github_pat_x", g.headers(g.LATEST_URL, "github_pat_x", false)["Authorization"])
+        assertEquals(null, g.headers("https://objects.githubusercontent.com/a", "github_pat_x", true)["Authorization"])
+        assertEquals("application/octet-stream", g.headers("https://api.github.com/x", null, true)["Accept"])
+        assertEquals(null, g.headers("http://api.github.com/x", "t", false)["Authorization"])
+        assertEquals(null, g.headers("https://api.github.com.evil.example/x", "t", false)["Authorization"])
+        assertEquals(false, g.redirectKeepsAuth("https://objects.githubusercontent.com/x"))
+        assertEquals(true, g.redirectKeepsAuth("https://api.github.com/repos/x"))
+        assertEquals(true, g.looksLikeToken("github_pat_11ABCDEFG0123456789_abcdefghijklmnop"))
+        assertEquals(true, g.looksLikeToken("  ghp_0123456789abcdefghijABCDEFGHIJ0123 "))
+        assertEquals(false, g.looksLikeToken("hello world token value 123"))
+        assertEquals(false, g.looksLikeToken("ghp_short"))
+        assertEquals(false, g.redact("github_pat_secret").contains("secret"))
+    }
 }

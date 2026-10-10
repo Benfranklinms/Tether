@@ -219,6 +219,8 @@ object Versions {
     val versionCode: Long = 0,
     /** APK signer certificate SHA-256 (hex), so the phone can refuse a differently signed build. */
     val cert: String? = null,
+    /** GitHub asset API URL (private repo: fetched with the token and Accept: application/octet-stream). */
+    val apiUrl: String? = null,
 )
 
 /** What an update check found. */
@@ -283,7 +285,10 @@ object UpdateFeed {
             val a = assets.firstOrNull { it["name"]?.jsonPrimitive?.contentOrNull?.endsWith(suffix, true) == true } ?: return null
             val url = a["browser_download_url"]?.jsonPrimitive?.contentOrNull ?: return null
             val digest = a["digest"]?.jsonPrimitive?.contentOrNull?.takeIf { it.startsWith("sha256:") }?.removePrefix("sha256:")
-            return UpdateAsset(url, digest?.lowercase(), a["size"]?.jsonPrimitive?.longOrNull ?: 0)
+            return UpdateAsset(
+                url, digest?.lowercase(), a["size"]?.jsonPrimitive?.longOrNull ?: 0,
+                apiUrl = GitHubReleases.apiAsset(a["url"]?.jsonPrimitive?.contentOrNull),
+            )
         }
         UpdateInfo(
             version = tag.removePrefix("v"),
@@ -298,4 +303,65 @@ object UpdateFeed {
 
     /** Either format, sniffed. */
     fun parse(text: String): UpdateInfo? = if (text.contains("\"tag_name\"")) parseGitHub(text) else parseFeed(text)
+}
+
+/**
+ * Updates from the private Benfranklinms/Tether repository: a fine-grained, read-only token
+ * (Contents + Metadata, this repository only), pasted once per device. The token is sent only to
+ * api.github.com over HTTPS; a redirect to the asset CDN is followed WITHOUT it.
+ */
+object GitHubReleases {
+    const val OWNER = "Benfranklinms"
+    const val REPO = "Tether"
+    const val API_HOST = "api.github.com"
+    const val LATEST_URL = "https://api.github.com/repos/$OWNER/$REPO/releases/latest"
+    const val NEW_TOKEN_URL = "https://github.com/settings/personal-access-tokens/new" +
+        "?name=Tether%20updates&description=Read-only%20updates%20for%20Tether&target_name=$OWNER"
+    const val NO_TOKEN_MESSAGE = "Add a GitHub token to check for updates"
+    private const val MIN_TOKEN = 20
+    private const val MAX_TOKEN = 255
+
+    private fun parts(url: String?): Pair<String, String>? {
+        if (url == null || !url.startsWith("https://")) return null
+        val rest = url.removePrefix("https://")
+        val slash = rest.indexOf('/')
+        val host = (if (slash < 0) rest else rest.substring(0, slash)).substringBefore(':').lowercase()
+        val path = if (slash < 0) "/" else rest.substring(slash)
+        return host to path
+    }
+
+    /** Only asset URLs on api.github.com for this repository are accepted. */
+    fun apiAsset(url: String?): String? {
+        val (host, path) = parts(url) ?: return null
+        return url.takeIf { host == API_HOST && path.startsWith("/repos/$OWNER/$REPO/releases/assets/") }
+    }
+
+    fun mayAuthorize(url: String?): Boolean = parts(url)?.first == API_HOST
+
+    /** Redirect policy: Authorization survives only a redirect that stays on api.github.com. */
+    fun redirectKeepsAuth(to: String?): Boolean = mayAuthorize(to)
+
+    fun headers(url: String, token: String?, binary: Boolean): Map<String, String> = buildMap {
+        put("Accept", if (binary) "application/octet-stream" else "application/vnd.github+json")
+        put("X-GitHub-Api-Version", "2022-11-28")
+        if (!token.isNullOrEmpty() && mayAuthorize(url)) put("Authorization", "Bearer $token")
+    }
+
+    fun looksLikeToken(s: String): Boolean {
+        val t = s.trim()
+        if (t.length !in MIN_TOKEN..MAX_TOKEN || t.any { it.isWhitespace() }) return false
+        return t.startsWith("github_pat_") || t.startsWith("ghp_")
+    }
+
+    /** For logs and UI: never the token itself. */
+    fun redact(s: String?): String = if (s.isNullOrEmpty()) "none" else "set (${s.length} chars)"
+
+    @Suppress("MagicNumber")
+    fun explain(status: Int): String = when (status) {
+        200 -> "OK"
+        401 -> "The GitHub token was rejected. Paste a new one."
+        403 -> "The GitHub token can't read Tether (needs Contents: Read-only on Benfranklinms/Tether), or rate limited."
+        404 -> "No release found, or the token can't see the Tether repo."
+        else -> "GitHub answered $status."
+    }
 }

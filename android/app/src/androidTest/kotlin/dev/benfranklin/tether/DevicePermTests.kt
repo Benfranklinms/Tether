@@ -123,12 +123,11 @@ class DevicePermTests {
 
     @Test
     fun specialAccessRowsReflectAppOps() {
-        sh("appops set $pkg SYSTEM_ALERT_WINDOW allow")
+        // Changing these app ops kills the app process (Android restarts apps when "Install
+        // unknown apps" / "Display over other apps" change), so the driver (emulator-tests.sh
+        // perm_tests) allows both before this process starts; here we check the rows see them.
         assertTrue(waitFor(5_000) { row("overlay").ok })
-        sh("appops set $pkg SYSTEM_ALERT_WINDOW default")
-        sh("appops set $pkg REQUEST_INSTALL_PACKAGES allow")
         assertTrue(waitFor(5_000) { row("install").ok })
-        sh("appops set $pkg REQUEST_INSTALL_PACKAGES default")
         // DND access is granted with cmd notification.
         sh("cmd notification allow_dnd $pkg")
         assertTrue(waitFor(5_000) { row("dnd").ok })

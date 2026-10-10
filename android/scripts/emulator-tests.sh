@@ -162,6 +162,9 @@ clip_auto_tests() {
 perm_tests() {
   local pkg=in.benfranklin.tether.debug out
   adb shell appops set "$pkg" MANAGE_EXTERNAL_STORAGE allow || { echo "::error::perm tests: appops MANAGE_EXTERNAL_STORAGE failed"; return 1; }
+  # These app-op changes kill the process too: set them before instrumentation starts.
+  adb shell appops set "$pkg" SYSTEM_ALERT_WINDOW allow || { echo "::error::perm tests: appops SYSTEM_ALERT_WINDOW failed"; return 1; }
+  adb shell appops set "$pkg" REQUEST_INSTALL_PACKAGES allow || { echo "::error::perm tests: appops REQUEST_INSTALL_PACKAGES failed"; return 1; }
   adb shell am force-stop "$pkg"
   echo "driver: appops MANAGE_EXTERNAL_STORAGE = $(adb shell appops get "$pkg" MANAGE_EXTERNAL_STORAGE | tr -d '\r')"
   out=$(adb shell am instrument -w -r -e class dev.benfranklin.tether.DevicePermTests \

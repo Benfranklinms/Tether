@@ -11,6 +11,7 @@ import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
 import dev.benfranklin.tether.BuildConfig
+import dev.benfranklin.tether.core.features.GitHubReleases
 import dev.benfranklin.tether.core.features.UpdateFeed
 import dev.benfranklin.tether.core.features.UpdateInfo
 import dev.benfranklin.tether.core.features.Versions
@@ -26,8 +27,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * In-app updates. Checks a feed (Tether's tether-update.json, or the GitHub Releases API when
- * the repository is public), downloads the APK over HTTPS, verifies its SHA-256 (when the
+ * In-app updates. Default source: the private Benfranklinms/Tether GitHub releases, read with a
+ * fine-grained read-only token kept in [TokenStore] (Keystore-encrypted). Optional alternative: a
+ * custom public https feed (tether-update.json). Downloads the APK over HTTPS, verifies its SHA-256 (when the
  * source provides one), its package name, that it is newer, and that it is signed with the
  * same certificate as the installed app, then hands it to Android's package installer
  * (REQUEST_INSTALL_PACKAGES; Android asks the user to confirm).
@@ -41,17 +43,20 @@ class Updater(private val context: Context) {
         data class Downloading(val info: UpdateInfo, val progress: Float) : State
         data class Installing(val info: UpdateInfo) : State
         data class Failed(val reason: String) : State
+        /** No token saved and no custom feed: "Add a GitHub token to check for updates". */
+        data object NeedsToken : State
     }
 
     private val state = MutableStateFlow<State>(State.Idle)
     val status: StateFlow<State> = state.asStateFlow()
 
-    /** Sources tried in order. */
-    fun sources(custom: String?): List<String> = listOfNotNull(
-        custom?.trim()?.takeIf { it.startsWith("https://") },
-        DEFAULT_FEED,
-        GITHUB_API,
-    ).distinct()
+    /** The source: a custom https feed when set, else the private releases API. */
+    fun sources(custom: String?): List<String> =
+        listOf(custom?.trim()?.takeIf { it.startsWith("https://") } ?: GitHubReleases.LATEST_URL)
+
+    /** Token for api.github.com requests (never with a custom feed). */
+    private fun token(custom: String?): String? =
+        if (custom?.trim()?.startsWith("https://") == true) null else TokenStore.read(context)
 
     fun check(custom: String?, done: ((State) -> Unit)? = null) {
         if (state.value is State.Checking || state.value is State.Downloading) return
@@ -65,10 +70,13 @@ class Updater(private val context: Context) {
     }
 
     private fun runCheck(custom: String?): State {
+        val customFeed = custom?.trim()?.startsWith("https://") == true
+        val token = token(custom)
+        if (!customFeed && token == null) return State.NeedsToken
         val errors = ArrayList<String>()
         for (src in sources(custom)) {
             try {
-                val text = get(src)
+                val text = get(src, token)
                 val info = UpdateFeed.parse(text) ?: run {
                     errors += "${host(src)}: not an update feed"
                     null
@@ -82,21 +90,20 @@ class Updater(private val context: Context) {
                 errors += "${host(src)}: ${e.message ?: "unreachable"}"
             }
         }
-        return State.Failed(
-            "No update source answered. " + errors.joinToString("; ").take(MAX_REASON) +
-                ". The repository is private: set up the public feed (README › Updates).",
-        )
+        return State.Failed(errors.joinToString("; ").take(MAX_REASON).ifEmpty { "No update source answered" })
     }
 
-    fun download(info: UpdateInfo) {
+    fun download(info: UpdateInfo, custom: String? = null) {
         val asset = info.android ?: return
+        val token = token(custom)
+        val url = asset.apiUrl?.takeIf { token != null } ?: asset.url
         state.value = State.Downloading(info, 0f)
         Thread({
             try {
                 val dir = File(context.cacheDir, "updates").apply { mkdirs() }
                 dir.listFiles()?.forEach { it.delete() }
                 val apk = File(dir, "Tether-${info.version}.apk")
-                val sha = fetch(asset.url, apk) { p -> state.value = State.Downloading(info, p) }
+                val sha = fetch(url, token, apk) { p -> state.value = State.Downloading(info, p) }
                 asset.sha256?.let { if (!it.equals(sha, ignoreCase = true)) throw IOException("checksum mismatch") }
                 verifyArchive(apk, asset.versionCode)
                 state.value = State.Installing(info)
@@ -161,22 +168,22 @@ class Updater(private val context: Context) {
         state.value = State.Failed(reason)
     }
 
-    private fun get(url: String): String {
-        val c = open(url)
+    private fun get(url: String, token: String?): String {
+        val c = open(url, token, binary = false)
         try {
             val code = c.responseCode
-            if (code != HttpURLConnection.HTTP_OK) throw IOException("HTTP $code")
+            if (code != HttpURLConnection.HTTP_OK) throw IOException(GitHubReleases.explain(code))
             return c.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
         } finally {
             c.disconnect()
         }
     }
 
-    private fun fetch(url: String, to: File, progress: (Float) -> Unit): String {
-        val c = open(url)
+    private fun fetch(url: String, token: String?, to: File, progress: (Float) -> Unit): String {
+        val c = open(url, token, binary = true)
         val md = MessageDigest.getInstance("SHA-256")
         try {
-            if (c.responseCode != HttpURLConnection.HTTP_OK) throw IOException("HTTP ${c.responseCode}")
+            if (c.responseCode != HttpURLConnection.HTTP_OK) throw IOException(GitHubReleases.explain(c.responseCode))
             val total = c.contentLengthLong
             var done = 0L
             c.inputStream.use { input ->
@@ -199,22 +206,36 @@ class Updater(private val context: Context) {
         return Hex.encode(md.digest())
     }
 
-    private fun open(url: String): HttpURLConnection {
-        if (!url.startsWith("https://")) throw IOException("refusing a non-HTTPS URL")
-        return (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = TIMEOUT_MS
-            readTimeout = TIMEOUT_MS
-            instanceFollowRedirects = true
-            setRequestProperty("Accept", "application/vnd.github+json, application/json, application/octet-stream")
-            setRequestProperty("User-Agent", "Tether-Android/${BuildConfig.VERSION_NAME}")
+    /**
+     * Opens [url], following redirects by hand: the Authorization header goes only to
+     * api.github.com (GitHubReleases.headers), so the asset CDN never sees the token.
+     */
+    private fun open(url: String, token: String?, binary: Boolean): HttpURLConnection {
+        var current = url
+        repeat(MAX_REDIRECTS) {
+            if (!current.startsWith("https://")) throw IOException("refusing a non-HTTPS URL")
+            val c = (URL(current).openConnection() as HttpURLConnection).apply {
+                connectTimeout = TIMEOUT_MS
+                readTimeout = TIMEOUT_MS
+                instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "Tether-Android/${BuildConfig.VERSION_NAME}")
+                GitHubReleases.headers(current, token, binary).forEach { (k, v) -> setRequestProperty(k, v) }
+            }
+            val code = c.responseCode
+            if (code !in REDIRECTS) return c
+            val next = c.getHeaderField("Location")
+            c.disconnect()
+            current = URL(URL(current), next ?: throw IOException("redirect without a location")).toString()
         }
+        throw IOException("too many redirects")
     }
 
     private fun host(u: String) = runCatching { URL(u).host }.getOrDefault(u)
 
     companion object {
-        const val DEFAULT_FEED = "https://raw.githubusercontent.com/Benfranklinms/Tether-releases/main/tether-update.json"
-        const val GITHUB_API = "https://api.github.com/repos/Benfranklinms/Tether/releases/latest"
+        const val GITHUB_API = GitHubReleases.LATEST_URL
+        private const val MAX_REDIRECTS = 5
+        private val REDIRECTS = setOf(301, 302, 303, 307, 308)
         private const val TIMEOUT_MS = 15_000
         private const val BUF = 64 * 1024
         private const val MAX_APK = 200L * 1024 * 1024

@@ -347,6 +347,7 @@ private fun TetherApp(rt: TetherRuntime) {
                 apps = rows,
                 onSet = { pkg, rule -> rt.settings.update { it.copy(notifications = it.notifications.withRule(pkg, rule)) } },
                 onBack = { nav.popBackStack() },
+                hasToken = remember(permsTick) { dev.benfranklin.tether.v5.TokenStore.has(ctx) },
             )
         }
         composable("keywords") {
@@ -381,13 +382,34 @@ private fun TetherApp(rt: TetherRuntime) {
                         when (val st = upd) {
                             is dev.benfranklin.tether.v5.Updater.State.Available -> {
                                 if (dev.benfranklin.tether.v5.Setup.canInstall(ctx)) {
-                                    rt.updater.download(st.info)
+                                    rt.updater.download(st.info, settings.updateFeed)
                                 } else {
                                     fixSetup(ctx, "install") {}
                                 }
                             }
+                            dev.benfranklin.tether.v5.Updater.State.NeedsToken -> openTokenPage()
                             else -> rt.updater.check(settings.updateFeed)
                         }
+                    }
+                    override fun saveToken(token: String): Boolean {
+                        val ok = dev.benfranklin.tether.v5.TokenStore.save(ctx, token)
+                        android.widget.Toast.makeText(ctx, if (ok) "Token saved" else "That doesn't look like a GitHub token",
+                            android.widget.Toast.LENGTH_SHORT).show()
+                        if (ok) {
+                            rt.permissionsChanged()
+                            rt.updater.check(settings.updateFeed)
+                        }
+                        return ok
+                    }
+                    override fun removeToken() {
+                        dev.benfranklin.tether.v5.TokenStore.clear(ctx)
+                        rt.permissionsChanged()
+                    }
+                    override fun openTokenPage() {
+                        ctx.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(dev.benfranklin.tether.core.features.GitHubReleases.NEW_TOKEN_URL))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
                     }
                 },
                 onBack = { nav.popBackStack() },

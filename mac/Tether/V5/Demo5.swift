@@ -27,10 +27,14 @@ enum Demo5 {
         ], total: 5)
         v.thumbs[m.thumbKey(root: FsRoots.downloads, path: "IMG-20261009-WA0004.jpg")] = image(0.6)
         v.thumbs[m.thumbKey(root: FsRoots.downloads, path: "screen-recording.mp4")] = image(0.25)
-        v.library = PhoneLibrary(items: (0..<18).map { i in
-            PhotoItem(id: "\(1000 + i)", name: "IMG_\(1000 + i).jpg", size: 2_000_000, date: t - Int64(i) * 3_600_000,
-                      w: 3000, h: 4000, mime: i % 7 == 3 ? "video/mp4" : "image/jpeg", video: i % 7 == 3)
-        }, more: true)
+        var photos: [PhotoItem] = []
+        for i in 0..<18 {
+            let video = i % 7 == 3
+            let date: Int64 = t - Int64(i) * 3_600_000
+            photos.append(PhotoItem(id: "\(1000 + i)", name: "IMG_\(1000 + i).jpg", size: 2_000_000, date: date,
+                                    w: 3000, h: 4000, mime: video ? "video/mp4" : "image/jpeg", video: video))
+        }
+        v.library = PhoneLibrary(items: photos, more: true)
         for i in 0..<18 { v.thumbs[m.thumbKey(root: FsRoots.photos, path: "\(1000 + i)")] = image(0.2 + Double(i % 6) * 0.12) }
         let clips: [ClipItem] = [
             ClipItem(kind: .text, text: "482913", direction: .fromPhone, ts: t - 20_000, hash: "a"),
