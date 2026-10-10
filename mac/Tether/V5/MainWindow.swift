@@ -77,9 +77,8 @@ struct MainWindowView: View {
     @ViewBuilder private func badge(_ p: MainPage) -> some View {
         switch p {
         case .notifications where !m.history.items.isEmpty: Chip(text: "\(m.history.items.count)")
-        case .messages where m.sms.threads.contains { $0.unread > 0 }:
-            Chip(text: "\(m.sms.threads.filter { $0.unread > 0 }.count)", on: true)
-        case .calls where !m.calls.liveMissed.isEmpty: Chip(text: "\(m.calls.liveMissed.count)", on: true)
+        case .messages where m.sms.threads.contains { $0.unread > 0 }: Badge(count: m.sms.threads.filter { $0.unread > 0 }.count)
+        case .calls where !m.calls.liveMissed.isEmpty: Badge(count: m.calls.liveMissed.count)
         default: EmptyView()
         }
     }
@@ -271,5 +270,19 @@ struct ScreenPage: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A filled count badge (unread texts, missed calls).
+struct Badge: View {
+    let count: Int
+    var body: some View {
+        Text("\(count)")
+            .font(Typo.mono(10, .semibold))
+            .foregroundColor(Mono.bg)
+            .padding(.horizontal, 6)
+            .frame(minWidth: 18, minHeight: 16)
+            .background(Capsule().fill(Mono.text))
+            .accessibilityLabel("\(count) new")
     }
 }
