@@ -126,6 +126,41 @@ driver=$!
 ./gradlew --stacktrace :app:connectedDebugAndroidTest \
   "-Pandroid.testInstrumentationRunnerArguments.class=$TESTS"
 code=$?
+
+# Clipboard auto mode (0.4.3). READ_LOGS only takes effect in a process started after the
+# grant (the `log` group is set at fork), so this runs as its own instrumentation after the
+# grants, outside Gradle: install, grant, force-stop, instrument.
+clip_auto_tests() {
+  local app=app/build/outputs/apk/debug/app-debug.apk
+  local tests=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+  local pkg=in.benfranklin.tether.debug out
+  adb install -r -t -g "$app" >/dev/null && adb install -r -t "$tests" >/dev/null || { echo "::error::clip tests: install failed"; return 1; }
+  adb shell pm grant "$pkg" android.permission.READ_LOGS || { echo "::error::clip tests: pm grant READ_LOGS failed"; return 1; }
+  adb shell appops set "$pkg" SYSTEM_ALERT_WINDOW allow || { echo "::error::clip tests: appops SYSTEM_ALERT_WINDOW failed"; return 1; }
+  adb shell am force-stop "$pkg"
+  echo "driver: appops SYSTEM_ALERT_WINDOW = $(adb shell appops get "$pkg" SYSTEM_ALERT_WINDOW | tr -d '\r')"
+  # The reader activity must be able to take focus: screen on, no keyguard.
+  adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+  adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+  adb shell svc power stayon true >/dev/null 2>&1 || true
+  adb shell input keyevent KEYCODE_HOME >/dev/null 2>&1 || true
+  out=$(adb shell am instrument -w -r -e clipAuto 1 -e class dev.benfranklin.tether.DeviceClipTests \
+    "$pkg.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tr -d '\r')
+  printf '%s\n' "$out" > app/build/emulator-clip-instrument.txt
+  printf '%s\n' "$out" | grep -E 'INSTRUMENTATION_STATUS: (test|stack)=|^OK|FAILURES|Tests run' | head -60
+  adb logcat -d -s TetherTest:I Tether:* ClipboardService:* LogcatManagerService:* ActivityTaskManager:W AndroidRuntime:E \
+    > app/build/emulator-logcat-clip.txt 2>/dev/null || true
+  if printf '%s\n' "$out" | grep -q '^OK (3 tests)'; then
+    echo "driver: clipboard auto-mode tests passed"
+    return 0
+  fi
+  echo "::error::clipboard auto-mode instrumented tests failed (see emulator-clip-instrument.txt)"
+  return 1
+}
+if [[ "$TESTS" == "dev.benfranklin.tether.DeviceSuite" ]]; then
+  clip_auto_tests || code=1
+fi
+
 kill "$driver" 2>/dev/null || true
 pkill -f "adb logcat -v raw -s TetherEmu" 2>/dev/null || true
 adb logcat -d -s TetherEmu:I TetherTest:I Tether:* AndroidRuntime:E > "app/build/emulator-logcat-${2:-main}.txt" 2>/dev/null || true

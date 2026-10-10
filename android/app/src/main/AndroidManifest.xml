@@ -63,6 +63,14 @@
     <uses-permission android:name="android.permission.RECEIVE_SENSITIVE_NOTIFICATIONS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Clipboard auto mode (0.4.3), optional: both are granted by the user over adb
+         (Settings › On your Mac › Clipboard). READ_LOGS lets Tether see the system's
+         "clipboard access denied" line when something is copied; display over other apps lets
+         it open its invisible reader from the background. -->
+    <uses-permission android:name="android.permission.READ_LOGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
     <!-- Android 8-9 only: received files go to the public Downloads folder. -->
@@ -128,6 +136,31 @@
             android:noHistory="true"
             android:taskAffinity=""
             android:theme="@style/Theme.Tether.Translucent" />
+
+        <!-- Auto mode reader: invisible, takes focus for a moment to read the clipboard. -->
+        <activity
+            android:name=".clip.ClipAutoActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Tether.Translucent" />
+
+        <!-- "Send to Mac" in the text-selection toolbar. -->
+        <activity
+            android:name=".clip.ProcessTextActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/process_text"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Tether.Translucent">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"

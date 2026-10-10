@@ -17,6 +17,7 @@ import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import dev.benfranklin.tether.ble.BleCentral
 import dev.benfranklin.tether.call.CallBridge
+import dev.benfranklin.tether.clip.ClipWatcher
 import dev.benfranklin.tether.core.ControllerListener
 import dev.benfranklin.tether.core.LinkState
 import dev.benfranklin.tether.core.TetherController
@@ -200,7 +201,13 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     private var tickPeriod = 0L
     private var pairing: PairingContext? = null
     private var pairingTimeout: ScheduledFuture<*>? = null
-    private var lastClipHash: String? = null
+    @Volatile private var lastClipHash: String? = null
+
+    // ---- 0.4.3 clipboard auto mode ----
+    val clipWatcher = ClipWatcher(
+        app, lastHash = { lastClipHash }, connected = { state.value.link is LinkState.Connected },
+        send = { text -> sendClip(text, fromUser = false) },
+    )
 
     // ---- 0.2.0 features ----
     private val batteryThrottle = BatteryThrottle()
@@ -316,6 +323,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     fun setForeground(foreground: Boolean) {
         this.foreground = foreground
         central.setForeground(foreground)
+        clipWatcher.onForeground(foreground)
     }
 
     // ===================== pairing =====================
@@ -443,6 +451,8 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         calls.apply(paired, s)
         if (paired && s.shareNowPlaying) nowPlaying.start() else nowPlaying.stop()
         if (!s.allowProximity) stopRssi()
+        // 0.4.3
+        clipWatcher.configure(paired && s.autoClip, s.autoClipSensitive)
     }
 
     /** Permissions changed (the app came back from a permission screen). */
@@ -855,6 +865,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     private fun onClip(c: Clip) {
         if (!settings.current.receiveClipboard) return
         lastClipHash = hash(c.text)
+        clipWatcher.onLocalWrite(c.text)
         main.post {
             val cm = app.getSystemService(ClipboardManager::class.java) ?: return@post
             val clip = ClipData.newPlainText("Tether", c.text)

@@ -51,6 +51,10 @@ data class AppSettings(
     val shareCallLog: Boolean = true,
     /** The sensitive-notifications guide was dismissed (it comes back if the problem returns). */
     val sensitiveGuideDismissed: Boolean = false,
+    /** Send what's copied on the phone without opening Tether (0.4.3; needs the adb setup). */
+    val autoClip: Boolean = false,
+    /** Auto mode also sends clips apps mark as sensitive (passwords, codes). */
+    val autoClipSensitive: Boolean = false,
 )
 
 /** App settings as a hot flow, persisted atomically on every change. */

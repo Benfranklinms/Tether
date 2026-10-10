@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import dev.benfranklin.tether.core.features.ClipAutoSetup
 import dev.benfranklin.tether.core.proto.Caps
 import dev.benfranklin.tether.core.proto.Caps3
 import dev.benfranklin.tether.core.proto.Caps4
@@ -62,9 +63,20 @@ data class FeatureStatus(
     val sensitiveGranted: Boolean? = null,
     val oem: String = "",
     val adbCommand: String = "",
+    // 0.4.3
+    val clipStatus: ClipAutoSetup.Status = ClipAutoSetup.Status.OFF,
+    val clipCommands: String = "",
 )
 
-interface FeatureActions {
+/** 0.4.3 clipboard auto mode (split out: one interface per area keeps them small). */
+interface ClipAutoActions {
+    fun sendClipCommandsToMac() = Unit
+    fun copyClipCommands() = Unit
+    fun openOverlaySettings() = Unit
+    fun allowLogAccess() = Unit
+}
+
+interface FeatureActions : ClipAutoActions {
     fun update(change: (AppSettings) -> AppSettings)
     fun grantMedia()
     fun grantPhoneState()
@@ -107,6 +119,8 @@ fun FeaturesScreen(s: AppSettings, st: FeatureStatus, a: FeatureActions, onBack:
                     )
                 }
             }
+            item { SectionHeader("Clipboard") }
+            item { ClipboardSection(s, st, a) }
             item { SectionHeader("Notifications") }
             item {
                 Card {
@@ -368,6 +382,43 @@ private fun SensitiveSection(s: AppSettings, st: FeatureStatus, a: FeatureAction
                     "Show one-time codes on the Mac", if (st.sensitiveRedacting) "Hidden by Android" else "Set up",
                     onClick = { open = true },
                 )
+            }
+        }
+    }
+}
+
+/** Phone → Mac clipboard: Send to Mac (no setup) and auto mode with its one-time adb setup. */
+@Composable
+private fun ClipboardSection(s: AppSettings, st: FeatureStatus, a: FeatureActions) {
+    val reduce = LocalReduceMotion.current
+    Card {
+        Column {
+            Text(
+                "Select text in any app and tap Send to Mac in the menu that pops up (⋮ if it's hidden). " +
+                    "Works now, no setup.",
+                style = MaterialTheme.typography.bodyMedium, color = Mono.Muted,
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+            )
+            Divider()
+            ToggleRow(
+                "Send copies automatically", ClipAutoSetup.label(if (s.autoClip) st.clipStatus else ClipAutoSetup.Status.OFF),
+                s.autoClip,
+            ) { v -> a.update { it.copy(autoClip = v) } }
+            Reveal(s.autoClip, reduce) {
+                Column {
+                    Divider()
+                    ClipAutoGuide(
+                        status = st.clipStatus, oem = st.oem, commands = st.clipCommands, connected = st.connected,
+                        onSendToMac = a::sendClipCommandsToMac, onCopy = a::copyClipCommands,
+                        onDeveloperOptions = a::openDeveloperOptions, onOverlay = a::openOverlaySettings,
+                        onAllowLogs = a::allowLogAccess,
+                    )
+                    Divider()
+                    ToggleRow(
+                        "Include passwords and codes", "Clips that apps mark as sensitive stay on the phone unless this is on",
+                        s.autoClipSensitive,
+                    ) { v -> a.update { it.copy(autoClipSensitive = v) } }
+                }
             }
         }
     }

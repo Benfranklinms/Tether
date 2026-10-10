@@ -74,6 +74,7 @@ import dev.benfranklin.tether.device.BatteryMonitor
 import dev.benfranklin.tether.device.Ringer
 import dev.benfranklin.tether.media.MediaWatcher
 import dev.benfranklin.tether.screen.ControlService
+import dev.benfranklin.tether.ui.screens.ClipAutoSteps
 import dev.benfranklin.tether.ui.screens.FeatureActions
 import dev.benfranklin.tether.ui.screens.FeatureStatus
 import dev.benfranklin.tether.call.CallMonitor
@@ -152,6 +153,7 @@ private fun TetherApp(rt: TetherRuntime) {
         rt.permissionsChanged()
     }
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { rt.setForeground(false) }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { rt.clipWatcher.onBackground() }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         permsTick++
@@ -336,7 +338,8 @@ private fun TetherApp(rt: TetherRuntime) {
         composable("licenses") { LicensesScreen(onBack = { nav.popBackStack() }) }
         composable("features") {
             val sensitive by rt.sensitive.state.collectAsStateWithLifecycle()
-            val st = remember(permsTick, state.peerCaps, state.link, sensitive) {
+            val clipStatus by rt.clipWatcher.status.collectAsStateWithLifecycle()
+            val st = remember(permsTick, state.peerCaps, state.link, sensitive, clipStatus) {
                 FeatureStatus(
                     connected = state.link is LinkState.Connected,
                     macCaps = state.peerCaps.takeIf { state.link is LinkState.Connected },
@@ -359,6 +362,8 @@ private fun TetherApp(rt: TetherRuntime) {
                     sensitiveGranted = sensitive.granted,
                     oem = Build.MANUFACTURER.orEmpty(),
                     adbCommand = SensitiveWatch.adbCommand(ctx),
+                    clipStatus = clipStatus,
+                    clipCommands = ClipAutoSteps.commandBlock(ctx.packageName),
                 )
             }
             FeaturesScreen(
@@ -383,6 +388,24 @@ private fun TetherApp(rt: TetherRuntime) {
                         val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
                         cm?.setPrimaryClip(android.content.ClipData.newPlainText("adb", SensitiveWatch.adbCommand(ctx)))
                         rt.note("Command copied")
+                    }
+                    override fun sendClipCommandsToMac() {
+                        rt.sendClip(ClipAutoSteps.commandBlock(ctx.packageName), fromUser = true)
+                    }
+                    override fun copyClipCommands() {
+                        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                        cm?.setPrimaryClip(android.content.ClipData.newPlainText("adb", ClipAutoSteps.commandBlock(ctx.packageName)))
+                        rt.note("Commands copied")
+                    }
+                    override fun openOverlaySettings() {
+                        try {
+                            ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")))
+                        } catch (_: android.content.ActivityNotFoundException) {
+                            ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+                        }
+                    }
+                    override fun allowLogAccess() {
+                        rt.clipWatcher.retryLogAccess()
                     }
                     override fun openDeveloperOptions() {
                         try {

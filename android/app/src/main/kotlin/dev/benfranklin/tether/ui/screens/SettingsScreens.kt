@@ -135,6 +135,8 @@ fun SettingsScreen(s: AppSettings, d: DeviceInfo, a: SettingsActions, onBack: ()
                         ) { v ->
                             a.update { it.copy(sendClipboardOnOpen = v) }
                         }
+                        Divider()
+                        NavRow("Send without opening Tether", if (s.autoClip) "On" else "Set up", onClick = a::openFeatures)
                     }
                 }
             }

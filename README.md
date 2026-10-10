@@ -9,9 +9,11 @@
   <img src="docs/screenshots/mac/messages.png" width="440" alt="Messages on the Mac: the phone's SMS conversations with dual-SIM reply">
 </p>
 
-**Download v0.4.2:** [Mac (.dmg)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.2/Tether-0.4.2.dmg) · [Mac (.zip)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.2/Tether-0.4.2.zip) · [Android (.apk)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.2/Tether-0.4.2.apk) · [all releases](https://github.com/Benfranklinms/Tether/releases)
+**Download v0.4.3:** [Mac (.dmg)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.3/Tether-0.4.3.dmg) · [Mac (.zip)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.3/Tether-0.4.3.zip) · [Android (.apk)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.3/Tether-0.4.3.apk) · [all releases](https://github.com/Benfranklinms/Tether/releases)
 
 macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
+
+**New in 0.4.3 (Android):** **phone → Mac clipboard without opening Tether.** Select text in any app and tap **Send to Mac** in the selection menu (works straight away, no setup). Or turn on **auto mode** (Settings › On your Mac › Clipboard › *Send copies automatically*): after a one-time setup from your Mac over wireless adb, everything you copy on the phone lands on the Mac's clipboard by itself, the way KDE Connect does it. Text that just came from the Mac isn't sent back, and passwords and codes stay on the phone unless you allow them. See [Clipboard auto mode](#clipboard-auto-mode-one-time-setup).
 
 **New in 0.4.2 (Mac fixes):** photos you delete or move in Finder now leave **From your phone** and Transfers instead of staying as empty tiles, and switching tabs in the panel always starts at the top (no more blank tab after scrolling down in Calls).
 
@@ -37,7 +39,7 @@ macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 | **Lock when you walk away** *(0.3)* | Off by default. The Mac watches the Bluetooth signal of your phone (smoothed, with hysteresis and a delay you choose) and locks itself when you leave. Never while Screen Sharing or the phone-screen window is open. It never unlocks anything. |
 | **Notifications** | Phone notifications appear on the Mac (per-app rules on both sides, quiet hours, muted words, hide contents). Dismiss on one, it clears on the other. |
 | **Reply from the Mac** *(0.2)* | Inline reply for any app that offers one in its notification (WhatsApp, Messages, Telegram, Signal, Slack, Gmail…), from the banner or the menu. Other buttons such as *Mark as read* show up too. |
-| **Clipboard** | Copy on the Mac, paste on the phone. Phone → Mac from the quick tile, share sheet or app. Password-manager items are skipped. |
+| **Clipboard** | Copy on the Mac, paste on the phone. Phone → Mac: **Send to Mac** in the text-selection menu *(0.4.3)*, the quick tile, the share sheet, opening the app, or **auto mode** *(0.4.3, one-time adb setup)* that sends every copy by itself. Password-manager items are skipped. |
 | **Files** | Share sheet → Tether, or drag onto the menu. Resumable, SHA-256 verified, up to 4 GB on Wi-Fi. |
 | **Screenshots and photos** *(0.2)* | New screenshots (on by default) and camera photos (off by default) go to the Mac automatically, with a thumbnail notification and a draggable recent strip. Photos wait for Wi-Fi. Never the old gallery, never twice. |
 | **Phone battery** *(0.2)* | Level, charging and network in the menu (optionally the % in the menu bar), with a Mac alert at 20 %. |
@@ -50,7 +52,7 @@ macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 
 ### Mac
 
-1. Download `Tether-0.4.2.dmg` (or the `.zip`), open it and drag **Tether** to **Applications**.
+1. Download `Tether-0.4.3.dmg` (or the `.zip`), open it and drag **Tether** to **Applications**.
 2. Tether is **ad-hoc signed and not notarized** (no paid Apple Developer account), so the first open is blocked:
    - **Right-click** Tether in Applications → **Open** → **Open**.
    - macOS 15 Sequoia and later: open it once, then **System Settings › Privacy & Security** → **Open Anyway**.
@@ -62,7 +64,7 @@ Liquid Glass needs **macOS 26 Tahoe**. On older macOS the Liquid Glass option us
 
 ### Android
 
-1. Download `Tether-0.4.2.apk` on the phone and open it. Allow *Install unknown apps* for your browser or file manager.
+1. Download `Tether-0.4.3.apk` on the phone and open it. Allow *Install unknown apps* for your browser or file manager.
 2. **Play Protect** may warn about an app from an unknown developer: tap **More details → Install anyway**. Tether has no internet servers; the APK is built in public CI from this repository.
 3. Open Tether and follow the setup. Updating from any earlier version installs over it (same signing key) and keeps the pairing.
 4. **Allow restricted settings** (Android 13+, sideloaded apps): before Android lets you turn on **Notification access** or **Accessibility**, or grant **SMS** and **Call logs / Phone** permissions to Tether (they appear greyed out or the request is silently refused), go to **Settings › Apps › Tether › ⋮ (top right) › Allow restricted settings**, confirm, then grant them. You only do this once. On Android 15 some phones ask again per permission group.
@@ -98,6 +100,7 @@ Everything new is on the phone in **Tether › Settings › On your Mac**, and o
 | Screen view | Android asks **every session** (*Start now*) | — | Needs Wi-Fi or hotspot |
 | Screen control | **Accessibility › Tether screen control** (*restricted setting*) | — | Without it the Mac can view but not control |
 | Files, clipboard | Notifications (progress); Camera only for QR pairing | Local Network (macOS 15+) for Wi-Fi | |
+| **Clipboard auto mode** *(0.4.3, optional)* | `READ_LOGS` (granted once over adb), **Display over other apps** (`SYSTEM_ALERT_WINDOW`, adb or the settings button); Android 13+ also asks *Allow Tether to access all device logs?* each time Tether starts | — | Phone: Settings › On your Mac › Clipboard. *Send to Mac* in the selection menu needs nothing |
 
 *Restricted* = on a sideloaded APK, Android 13+ blocks it until you **Allow restricted settings** (Install, step 4).
 
@@ -116,6 +119,29 @@ Everything new is on the phone in **Tether › Settings › On your Mac**, and o
 4. Mac: `adb shell cmd appops set --user 0 in.benfranklin.tether RECEIVE_SENSITIVE_NOTIFICATIONS allow`
 5. **OnePlus / OPPO / realme:** also turn on **Developer options › Disable permission monitoring**, or the phone reverts the change.
 6. Restart the phone. Tether shows *Codes are shown* once Android allows it (and brings the guide back if the phone ever reverts it).
+
+### Clipboard auto mode (one-time setup)
+
+Android 10+ lets only the app on screen (or the keyboard) read the clipboard. Two ways around it:
+
+- **Send to Mac (no setup):** select text in any app → **Send to Mac** in the menu that pops up (it may be under ⋮). A toast confirms.
+- **Auto mode:** with *log reading* allowed, Tether sees the system's "clipboard access denied" line each time something is copied, opens an invisible window for a split second, reads the clip and sends it. The same trick KDE Connect, XClipper and ClipCascade use. Wireless adb only, no cable:
+
+1. Phone: **Settings › About device › Version › tap Build number 7 times** (other phones: About phone › Build number) to enable Developer options.
+2. Phone and Mac on the same Wi-Fi. **Developer options › Wireless debugging** on. **OnePlus / OPPO / realme:** also **Developer options › Disable permission monitoring**, or Android refuses the grant.
+3. Mac: `brew install android-platform-tools`
+4. Phone: **Wireless debugging › Pair device with pairing code**. Mac: `adb pair <IP:port shown under the code>` and type the 6-digit code.
+5. Mac: `adb connect <IP:port>` using the address on the Wireless debugging screen (a different port from pairing). `adb devices` should list the phone.
+6. Mac (Tether › Settings › On your Mac › Clipboard › **Send to Mac** puts these on the Mac's clipboard):
+   ```sh
+   adb shell pm grant in.benfranklin.tether android.permission.READ_LOGS
+   adb shell appops set in.benfranklin.tether SYSTEM_ALERT_WINDOW allow
+   adb shell am force-stop in.benfranklin.tether
+   ```
+7. Open Tether → Settings › On your Mac › Clipboard → turn on **Send copies automatically**. Android 13+ asks **Allow Tether to access all device logs?** → **Allow**. Then switch to another app: the status turns to *Working* when Tether's self-check succeeds (or *On · copy something to check*).
+8. Optional: hide the *Tether pasted from your clipboard* toast with **Settings › Privacy › Show clipboard access** off.
+
+The grants survive reboots and updates; you can turn Wireless debugging off afterwards. Android 13+ asks for log access again each time Tether's process starts (after a reboot, an update or if Android closes it): open Tether and tap **Allow** (Settings › On your Mac › Clipboard shows *Allow log access* when it's needed).
 
 **Panel layout:** the chevron on the now-playing card collapses it to a mini row (artwork, title, play/pause); **More** under the quick actions shows the other three. Mac Settings › General › Panel picks and orders the pinned three.
 
@@ -166,6 +192,7 @@ Wire protocol: [docs/PROTOCOL.md](docs/PROTOCOL.md).
 | "Your phone didn't start the call" | The phone showed an error (airplane mode, no SIM, blocked number). Emergency numbers are refused on purpose: call them from the phone |
 | Speaker or Mute button missing during a call | Your phone ignored that change from a non-phone app, so Tether hid the button (log line `call.speaker_ignored` / `call.mute_ignored`). Use the phone's own button |
 | Clicking a phone number opens FaceTime | Mac Settings › Features › *Phone number links* › **Use Tether** |
+| Copies on the phone don't reach the Mac | Use **Send to Mac** in the selection menu, or set up auto mode. Settings › On your Mac › Clipboard shows what's missing: *Needs one-time setup* (run the adb commands), *Restart Tether to finish* (run the force-stop command, reopen), *Allow display over other apps*, *Allow log access* (tap it, then Allow). Diagnostics: `clip.auto_status`, `clip.auto_read`, `clip.auto_skip why=…`, `clip.auto_launch_blocked`, `clip.auto_probe_unseen` |
 | Notifications say "Sensitive notification content hidden" | Android 15+ hides one-time codes from Tether: follow *One-time codes on Android 15+* above |
 | Answer / Decline / End do nothing | Grant **Answer phone calls** (Allow call access row). Some OEM dialers ignore Decline/End from other apps |
 | Silence says it needs Do Not Disturb access | Phone Settings › Notifications › Do Not Disturb access (or Special app access) › Tether › Allow |
@@ -242,7 +269,7 @@ cd android && bash scripts/emulator-tests.sh
 - **Find my phone** can't override a phone with alarm volume locked by the OEM or a DND mode that blocks alarms; full-screen alerts may need permission on Android 14+.
 - **Auto media** sends screenshots/camera photos taken after you enable it; edited copies are sent again only if their bytes differ. Android's "limited photo access" hides new photos from Tether; choose *Allow all*.
 - **Background**: aggressive OEM battery management can still stop the link; set Tether's battery use to Unrestricted.
-- **One phone, one Mac.** Not notarized; the APK key is public (see Signing). Android 10+ blocks background clipboard reads, so phone → Mac clipboard is manual (tile, share sheet or app).
+- **One phone, one Mac.** Not notarized; the APK key is public (see Signing). Android 10+ blocks background clipboard reads: phone → Mac is manual (selection menu, tile, share sheet or app) unless you set up auto mode over adb. Auto mode briefly takes focus to read (a keyboard that's open may flicker), Android shows *Tether pasted from your clipboard* each time unless you turn that off, it can't read while the phone is locked, it reads text only, and on Android 13+ log access must be re-allowed after every Tether restart. It relies on the system log wording; a phone maker that changes it would break auto mode (Send to Mac keeps working).
 
 ## Credits and license
 
