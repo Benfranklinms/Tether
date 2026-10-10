@@ -84,7 +84,26 @@ final class V5State: ObservableObject {
     @Published var update = UpdateState()
     @Published var searchQuery = ""
     @Published var searchFocus = 0
-    @Published var page: MainPage = MainPage.saved
+    @Published var page: MainPage = MainPage.saved {
+        didSet {
+            let all = MainPage.allCases
+            pageDirection = PageDirection.between(all.firstIndex(of: oldValue) ?? 0, all.firstIndex(of: page) ?? 0)
+        }
+    }
+    /// +1 when the new page is below the old one in the sidebar (content rises), −1 above.
+    var pageDirection: Double = 1
+    // 0.5.2: video playback, Insert from Phone, Find my Mac, Instant Hotspot, Shelf
+    @Published var videoRequests: [String: VideoRequest] = [:]
+    @Published var videoErrors: [String: String] = [:]
+    @Published var capture: CaptureSession?
+    @Published var findMac: FindMacSession?
+    @Published var hotspot = HotspotSession()
+    @Published var shelf = ShelfState()
+    @Published var shelfUndo: ShelfItem?
+    @Published var shelfDetail: String?
+    @Published var shelfFetching: Set<String> = []
+    /// The last app other than Tether that was frontmost (where Insert from Phone pastes).
+    var lastOtherApp: pid_t?
     @Published var preview: PreviewItem?
     @Published var accessibilityTrusted = false
     @Published var unlockReady = false
@@ -109,6 +128,42 @@ struct PhoneGet: Equatable {
     var folder: URL?
     var open: Bool
     var preview: Bool
+    /// 0.5.2: the Photos item a viewer playback fetch is for.
+    var videoId: String?
+}
+
+/// A video the Photos viewer is fetching to play.
+struct VideoRequest: Equatable {
+    var name: String
+    var size: Int64
+    var folder: URL
+    var since: Int64
+}
+
+/// Insert from Phone in progress.
+struct CaptureSession: Equatable {
+    var ref: String
+    var kind: String
+    var state: String
+    var reason: String?
+    var frontmostPid: Int32?
+    var started: Int64
+}
+
+/// Find my Mac: the alarm is ringing (started by the phone).
+struct FindMacSession: Equatable {
+    var id: String
+    var started: Int64
+}
+
+/// Instant Hotspot state shown on the Mac.
+struct HotspotSession: Equatable {
+    var ref: String?
+    var state: String?
+    var reason: String?
+    var ssid: String?
+    var joining = false
+    var joined = false
 }
 
 /// The preview sheet (Files and Photos pages).
@@ -130,6 +185,7 @@ enum MainPage: String, CaseIterable, Identifiable {
     case notifications = "Notifications"
     case files = "Files"
     case photos = "Photos"
+    case shelf = "Shelf"
     case screen = "Phone screen"
     case clipboard = "Clipboard"
     case settings = "Settings"
@@ -144,6 +200,7 @@ enum MainPage: String, CaseIterable, Identifiable {
         case .notifications: return "bell"
         case .files: return "folder"
         case .photos: return "photo.on.rectangle"
+        case .shelf: return "tray.full"
         case .screen: return "iphone.gen2"
         case .clipboard: return "doc.on.clipboard"
         case .settings: return "gearshape"

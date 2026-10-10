@@ -31,6 +31,7 @@ extension AppModel {
         RunLoop.main.add(t, forMode: .common)
         v5.expireTimer = t
         applyAppearance()
+        setUp6()
     }
 
     private func tick5() {
@@ -95,7 +96,7 @@ extension AppModel {
         case .typeResult(let p): typeResult(p)
         case .dndState(let p): dndReceived(p)
         case .phoneStatus(let p): phoneStatusUpdate(p)
-        default: return false
+        default: return receive6(message)
         }
         return true
     }
@@ -181,7 +182,10 @@ extension AppModel {
 
     func fsGetResult(_ p: FsGetResultPayload) {
         guard let g = v5.gets[p.ref] else { return }
-        if !p.ok {
+        if g.videoId != nil { videoGetResult(g, p) }
+        if !p.ok && g.preview {
+            v5.gets[p.ref] = nil
+        } else if !p.ok {
             v5.gets[p.ref] = nil
             toast(p.reason.map { "Couldn't get \(g.name): \($0)" } ?? "Couldn't get \(g.name)")
         } else if let actual = p.name, actual != g.name {
@@ -197,6 +201,7 @@ extension AppModel {
         if let match {
             let g = match.value
             v5.gets[match.key] = nil
+            if g.preview { return } // a Photos viewer playback fetch: the viewer picks it up
             let url = URL(fileURLWithPath: path)
             if g.open { NSWorkspace.shared.open(url) } else if g.folder == nil { toast("Saved \(r.name) to Downloads") }
         }

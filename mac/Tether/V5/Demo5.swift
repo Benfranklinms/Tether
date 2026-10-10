@@ -9,6 +9,19 @@ enum Demo5 {
         let t = Demo.now()
         let v = m.v5
         m.peerCaps.formUnion(Caps5.all)
+        m.peerCaps.formUnion(Caps6.all)
+        // 0.5.2 Shelf (as in the mockup, with neutral sample data).
+        var shelf = ShelfState()
+        let samples: [(String, String, Int64)] = [
+            ("adb mdns services\nadb connect 192.168.29.142:37099", "mac", 3 * 3_600_000),
+            ("Public Library\n1 Market St, San Francisco, CA 94105", "phone", 3_600_000),
+            ("Event registration\nhttps://forms.gle/x7Tq2abc", "mac", 14 * 60_000),
+            ("WIFI:S:Office_5G;T:WPA;P:demo@2027;;", "phone", 2 * 60_000),
+        ]
+        for (i, s) in samples.enumerated() {
+            shelf = shelf.add(ShelfState.item(from: s.0, id: "demo-\(i)", from: s.1, now: t - s.2))
+        }
+        v.shelf = shelf
         v.otp = OtpPayload(code: "482913", app: "Messages", src: "sms", ts: t - 20_000)
         _ = v.continueCards.add(ContinuePayload(id: "p1", kind: ContinueKinds.photo, title: "IMG_20261010_163210.jpg",
                                                 subtitle: "Just now · 3.1 MB", root: FsRoots.dcim, path: "Camera/IMG_20261010_163210.jpg",

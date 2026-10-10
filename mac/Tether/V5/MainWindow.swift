@@ -18,7 +18,8 @@ struct MainWindowView: View {
             ZStack(alignment: .top) {
                 detail
                     .id(v5.page)
-                    .transition(Motion.page(reduce))
+                    // 0.5.2: pages rise from the direction of travel (down the sidebar = from below).
+                    .transition(Motion.pageTransition(reduce, direction: v5.pageDirection))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 if !v5.searchQuery.isEmpty { SearchResults(v5: v5).transition(.move(edge: .top).combined(with: .opacity)) }
             }
@@ -29,7 +30,7 @@ struct MainWindowView: View {
         .tetherBackground()
         .tetherWindowChrome()
         .overlay(alignment: .bottom) { noticeView }
-        .animation(Motion.spring(reduce), value: v5.page)
+        .animation(reduce ? Motion.reducedFade : .spring(response: 0.48, dampingFraction: 0.86), value: v5.page)
         .animation(Motion.spring(reduce), value: v5.searchQuery.isEmpty)
         .animation(Motion.spring(reduce), value: m.notice)
         .onChange(of: v5.page) { p in UserDefaults.standard.set(p.rawValue, forKey: MainPage.storeKey) }
@@ -50,14 +51,16 @@ struct MainWindowView: View {
             .padding(.horizontal, 10).frame(height: 28)
             .tetherControl(RoundedRectangle(cornerRadius: 8))
             .padding(.bottom, 8)
-            ForEach(MainPage.allCases) { p in
+            ForEach(Array(MainPage.allCases.enumerated()), id: \.element) { i, p in
                 Button {
                     v5.searchQuery = ""
                     v5.page = p
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: p.symbol).font(.system(size: 13, weight: v5.page == p ? .medium : .light)).frame(width: 18)
+                            .symbolBounce(v5.page == p)
                         Text(p.rawValue).font(Typo.sans(13, v5.page == p ? .semibold : .regular))
+                            .offset(x: v5.page == p && !reduce ? 2 : 0)
                         Spacer()
                         badge(p)
                     }
@@ -66,12 +69,15 @@ struct MainWindowView: View {
                     .background {
                         // 0.5.1: the selection slides between pages.
                         if v5.page == p {
-                            RoundedRectangle(cornerRadius: 8).fill(Mono.surfaceHigh).matchedGeometryEffect(id: "page", in: sidebarNS)
+                            RoundedRectangle(cornerRadius: 8).fill(Mono.surfaceHigh)
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Mono.line.opacity(0.6)))
+                                .matchedGeometryEffect(id: "page", in: sidebarNS)
                         }
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(PressStyle())
+                .buttonStyle(PressStyle(scale: 0.96))
+                .staggerIn(i, step: 0.03)
                 .accessibilityAddTraits(v5.page == p ? .isSelected : [])
             }
             Spacer()
@@ -85,6 +91,7 @@ struct MainWindowView: View {
         case .notifications where !m.history.items.isEmpty: Chip(text: "\(m.history.items.count)")
         case .messages where m.sms.threads.contains { $0.unread > 0 }: Badge(count: m.sms.threads.filter { $0.unread > 0 }.count)
         case .calls where !m.calls.liveMissed.isEmpty: Badge(count: m.calls.liveMissed.count)
+        case .shelf where !v5.shelf.items.isEmpty: Chip(text: "\(v5.shelf.items.count)")
         default: EmptyView()
         }
     }
@@ -99,6 +106,7 @@ struct MainWindowView: View {
         case .photos: PhotosPage(v5: v5)
         case .screen: ScreenPage()
         case .clipboard: ClipboardPage(v5: v5)
+        case .shelf: ShelfPage(v5: v5)
         case .settings: SettingsView().padding(.top, -28)
         }
     }
@@ -142,18 +150,44 @@ struct PageTitle: View {
 /// Phone name, link and battery at the bottom of the sidebar.
 struct DeviceFooter: View {
     @EnvironmentObject var m: AppModel
+
+    private var transport: String {
+        m.isConnected ? (m.onWifi ? "Wi-Fi" : "Bluetooth") : (m.peer == nil ? "Not paired" : "Offline")
+    }
+
+    private var transportSymbol: String {
+        m.isConnected ? (m.onWifi ? "wifi" : "dot.radiowaves.left.and.right") : "antenna.radiowaves.left.and.right.slash"
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             TetherMark(linked: m.isConnected, pulse: !m.isConnected && m.peer != nil, size: 26)
             VStack(alignment: .leading, spacing: 1) {
                 Text(m.peer?.name ?? "No phone").font(Typo.sans(12, .medium)).foregroundColor(Mono.text).lineLimit(1)
-                Text(m.isConnected ? (m.onWifi ? "Wi-Fi" : "Bluetooth") : (m.peer == nil ? "Not paired" : "Offline"))
-                    .font(Typo.mono(10)).foregroundColor(Mono.muted)
+                // 0.5.2: Bluetooth → Wi-Fi flips live with a symbol replace and a sliding label.
+                HStack(spacing: 4) {
+                    Image(systemName: transportSymbol).font(.system(size: 9, weight: .medium))
+                        .symbolReplace()
+                        .symbolSweep(!m.isConnected && m.peer != nil)
+                    Text(transport).id(transport)
+                        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
+                                                removal: .move(edge: .top).combined(with: .opacity)))
+                }
+                .font(Typo.mono(10)).foregroundColor(Mono.muted)
+                .clipped()
+                .animation(.spring(response: 0.4, dampingFraction: 0.75), value: transport)
             }
             Spacer()
             if let b = m.battery {
-                Text("\(b.level)%\(b.charging ? "+" : "")").font(Typo.mono(11, .medium)).foregroundColor(Mono.text)
-                    .rollingNumber().animation(.spring(response: 0.35, dampingFraction: 0.8), value: b.level)
+                HStack(spacing: 3) {
+                    if b.charging {
+                        Image(systemName: "bolt.fill").font(.system(size: 9)).foregroundColor(Mono.text)
+                            .symbolBreathe(true).transition(.scale.combined(with: .opacity))
+                    }
+                    Text("\(b.level)%").font(Typo.mono(11, .medium)).foregroundColor(Mono.text).rollingNumber()
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: b.level)
+                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: b.charging)
             }
         }
         .padding(10)
@@ -245,6 +279,9 @@ struct SearchResults: View {
 struct NotificationsPage5: View {
     @EnvironmentObject var m: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduce
+    @Namespace private var hero
+    @State private var open: String?
+
     var body: some View {
         PageScroll {
             HStack {
@@ -253,16 +290,125 @@ struct NotificationsPage5: View {
                 if !m.history.items.isEmpty { GhostButton(title: "Clear all") { m.clearHistory() } }
             }
             VStack(spacing: 0) {
-                ForEach(m.history.items) { n in
+                ForEach(Array(m.history.items.enumerated()), id: \.element.key) { i, n in
                     NotificationRow(n: n, privacy: m.settings.notifications.privacyMode,
                                     actionsEnabled: m.settings.notificationActions && m.peerCaps.contains(Caps.reply),
-                                    onDismiss: { m.dismiss(n.key) })
-                        .transition(Motion.row(reduce))
+                                    onDismiss: { m.dismiss(n.key) },
+                                    hero: hero, heroActive: open != n.key,
+                                    onOpen: { withAnimation(Motion.hero(reduce)) { open = n.key } })
+                        .swipeToRemove { withAnimation(Motion.spring(reduce)) { m.dismiss(n.key) } }
+                        .staggerIn(i)
+                        .transition(Motion.listRow(reduce))
                 }
             }
             .tetherCard()
-            .animation(Motion.spring(reduce), value: m.history.items.map(\.key))
+            .animation(Motion.bouncy(reduce), value: m.history.items.map(\.key))
+            if !m.history.items.isEmpty {
+                Text("Click to open · drag sideways to dismiss").font(Typo.sans(11)).foregroundColor(Mono.muted)
+            }
         }
+        .overlay { detail }
+    }
+
+    @ViewBuilder private var detail: some View {
+        if let key = open, let n = m.history.items.first(where: { $0.key == key }) {
+            ZStack {
+                Mono.bg.opacity(0.72).ignoresSafeArea()
+                    .onTapGesture { close() }
+                    .transition(.opacity)
+                NotificationDetail(n: n, hero: hero, privacy: m.settings.notifications.privacyMode,
+                                   actionsEnabled: m.settings.notificationActions && m.peerCaps.contains(Caps.reply),
+                                   close: close) {
+                    close()
+                    m.dismiss(n.key)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+            .zIndex(5)
+            .background(Button("", action: close).keyboardShortcut(.cancelAction).opacity(0))
+        }
+    }
+
+    private func close() {
+        withAnimation(Motion.hero(reduce)) { open = nil }
+    }
+}
+
+/// A notification opened from its row: the card, monogram and title travel from the row.
+struct NotificationDetail: View {
+    @EnvironmentObject var m: AppModel
+    let n: MirroredNotification
+    let hero: Namespace.ID
+    let privacy: Bool
+    let actionsEnabled: Bool
+    let close: () -> Void
+    let dismiss: () -> Void
+    @State private var draft = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Monogram(text: n.app, size: 44).hero("n-mono-\(n.key)", in: hero)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(n.app).font(Typo.sans(12)).foregroundColor(Mono.muted)
+                    Text(relativeTime(n.ts)).font(Typo.mono(10)).foregroundColor(Mono.muted)
+                }
+                Spacer()
+                Button(action: close) {
+                    Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundColor(Mono.muted)
+                        .frame(width: 24, height: 24).background(Circle().fill(Mono.surfaceHigh))
+                }
+                .buttonStyle(PressStyle()).accessibilityLabel("Close")
+            }
+            Text(privacy ? "New notification" : (n.title.isEmpty ? n.app : n.title))
+                .font(Typo.sans(18, .medium)).foregroundColor(Mono.text)
+                .hero("n-title-\(n.key)", in: hero)
+            if !privacy && !n.text.isEmpty {
+                ScrollView {
+                    Text(n.text).font(Typo.sans(13)).foregroundColor(Mono.text).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 220)
+                .staggerIn(1)
+            }
+            if actionsEnabled, let r = n.replyAction {
+                HStack(spacing: 8) {
+                    TextField("Reply to \(n.title.isEmpty ? n.app : n.title)", text: $draft)
+                        .textFieldStyle(.plain).font(Typo.sans(13)).foregroundColor(Mono.text)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .tetherCard(cornerRadius: 8)
+                        .onSubmit(send)
+                    MonoButton(title: "Send") { send() }.frame(width: 80)
+                        .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .staggerIn(2)
+                .accessibilityLabel("Reply with \(r.title)")
+            }
+            HStack(spacing: 8) {
+                if actionsEnabled {
+                    ForEach(n.actions.filter { !$0.reply }.prefix(3), id: \.id) { a in
+                        GhostButton(title: a.title) { m.performAction(key: n.key, action: a.id, text: nil) }
+                    }
+                }
+                Spacer()
+                GhostButton(title: "Dismiss on phone", action: dismiss)
+            }
+            .staggerIn(3)
+        }
+        .padding(20)
+        .frame(width: 520)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Mono.surface)
+                .hero("n-card-\(n.key)", in: hero)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Mono.line))
+        .shadow(color: .black.opacity(0.35), radius: 30, y: 14)
+    }
+
+    private func send() {
+        guard let r = n.replyAction, !draft.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        m.performAction(key: n.key, action: r.id, text: draft)
+        draft = ""
     }
 }
 

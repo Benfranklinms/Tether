@@ -15,10 +15,11 @@ struct SlimMenuView: View {
     private var detached: Bool { panel?.detached == true }
 
     var body: some View {
+        let on = shown || m.demo
         VStack(alignment: .leading, spacing: 12) {
-            header.background(panel.map { p in PanelDragArea(onTearOff: p.detach) })
+            header.background(panel.map { p in PanelDragArea(onTearOff: p.detach) }).cascade(on, 0, reduce: reduce)
             if m.peer == nil {
-                MonoButton(title: "Pair a phone") { open(.pair) }
+                MonoButton(title: "Pair a phone") { open(.pair) }.cascade(on, 1, reduce: reduce)
             } else {
                 if let c = m.call, m.settings.callAlerts, m.liveCall?.isOffhook != true {
                     CallBanner(call: c).transition(.move(edge: .top).combined(with: .opacity))
@@ -26,22 +27,39 @@ struct SlimMenuView: View {
                 if let live = m.liveCall, live.isOffhook {
                     LiveCallCard(call: live).transition(.scale(scale: 0.96).combined(with: .opacity))
                 }
-                if let otp = m.v5.otp { OtpCard(otp: otp) }
-                if let np = m.nowPlaying, np.active { CompactNowPlaying(np: np) }
-                if let c = m.v5.continueCards.cards.first { SlimContinue(state: c) }
-                notifications
+                if let otp = m.v5.otp { OtpCard(otp: otp).cascade(on, 1, reduce: reduce) }
+                if let cap = m.v5.capture { CaptureCard(session: cap).transition(Motion.listRow(reduce)) }
+                if m.v5.hotspot.state != nil { HotspotCard().transition(Motion.listRow(reduce)) }
+                if let np = m.nowPlaying, np.active { CompactNowPlaying(np: np).cascade(on, 2, reduce: reduce) }
+                if let c = m.v5.continueCards.cards.first { SlimContinue(state: c).cascade(on, 3, reduce: reduce) }
+                notifications.cascade(on, 4, reduce: reduce)
                 HStack(spacing: 8) {
                     ActionTile(title: "Send clipboard", symbol: "doc.on.clipboard", enabled: m.isConnected,
                                done: m.v5.succeeded.contains("clipboard")) { m.sendClipboardNow() }
                     ActionTile(title: "Send file", symbol: "arrow.up.doc", enabled: m.isConnected) { m.chooseFiles() }
                 }
+                .cascade(on, 5, reduce: reduce)
+                HStack(spacing: 8) {
+                    ActionTile(title: "Take Photo", symbol: "camera", enabled: m.isConnected && m.supports(Caps6.capture)) {
+                        m.startCapture(CaptureKinds.photo)
+                    }
+                    ActionTile(title: "Scan Document", symbol: "doc.viewfinder", enabled: m.isConnected && m.supports(Caps6.capture)) {
+                        m.startCapture(CaptureKinds.scan)
+                    }
+                    ActionTile(title: "Hotspot", symbol: "personalhotspot", enabled: m.isConnected && m.supports(Caps6.hotspot),
+                               done: m.v5.hotspot.joined) { m.startHotspot() }
+                }
+                .cascade(on, 6, reduce: reduce)
             }
             HStack {
                 Button("Open Tether") { open(.main) }.buttonStyle(.plain).font(Typo.sans(12, .semibold)).foregroundColor(Mono.text)
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.plain).font(Typo.sans(12)).foregroundColor(Mono.muted)
             }
+            .cascade(on, 7, reduce: reduce)
         }
+        .animation(Motion.bouncy(reduce), value: m.v5.capture)
+        .animation(Motion.bouncy(reduce), value: m.v5.hotspot)
         .padding(16)
         .frame(width: detached ? nil : 340)
         .frame(minWidth: 320, maxWidth: detached ? .infinity : 340, alignment: .top)
@@ -88,9 +106,12 @@ struct SlimMenuView: View {
                     NotificationRow(n: n, privacy: m.settings.notifications.privacyMode,
                                     actionsEnabled: m.settings.notificationActions && m.peerCaps.contains(Caps.reply),
                                     onDismiss: { m.dismiss(n.key) })
+                        .swipeToRemove { withAnimation(Motion.spring(reduce)) { m.dismiss(n.key) } }
+                        .transition(Motion.listRow(reduce))
                 }
             }
             .tetherCard()
+            .animation(Motion.bouncy(reduce), value: items.map(\.key))
         }
     }
 

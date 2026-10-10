@@ -1,0 +1,17 @@
+[
+  {"text": "WIFI:S:MEC_Lab_5G;T:WPA;P:kerala@2027;;", "kind": "wifi", "title": "MEC_Lab_5G", "body": "kerala@2027", "secret": "kerala@2027"},
+  {"text": "SSID: Hostel 2F\nPassword: pass\\;word9", "kind": "wifi", "title": "Hostel 2F", "body": "pass\\;word9", "secret": "pass\\;word9"},
+  {"text": "Titan Engineering registration\nhttps://forms.gle/x7Tq2abc", "kind": "link", "title": "Titan Engineering registration", "body": "https://forms.gle/x7Tq2abc"},
+  {"text": "https://github.com/Benfranklinms/Tether/releases", "kind": "link", "title": "github.com", "body": "https://github.com/Benfranklinms/Tether/releases"},
+  {"text": "forms.gle/x7Tq2abc", "kind": "link", "title": "forms.gle", "body": "forms.gle/x7Tq2abc"},
+  {"text": "Govt. Model Engineering College\nThrikkakara, Kochi 682021", "kind": "address", "title": "Govt. Model Engineering College", "body": "Thrikkakara, Kochi 682021"},
+  {"text": "1 Infinite Loop, Cupertino, CA 95014", "kind": "address", "title": "1 Infinite Loop", "body": "Cupertino, CA 95014"},
+  {"text": "adb mdns services\nadb connect 192.168.29.142:37099", "kind": "snippet", "title": "adb mdns services", "body": "adb mdns services\nadb connect 192.168.29.142:37099"},
+  {"text": "Pair phone\nadb pair 192.168.1.4:40123 123456", "kind": "snippet", "title": "Pair phone", "body": "adb pair 192.168.1.4:40123 123456"},
+  {"text": "const x = 42;", "kind": "snippet", "title": "const x =", "body": "const x = 42;"},
+  {"text": "Roll number: MDL21CS042", "kind": "text", "title": "Roll number", "body": "MDL21CS042"},
+  {"text": "CGPA: 8.91", "kind": "text", "title": "CGPA", "body": "8.91"},
+  {"text": "Buy milk", "kind": "text", "title": "Buy milk", "body": ""},
+  {"text": "Meeting notes\nAsk about the internship\nBring resume", "kind": "text", "title": "Meeting notes", "body": "Ask about the internship\nBring resume"},
+  {"text": "Call me at 4 pm, okay?", "kind": "text", "title": "Call me at 4 pm, okay?", "body": ""}
+]

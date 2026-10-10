@@ -64,18 +64,21 @@ enum Typo {
     }
 }
 
-/// iOS-style springs; nil (no animation) when the user turned on Reduce Motion.
+/// iOS-style springs. With Reduce Motion every one of them becomes a short crossfade-length
+/// ease (0.5.2), so transitions fall back to fades instead of jumping.
 enum Motion {
+    static let reducedFade = Animation.easeInOut(duration: 0.18)
+
     static func spring(_ reduce: Bool) -> Animation? {
-        reduce ? nil : .spring(response: 0.42, dampingFraction: 0.82)
+        reduce ? reducedFade : .spring(response: 0.42, dampingFraction: 0.82)
     }
 
     static func bouncy(_ reduce: Bool) -> Animation? {
-        reduce ? nil : .spring(response: 0.38, dampingFraction: 0.62)
+        reduce ? reducedFade : .spring(response: 0.38, dampingFraction: 0.62)
     }
 
     static func soft(_ reduce: Bool) -> Animation? {
-        reduce ? nil : .spring(response: 0.7, dampingFraction: 1.0)
+        reduce ? reducedFade : .spring(response: 0.7, dampingFraction: 1.0)
     }
 }
 
@@ -127,14 +130,19 @@ struct Chip: View {
     }
 }
 
-/// Scales down on press with a spring, like iOS buttons.
+/// iOS press feedback (0.5.2): scales down and dims on press, springs back with a little
+/// overshoot on release. Reduce Motion: dims only.
 struct PressStyle: ButtonStyle {
+    var scale: CGFloat = 0.93
     @Environment(\.accessibilityReduceMotion) private var reduce
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed && !reduce ? 0.96 : 1)
-            .animation(Motion.spring(reduce), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduce ? scale : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
+            .brightness(configuration.isPressed ? -0.03 : 0)
+            .animation(configuration.isPressed ? .spring(response: 0.16, dampingFraction: 0.9)
+                       : (reduce ? Motion.reducedFade : .spring(response: 0.34, dampingFraction: 0.5)), value: configuration.isPressed)
     }
 }
 
@@ -193,8 +201,10 @@ struct ActionTile: View {
         }
         .buttonStyle(PressStyle())
         .disabled(!enabled)
-        .scaleEffect(hover && enabled && !reduce ? 1.02 : 1)
-        .animation(Motion.spring(reduce), value: hover)
+        .scaleEffect(hover && enabled && !reduce ? 1.04 : 1)
+        .offset(y: hover && enabled && !reduce ? -2 : 0)
+        .shadow(color: .black.opacity(hover && enabled ? 0.22 : 0), radius: hover ? 12 : 0, y: hover ? 6 : 0)
+        .animation(reduce ? Motion.reducedFade : .spring(response: 0.3, dampingFraction: 0.66), value: hover)
         .onHover { hover = $0 }
         .accessibilityLabel(title)
     }

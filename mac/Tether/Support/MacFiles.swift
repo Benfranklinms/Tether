@@ -127,6 +127,8 @@ final class MacFiles: OutgoingFiles, IncomingFiles {
         case let k where PhoneKinds.isMedia(k): folder = mediaFolder?() ?? downloadFolder()
         case FileKinds5.clip: folder = Paths.sub("clips")
         case FileKinds5.fs: folder = fsDestinations.removeValue(forKey: record.name) ?? downloadFolder()
+        case FileKinds6.capture: folder = Paths.sub("Captures")
+        case FileKinds6.shelf: folder = Paths.sub("Shelf-in")
         default: folder = downloadFolder()
         }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

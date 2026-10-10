@@ -26,13 +26,25 @@ struct HomePage: View {
                 SectionLabel(text: "Continue on Mac")
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        ForEach(v5.continueCards.cards) { c in ContinueCardView(state: c) }
+                        ForEach(Array(v5.continueCards.cards.enumerated()), id: \.element.id) { i, c in
+                            ContinueCardView(state: c).staggerIn(i).transition(Motion.listRow(reduce))
+                        }
                     }
+                    .padding(.vertical, 8)
+                    .animation(Motion.bouncy(reduce), value: v5.continueCards.cards.map(\.id))
                 }
             }
             if let np = m.nowPlaying, np.active { NowPlayingCard(np: np) }
             SectionLabel(text: "Quick actions")
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                ActionTile(title: "Take Photo", symbol: "camera", enabled: m.isConnected && m.supports(Caps6.capture)) {
+                    m.startCapture(CaptureKinds.photo)
+                }
+                ActionTile(title: "Scan Document", symbol: "doc.viewfinder", enabled: m.isConnected && m.supports(Caps6.capture)) {
+                    m.startCapture(CaptureKinds.scan)
+                }
+                ActionTile(title: m.v5.hotspot.joined ? "On hotspot" : "Hotspot", symbol: "personalhotspot",
+                           enabled: m.isConnected && m.supports(Caps6.hotspot), done: m.v5.hotspot.joined) { m.startHotspot() }
                 ActionTile(title: "Send clipboard", symbol: "doc.on.clipboard", enabled: m.isConnected,
                            done: v5.succeeded.contains("clipboard")) { m.sendClipboardNow() }
                 ActionTile(title: "Send file", symbol: "arrow.up.doc", enabled: m.isConnected) { m.chooseFiles() }
@@ -56,9 +68,10 @@ struct HomePage: View {
                         .medium)).foregroundColor(Mono.muted)
                 }
                 VStack(spacing: 0) {
-                    ForEach(m.history.items.prefix(4)) { n in
+                        ForEach(m.history.items.prefix(4)) { n in
                         NotificationRow(n: n, privacy: m.settings.notifications.privacyMode, onDismiss: { m.dismiss(n.key) })
-                            .transition(Motion.row(reduce))
+                            .swipeToRemove { m.dismiss(n.key) }
+                            .transition(Motion.listRow(reduce))
                     }
                 }
                 .tetherCard()
@@ -164,6 +177,7 @@ struct ContinueCardView: View {
         .padding(12)
         .frame(width: 220)
         .tetherCard(highlighted: hover)
+        .hoverLift()
         .onHover { hover = $0 }
     }
 }
@@ -176,12 +190,24 @@ struct FilesPage: View {
 
     @State private var mode: FilesViewMode = .list
     @Environment(\.accessibilityReduceMotion) private var reduce
+    /// 0.5.2: rectangle / ⌘-click selection of files.
+    @State private var selection = GridSelection()
+    @State private var frames = FrameRegistry()
+
+    private var files: [FsEntry] { v5.folder.entries.filter { !$0.dir } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                PageTitle(title: "Files", detail: "Browse your phone. Drag a file to Finder, or download it.")
+                PageTitle(title: "Files", detail: selection.ids.isEmpty ? "Browse your phone. Drag a file to Finder, or download it."
+                            : "\(selection.ids.count) selected")
                 Spacer()
+                if !selection.ids.isEmpty {
+                    GhostButton(title: "Download \(selection.ids.count)") { downloadSelected() }
+                        .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    GhostButton(title: "Clear") { withAnimation(Motion.bouncy(reduce)) { selection.clear() } }
+                        .transition(.scale(scale: 0.85).combined(with: .opacity))
+                }
                 ViewModeToggle(mode: Binding(get: { mode }, set: { new in
                     mode = new
                     UserDefaults.standard.set(new.rawValue, forKey: FilesViewMode.key(root: v5.folder.root))
@@ -199,6 +225,33 @@ struct FilesPage: View {
         .onChange(of: v5.folder.root) { r in
             withAnimation(Motion.spring(reduce)) { mode = FilesViewMode.load(root: r) { UserDefaults.standard.string(forKey: $0) } }
         }
+        .onChange(of: v5.folder.path) { _ in selection.clear() }
+        .animation(Motion.bouncy(reduce), value: selection.ids.isEmpty)
+        .background(Button("") { withAnimation(Motion.bouncy(reduce)) { selection.clear() } }
+            .keyboardShortcut(.cancelAction).opacity(0).allowsHitTesting(false))
+    }
+
+    private func path(_ e: FsEntry) -> String { FsPathJoin.join(v5.folder.path, e.name) }
+
+    private func downloadSelected() {
+        for e in files where selection.ids.contains(path(e)) {
+            m.fetchPhoneFile(root: v5.folder.root, path: path(e), name: e.name)
+        }
+        withAnimation(Motion.bouncy(reduce)) { selection.clear() }
+    }
+
+    private func select(_ ids: [String], additive: Bool) {
+        withAnimation(Motion.bouncy(reduce)) { selection.drag(covering: ids, additive: additive) }
+    }
+
+    /// ⌘-click toggles, ⇧-click extends; returns true when the click was a selection click.
+    private func click(_ e: FsEntry) -> Bool {
+        let flags = NSEvent.modifierFlags
+        guard !e.dir, flags.contains(.command) || flags.contains(.shift) else { return false }
+        withAnimation(Motion.bouncy(reduce)) {
+            selection.click(path(e), mode: flags.contains(.command) ? .toggle : .range, order: files.map(path))
+        }
+        return true
     }
 
     private var roots: some View {
@@ -252,29 +305,45 @@ struct FilesPage: View {
         } else if let e = v5.folder.error {
             Card { Row(title: e, divider: false) { GhostButton(title: "Retry") { m.openFolder(root: v5.folder.root,
                 path: v5.folder.path) } } }
-        } else if v5.folder.entries.isEmpty && !v5.folder.loading {
+        } else if v5.folder.entries.isEmpty && v5.folder.loading {
+            SkeletonRows(count: 8, avatar: 30).tetherCard()
+        } else if v5.folder.entries.isEmpty {
             Text("This folder is empty").font(Typo.sans(12)).foregroundColor(Mono.muted).padding(.top, 20)
         } else if mode == .grid {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 104, maximum: 132), spacing: 8)], spacing: 8) {
-                    ForEach(v5.folder.entries, id: \.self) { e in
-                        PhoneFileCell(entry: e, root: v5.folder.root, base: v5.folder.path)
+                    ForEach(Array(v5.folder.entries.enumerated()), id: \.element) { i, e in
+                        PhoneFileCell(entry: e, root: v5.folder.root, base: v5.folder.path, selected: selection.ids.contains(path(e)),
+                                      onClick: { click(e) })
+                            .reportFrame(path(e))
+                            .staggerIn(min(i, 24), step: 0.02)
                             .transition(.scale(scale: 0.92).combined(with: .opacity))
                     }
                 }
+                .padding(.bottom, 24)
                 if v5.folder.more { GhostButton(title: "Load more") { m.loadMoreFiles() }.padding(10) }
             }
+            .id(v5.folder.root + "/" + v5.folder.path)
+            .marqueeSelection(registry: frames, order: { files.map(path) }, onSelect: select)
             .transition(.opacity)
         } else {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(v5.folder.entries, id: \.self) { e in PhoneFileRow(entry: e, root: v5.folder.root, base: v5.folder.path) }
+                    ForEach(Array(v5.folder.entries.enumerated()), id: \.element) { i, e in
+                        PhoneFileRow(entry: e, root: v5.folder.root, base: v5.folder.path, selected: selection.ids.contains(path(e)),
+                                     onClick: { click(e) })
+                            .reportFrame(path(e))
+                            .staggerIn(min(i, 16), step: 0.025)
+                    }
                     if v5.folder.more {
                         GhostButton(title: "Load more") { m.loadMoreFiles() }.padding(10)
                     }
                 }
                 .tetherCard()
+                .padding(.bottom, 24)
             }
+            .id(v5.folder.root + "/" + v5.folder.path)
+            .marqueeSelection(registry: frames, order: { files.map(path) }, onSelect: select)
             .transition(.opacity)
         }
     }
@@ -285,7 +354,10 @@ struct PhoneFileRow: View {
     let entry: FsEntry
     let root: String
     let base: String
+    var selected = false
+    var onClick: () -> Bool = { false }
     @State private var hover = false
+    @Environment(\.accessibilityReduceMotion) private var reduce
 
     private var path: String { FsPathJoin.join(base, entry.name) }
 
@@ -304,11 +376,19 @@ struct PhoneFileRow: View {
             }
         }
         .padding(.horizontal, 12).frame(height: 46)
-        .background(hover ? Mono.surfaceHigh : Color.clear)
+        .background(selected ? Mono.surfaceHigh : (hover ? Mono.surface : Color.clear))
+        .overlay(alignment: .leading) {
+            if selected {
+                Capsule().fill(Mono.text).frame(width: 3, height: 22).padding(.leading, 3).transition(.scale.combined(with: .opacity))
+            }
+        }
+        .offset(x: hover && !reduce ? 2 : 0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hover)
+        .animation(Motion.bouncy(reduce), value: selected)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture(count: 2) { entry.dir ? m.openFolder(root: root, path: path) : preview() }
-        .onTapGesture { if entry.dir { m.openFolder(root: root, path: path) } }
+        .onTapGesture { if !onClick(), entry.dir { m.openFolder(root: root, path: path) } }
         .onDrag { m.phoneFileDragProvider(entry: entry, root: root, path: path) }
         .contextMenu {
             if !entry.dir {
@@ -463,13 +543,25 @@ struct ClipRow: View {
             Text(Date(timeIntervalSince1970: TimeInterval(item.ts) / 1000).formatted(date: .omitted, time: .shortened))
                 .font(Typo.mono(10)).foregroundColor(Mono.muted)
             if hover {
-                SmallIcon(symbol: "xmark", label: "Remove") { m.removeClip(item.id) }
+                if let t = item.text, !t.isEmpty {
+                    SmallIcon(symbol: "pin", label: "Pin to Shelf") { m.pinToShelf(t) }.transition(.scale.combined(with: .opacity))
+                } else if let f = item.image {
+                    SmallIcon(symbol: "pin", label: "Pin to Shelf") { m.addToShelf(file: AppModel.clipsDir.appendingPathComponent(f)) }
+                        .transition(.scale.combined(with: .opacity))
+                }
+                SmallIcon(symbol: "xmark", label: "Remove") { m.removeClip(item.id) }.transition(.scale.combined(with: .opacity))
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(hover ? Mono.surfaceHigh : Color.clear)
+        .animation(.spring(response: 0.28, dampingFraction: 0.7), value: hover)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture { m.recopy(item) }
+        .contextMenu {
+            Button("Copy again") { m.recopy(item) }
+            if let t = item.text, !t.isEmpty { Button("Pin to Shelf") { m.pinToShelf(t) } }
+            Button("Remove") { m.removeClip(item.id) }
+        }
     }
 }

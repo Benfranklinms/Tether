@@ -293,6 +293,23 @@ final class ServiceProvider: NSObject {
         DispatchQueue.main.async { self.model?.openOnPhone(url: url?.absoluteString, text: url == nil ? text : nil) }
     }
 
+    // 0.5.2 Insert from Phone (Services menu, and the right-click menu of editable text views).
+    @objc func takePhoto(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        DispatchQueue.main.async { self.model?.startCapture(CaptureKinds.photo) }
+    }
+
+    @objc func scanDocument(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        DispatchQueue.main.async { self.model?.startCapture(CaptureKinds.scan) }
+    }
+
+    @objc func addToShelf(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        let urls = (pboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        let text = pboard.string(forType: .string)
+        DispatchQueue.main.async {
+            if !urls.isEmpty { urls.forEach { self.model?.addToShelf(file: $0) } } else if let text { self.model?.addToShelf(text: text) }
+        }
+    }
+
     @objc func sendToPhone(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
         let urls = (pboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
         DispatchQueue.main.async {
@@ -307,6 +324,18 @@ final class ServiceProvider: NSObject {
 
 /// Files the Finder Share extension dropped into the shared container (tether://inbox).
 enum ShareInbox {
+    /// 0.5.2: Share › Tether › Add to Shelf.
+    static func drainToShelf(into m: AppModel) {
+        guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: WidgetBridge.group)?
+            .appendingPathComponent("ShelfInbox") else { return }
+        let fm = FileManager.default
+        let items = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        for u in items { m.addToShelf(file: u) }
+        m.v5.page = .shelf
+        m.windows?.show(.main)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { items.forEach { try? fm.removeItem(at: $0) } }
+    }
+
     static var dir: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: WidgetBridge.group)?.appendingPathComponent("Inbox")
     }

@@ -28,6 +28,7 @@ import dev.benfranklin.tether.core.proto.ScreenInput
 import dev.benfranklin.tether.core.proto.ScreenStart
 import dev.benfranklin.tether.core.proto.ScreenState
 import dev.benfranklin.tether.core.proto.ScreenStop
+import dev.benfranklin.tether.core.proto.ShelfSync
 import dev.benfranklin.tether.core.proto.SmsMessages
 import dev.benfranklin.tether.core.proto.SmsThreads
 import dev.benfranklin.tether.core.proto.Thumb
@@ -585,6 +586,7 @@ class TetherController(
             Clip::class, ScreenInput::class, VideoFeedback::class, ScreenStart::class, ScreenStop::class, ScreenState::class,
             SmsThreads::class, SmsMessages::class, NowPlayingArt::class, CallLog::class, Contacts::class,
             FsList::class, Photos::class, Thumb::class, ContinueCard::class, PhoneStatus::class, TypeText::class, Albums::class,
+            ShelfSync::class,
         )
         /** Fragment size the link will actually use for a reported [maxFragment] (ATT MTU - 3). */
         fun clampFragment(maxFragment: Int): Int = maxFragment.coerceIn(DEFAULT_FRAGMENT, Fragmentation.MAX_BLE_FRAGMENT)

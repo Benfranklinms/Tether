@@ -24,10 +24,80 @@ final class WifiClient {
     private var offer: WifiOfferPayload?
     private var expectedId: String?
     private var retries = 0
+    /// 0.5.2: retry with backoff for as long as there is an offer and no session, and right
+    /// away when this Mac's network path changes (e.g. it joined the phone's hotspot).
+    private var retry = FastPathRetry()
+    private var pathMonitor: NWPathMonitor?
+    private var lastPath: String?
+    private var timer: DispatchSourceTimer?
 
     init(queue: DispatchQueue, delegate: WifiClientDelegate) {
         self.queue = queue
         self.delegate = delegate
+        watchPath()
+    }
+
+    private static var nowMs: Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
+
+    /// NWPathMonitor: on any interface/address change, restart Bonjour and retry the offer.
+    private func watchPath() {
+        let mon = NWPathMonitor()
+        mon.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            let sig = "\(path.status)|" + path.availableInterfaces.map { "\($0.name):\($0.type)" }.joined(separator: ",")
+                + "|" + Self.localIPv4().joined(separator: ",")
+            guard sig != self.lastPath else { return }
+            let first = self.lastPath == nil
+            self.lastPath = sig
+            guard !first else { return }
+            Log.info("wifi.path_changed", ["status": "\(path.status)", "ifaces": "\(path.availableInterfaces.count)"])
+            self.restartBrowsing()
+            self.retry.networkChanged(now: Self.nowMs)
+        }
+        mon.start(queue: queue)
+        pathMonitor = mon
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        t.schedule(deadline: .now() + 1, repeating: 1)
+        t.setEventHandler { [weak self] in self?.tick() }
+        t.resume()
+        timer = t
+    }
+
+    private func tick() {
+        guard offer != nil, !isConnected else { return }
+        let now = Self.nowMs
+        if retry.due(now: now, bleReady: true, wifiReady: false) {
+            retry.attempted(now: now)
+            Log.info("wifi.retry", ["attempt": "\(retry.attempts)"])
+            tryCandidates()
+        }
+    }
+
+    private func restartBrowsing() {
+        guard browser != nil else { return }
+        let id = expectedId
+        stopBrowsing()
+        browse(phoneId: id)
+    }
+
+    /// This Mac's IPv4 addresses (to rank the phone's addresses by subnet).
+    static func localIPv4() -> [String] {
+        var out: [String] = []
+        var ifap: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifap) == 0, let first = ifap else { return out }
+        defer { freeifaddrs(ifap) }
+        var p: UnsafeMutablePointer<ifaddrs>? = first
+        while let cur = p {
+            let flags = Int32(cur.pointee.ifa_flags)
+            if let sa = cur.pointee.ifa_addr, sa.pointee.sa_family == UInt8(AF_INET), flags & IFF_UP != 0, flags & IFF_LOOPBACK == 0 {
+                var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                if getnameinfo(sa, socklen_t(sa.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 {
+                    out.append(String(cString: host))
+                }
+            }
+            p = cur.pointee.ifa_next
+        }
+        return out
     }
 
     var isConnected: Bool { connection?.state == .ready }
@@ -63,11 +133,14 @@ final class WifiClient {
     func connect(_ offer: WifiOfferPayload) {
         self.offer = offer
         retries = 0
+        retry.linkUp(now: Self.nowMs)
+        retry.attempted(now: Self.nowMs)
         tryCandidates()
     }
 
     func revoke() {
         offer = nil
+        retry.linkDown()
         close()
     }
 
@@ -81,7 +154,7 @@ final class WifiClient {
         var list: [NWEndpoint] = []
         if let id = expectedId, let ep = bonjour[id] { list.append(ep) }
         guard let port = NWEndpoint.Port(rawValue: UInt16(clamping: offer.port)) else { return list }
-        for a in offer.addrs { list.append(.hostPort(host: NWEndpoint.Host(a), port: port)) }
+        for a in FastPathRetry.rank(offer.addrs, local: Self.localIPv4()) { list.append(.hostPort(host: NWEndpoint.Host(a), port: port)) }
         return list
     }
 
@@ -98,10 +171,8 @@ final class WifiClient {
         guard attempt == attemptId else { return }
         guard let ep = rest.first else {
             retries += 1
-            Log.info("wifi.unreachable", ["retry": "\(retries)"])
-            if retries <= 3 {
-                queue.asyncAfter(deadline: .now() + .seconds(retries * 3)) { [weak self] in self?.tryCandidates() }
-            }
+            // The 1 s ticker retries on the backoff schedule (and at once after a path change).
+            Log.info("wifi.unreachable", ["retry": "\(retries)", "next_s": "\(((retry.nextAt ?? Self.nowMs) - Self.nowMs) / 1000)"])
             return
         }
         let tcp = NWProtocolTCP.Options()
@@ -116,6 +187,7 @@ final class WifiClient {
             switch state {
             case .ready:
                 opened = true
+                self.retry.connected()
                 self.deframer = StreamDeframer()
                 Log.info("wifi.connected")
                 self.delegate?.wifiOpened(writer: { [weak c] record in
@@ -127,6 +199,7 @@ final class WifiClient {
             case .failed, .cancelled:
                 if opened {
                     self.connection = nil
+                    self.retry.wifiLost(now: Self.nowMs)
                     self.delegate?.wifiClosed()
                 } else if case .failed = state {
                     c.cancel()

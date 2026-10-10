@@ -119,7 +119,72 @@
 				<string>public.utf8-plain-text</string>
 			</array>
 		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Insert from Phone: Take Photo</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>takePhoto</string>
+			<key>NSPortName</key>
+			<string>Tether</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSReturnTypes</key>
+			<array>
+				<string>public.tiff</string>
+				<string>public.png</string>
+				<string>NSTIFFPboardType</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Insert from Phone: Scan Document</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>scanDocument</string>
+			<key>NSPortName</key>
+			<string>Tether</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSReturnTypes</key>
+			<array>
+				<string>public.tiff</string>
+				<string>com.adobe.pdf</string>
+				<string>NSTIFFPboardType</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Add to Shelf with Tether</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>addToShelf</string>
+			<key>NSPortName</key>
+			<string>Tether</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.file-url</string>
+				<string>public.utf8-plain-text</string>
+				<string>NSStringPboardType</string>
+			</array>
+		</dict>
 	</array>
+	<key>NSLocationUsageDescription</key>
+	<string>Tether uses Location only so macOS lets it see Wi-Fi network names when joining your phone's hotspot.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Tether uses Location only so macOS lets it see Wi-Fi network names when joining your phone's hotspot.</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Tether lowers and restores your Mac's volume during phone calls.</string>
 	<key>NSUserNotificationsUsageDescription</key>

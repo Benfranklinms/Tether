@@ -352,6 +352,10 @@ struct NotificationRow: View {
     let privacy: Bool
     var actionsEnabled = false
     let onDismiss: () -> Void
+    /// 0.5.2: shared-element hero into NotificationDetail (main window).
+    var hero: Namespace.ID?
+    var heroActive = true
+    var onOpen: (() -> Void)?
     @State private var hover = false
     @State private var replying = false
     @State private var draft = ""
@@ -364,7 +368,7 @@ struct NotificationRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
-                Monogram(text: n.app, size: 28)
+                Monogram(text: n.app, size: 28).hero("n-mono-\(n.key)", in: hero, active: heroActive)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
                         Text(n.app).font(Typo.sans(11)).foregroundColor(Mono.muted).lineLimit(1)
@@ -374,7 +378,10 @@ struct NotificationRow: View {
                     if privacy {
                         Text("New notification").font(Typo.sans(13)).foregroundColor(Mono.text)
                     } else {
-                        if !n.title.isEmpty { Text(n.title).font(Typo.sans(13, .medium)).foregroundColor(Mono.text).lineLimit(1) }
+                        if !n.title.isEmpty {
+                            Text(n.title).font(Typo.sans(13, .medium)).foregroundColor(Mono.text).lineLimit(1)
+                                .hero("n-title-\(n.key)", in: hero, active: heroActive)
+                        }
                         if !n.text.isEmpty { Text(n.text).font(Typo.sans(12)).foregroundColor(Mono.muted).lineLimit(3) }
                     }
                 }
@@ -393,7 +400,12 @@ struct NotificationRow: View {
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(hover ? Mono.surface : Color.clear)
+        .background(
+            Rectangle().fill(hover ? Mono.surface : Mono.surface.opacity(0.001))
+                .hero("n-card-\(n.key)", in: hero, active: heroActive && hero != nil)
+        )
+        .contentShape(Rectangle())
+        .gesture(TapGesture().onEnded { onOpen?() }, including: onOpen == nil ? .subviews : .all)
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
         .animation(Motion.spring(reduce), value: replying)
         .animation(Motion.spring(reduce), value: m.actionStatus[n.key])
@@ -474,40 +486,6 @@ struct SmallAction: View {
             .contentShape(Capsule())
         }
         .buttonStyle(PressStyle())
-    }
-}
-
-/// Phone battery: level glyph (bolt while charging), percent, network.
-struct BatteryBadge: View {
-    let b: BatteryPayload
-
-    private var symbol: String {
-        if b.charging { return "battery.100.bolt" }
-        switch b.level {
-        case ..<13: return "battery.0"
-        case ..<38: return "battery.25"
-        case ..<63: return "battery.50"
-        case ..<88: return "battery.75"
-        default: return "battery.100"
-        }
-    }
-
-    private var network: String? {
-        switch b.net {
-        case "wifi": return "Wi-Fi"
-        case "cellular": return b.gen ?? "Cellular"
-        default: return nil
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 5) {
-            if let network { Text(network).font(Typo.mono(10, .medium)).foregroundColor(Mono.muted) }
-            Image(systemName: symbol).font(.system(size: 13)).foregroundColor(b.level <= 20 && !b.charging ? Mono.text : Mono.muted)
-            Text("\(b.level)%").font(Typo.mono(11, .medium)).foregroundColor(Mono.text).contentTransition(.numericText())
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Phone battery \(b.level) percent\(b.charging ? ", charging" : "")")
     }
 }
 

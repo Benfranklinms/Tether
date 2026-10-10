@@ -84,22 +84,24 @@ struct ThumbImage: View {
     }
 }
 
-/// Loading placeholder: a soft highlight sweeping across (static with Reduce Motion).
+/// Loading placeholder: a soft highlight band sweeping across the full width (0.5.2: sized to
+/// the view so wide rows shimmer edge to edge); static with Reduce Motion.
 struct Shimmer: View {
     @State private var phase: CGFloat = -1
     @Environment(\.accessibilityReduceMotion) private var reduce
 
     var body: some View {
         Rectangle().fill(Mono.surfaceHigh)
-            .overlay(
-                LinearGradient(colors: [.clear, Mono.text.opacity(0.06), .clear], startPoint: .leading, endPoint: .trailing)
-                    .offset(x: phase * 160)
+            .overlay(GeometryReader { g in
+                LinearGradient(colors: [.clear, Mono.text.opacity(0.10), .clear], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: max(40, g.size.width * 0.7))
+                    .offset(x: phase * g.size.width * 1.2 + g.size.width * 0.15)
                     .opacity(reduce ? 0 : 1)
-            )
+            })
             .clipped()
             .onAppear {
                 guard !reduce else { return }
-                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) { phase = 1 }
+                withAnimation(.easeInOut(duration: 1.25).repeatForever(autoreverses: false)) { phase = 1 }
             }
     }
 }
@@ -109,9 +111,10 @@ struct Shimmer: View {
 struct PhotosPage: View {
     @EnvironmentObject var m: AppModel
     @ObservedObject var v5: V5State
-    @Namespace private var hero
     @Environment(\.accessibilityReduceMotion) private var reduce
     @State private var appeared = false
+    /// Tile frames for rectangle selection and the viewer's zoom (0.5.2).
+    @State private var frames = FrameRegistry()
 
     private static let filterTitles = ["all": "All", PhotoFilters.photos: "Photos", PhotoFilters.videos: "Videos",
                                        PhotoFilters.screenshots: "Screenshots"]
@@ -246,7 +249,8 @@ struct PhotosPage: View {
                     Section {
                         ForEach(Array(section.items.enumerated()), id: \.element.id) { i, p in
                             GalleryTile(item: p, tile: tile, selected: v5.photoSelection.ids.contains(p.id),
-                                        hidden: v5.viewer?.id == p.id, hero: hero, order: order, v5: v5)
+                                        hidden: v5.viewer?.id == p.id, order: order, v5: v5)
+                                .reportFrame(p.id)
                                 .opacity(appeared || reduce || m.demo ? 1 : 0)
                                 .scaleEffect(appeared || reduce || m.demo ? 1 : 0.94)
                                 .animation(reduce ? nil : Motion.spring(false)?.delay(Stagger.delay(index: si * 8 + i)), value: appeared)
@@ -261,13 +265,16 @@ struct PhotosPage: View {
             }
             .padding(.bottom, 20)
         }
+        // 0.5.2: drag from a gap or the margins to select a rectangle of photos.
+        .marqueeSelection(registry: frames, order: { v5.library.items.map(\.id) }, onSelect: { ids, additive in
+            withAnimation(Motion.bouncy(reduce)) { v5.photoSelection.drag(covering: ids, additive: additive) }
+        })
         .onAppear { appeared = true }
     }
 
     @ViewBuilder private var viewerOverlay: some View {
         if let item = v5.viewer {
-            PhotoViewer(item: item, hero: hero, v5: v5)
-                .transition(.opacity)
+            PhotoViewer52(item: item, frames: frames, v5: v5)
                 .zIndex(10)
         }
     }
@@ -311,7 +318,6 @@ struct GalleryTile: View {
     let tile: Double
     let selected: Bool
     let hidden: Bool
-    let hero: Namespace.ID
     let order: [String]
     @ObservedObject var v5: V5State
     @State private var hover = false
@@ -326,7 +332,6 @@ struct GalleryTile: View {
             .aspectRatio(1, contentMode: .fit)
             .overlay(
                 ThumbImage(key: key, fallbacks: [small]) { m.requestThumb(root: FsRoots.photos, path: item.id, size: px) }
-                    .matchedGeometryEffect(id: item.id, in: hero, isSource: !hidden)
             )
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .overlay(alignment: .bottomTrailing) { badges }
@@ -338,7 +343,9 @@ struct GalleryTile: View {
                         .padding(5).transition(.scale.combined(with: .opacity))
                 }
             }
-            .scaleEffect(hover && !reduce && !selected ? 1.02 : 1)
+            .scaleEffect(selected && !reduce ? 0.94 : (hover && !reduce ? 1.04 : 1))
+            .shadow(color: .black.opacity(hover && !selected ? 0.25 : 0), radius: hover ? 10 : 0, y: hover ? 5 : 0)
+            .zIndex(hover ? 1 : 0)
             .opacity(hidden ? 0 : 1)
             .animation(Motion.spring(reduce), value: hover)
             .animation(Motion.bouncy(reduce), value: selected)
@@ -389,113 +396,7 @@ struct GalleryTile: View {
     }
 
     private func open() {
-        withAnimation(reduce ? .easeOut(duration: 0.15) : .spring(response: 0.38, dampingFraction: 0.86)) { v5.viewer = item }
-    }
-}
-
-/// Full-size viewer: zooms out of its thumbnail, ← / → to move, Esc or a downward drag to close,
-/// and an info panel (date, size, resolution).
-struct PhotoViewer: View {
-    @EnvironmentObject var m: AppModel
-    let item: PhotoItem
-    let hero: Namespace.ID
-    @ObservedObject var v5: V5State
-    @State private var drag: CGSize = .zero
-    @Environment(\.accessibilityReduceMotion) private var reduce
-
-    private var base: String { m.thumbKey(root: FsRoots.photos, path: item.id) }
-    private var dragProgress: Double { min(1, abs(drag.height) / 300) }
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.88 * (1 - dragProgress * 0.7)).ignoresSafeArea().onTapGesture(perform: close)
-            HStack(spacing: 0) {
-                ThumbImage(key: base + "@1024", fallbacks: ThumbPixels.all.map { base + "@\($0)" } + [base], fit: true) {
-                    m.requestThumb(root: FsRoots.photos, path: item.id, size: 1024)
-                }
-                .id(item.id)
-                .matchedGeometryEffect(id: item.id, in: hero)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(30)
-                .offset(drag)
-                .scaleEffect(1 - dragProgress * 0.25)
-                .gesture(dismissDrag)
-                info.frame(width: 240)
-            }
-        }
-        .background(keys)
-    }
-
-    private var info: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Spacer()
-                Button(action: close) {
-                    Image(systemName: "xmark").font(.system(size: 12, weight: .medium)).foregroundColor(.white)
-                        .frame(width: 26, height: 26).background(Circle().fill(Color.white.opacity(0.14)))
-                }
-                .buttonStyle(PressStyle()).accessibilityLabel("Close")
-            }
-            Text(item.name).font(Typo.sans(14, .medium)).foregroundColor(.white).lineLimit(3)
-            infoLine("Date", Date(timeIntervalSince1970: TimeInterval(item.date) / 1000).formatted(date: .long, time: .shortened))
-            infoLine("Size", ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))
-            if item.w > 0 && item.h > 0 { infoLine("Resolution", "\(item.w) × \(item.h)") }
-            if item.video && item.dur > 0 { infoLine("Duration", PhotoSections.duration(item.dur)) }
-            infoLine("Type", item.mime)
-            Spacer()
-            MonoButton(title: "Download") { m.fetchPhoneFile(root: FsRoots.photos, path: item.id, name: item.name) }
-            MonoButton(title: "Open on Mac", filled: false) {
-                m.fetchPhoneFile(root: FsRoots.photos, path: item.id, name: item.name, open: true)
-            }
-            Text("← → to browse · Esc to close").font(Typo.mono(9)).foregroundColor(.white.opacity(0.5))
-        }
-        .padding(18)
-        .frame(maxHeight: .infinity)
-        .background(Color.white.opacity(0.06))
-        .environment(\.colorScheme, .dark)
-    }
-
-    private func infoLine(_ k: String, _ v: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(k.uppercased()).font(Typo.mono(9, .medium)).tracking(0.8).foregroundColor(.white.opacity(0.5))
-            Text(v).font(Typo.sans(12)).foregroundColor(.white.opacity(0.9)).textSelection(.enabled)
-        }
-    }
-
-    private var dismissDrag: some Gesture {
-        DragGesture(minimumDistance: 6)
-            .onChanged { drag = $0.translation }
-            .onEnded { g in
-                if abs(g.translation.height) > 120 || abs(g.predictedEndTranslation.height) > 300 {
-                    close()
-                } else {
-                    withAnimation(.interactiveSpring(response: 0.32, dampingFraction: 0.8)) { drag = .zero }
-                }
-            }
-    }
-
-    private var keys: some View {
-        ZStack {
-            Button("", action: { step(-1) }).keyboardShortcut(.leftArrow, modifiers: [])
-            Button("", action: { step(1) }).keyboardShortcut(.rightArrow, modifiers: [])
-            Button("", action: close).keyboardShortcut(.cancelAction)
-        }
-        .opacity(0).allowsHitTesting(false)
-    }
-
-    private func step(_ d: Int) {
-        let order = v5.library.items.map(\.id)
-        guard let next = GridSelection.neighbour(of: item.id, in: order, step: d), next != item.id,
-              let p = v5.library.items.first(where: { $0.id == next }) else { return }
-        withAnimation(reduce ? nil : .easeOut(duration: 0.18)) { v5.viewer = p }
-        if next == order.last && v5.library.more { m.loadPhotos(more: true) }
-    }
-
-    private func close() {
-        withAnimation(reduce ? .easeOut(duration: 0.15) : .spring(response: 0.36, dampingFraction: 0.86)) {
-            v5.viewer = nil
-            drag = .zero
-        }
+        v5.viewer = item // PhotoViewer52 runs the zoom itself, from this tile's frame
     }
 }
 
@@ -591,6 +492,8 @@ struct PhoneFileCell: View {
     let entry: FsEntry
     let root: String
     let base: String
+    var selected = false
+    var onClick: () -> Bool = { false }
     @State private var hover = false
     @Environment(\.accessibilityReduceMotion) private var reduce
 
@@ -618,13 +521,17 @@ struct PhoneFileCell: View {
                 .help(entry.name)
         }
         .padding(6)
-        .background(RoundedRectangle(cornerRadius: 12).fill(hover ? Mono.surfaceHigh.opacity(0.6) : .clear))
-        .scaleEffect(hover && !reduce ? 1.03 : 1)
-        .animation(Motion.spring(reduce), value: hover)
+        .background(RoundedRectangle(cornerRadius: 12).fill(selected ? Mono.surfaceHigh : (hover ? Mono.surfaceHigh.opacity(0.6) : .clear)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? Mono.text : .clear, lineWidth: 1.5))
+        .scaleEffect(selected && !reduce ? 0.95 : (hover && !reduce ? 1.04 : 1))
+        .offset(y: hover && !selected && !reduce ? -2 : 0)
+        .shadow(color: .black.opacity(hover && !selected ? 0.2 : 0), radius: hover ? 10 : 0, y: hover ? 5 : 0)
+        .animation(.spring(response: 0.32, dampingFraction: 0.68), value: hover)
+        .animation(Motion.bouncy(reduce), value: selected)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture(count: 2) { entry.dir ? m.openFolder(root: root, path: path) : preview() }
-        .onTapGesture { if entry.dir { m.openFolder(root: root, path: path) } else { preview() } }
+        .onTapGesture { if !onClick() { if entry.dir { m.openFolder(root: root, path: path) } else { preview() } } }
         .onDrag { m.phoneFileDragProvider(entry: entry, root: root, path: path) }
         .contextMenu {
             if !entry.dir {

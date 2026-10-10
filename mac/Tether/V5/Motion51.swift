@@ -27,9 +27,11 @@ struct HoverLift: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .scaleEffect(hover && enabled && !reduce ? 1.015 : 1)
-            .shadow(color: .black.opacity(hover && enabled ? 0.18 : 0), radius: hover ? 8 : 0, y: hover ? 3 : 0)
-            .animation(Motion.spring(reduce), value: hover)
+            // 0.5.2: a real lift — grows, rises 2 pt and casts a softer, deeper shadow.
+            .scaleEffect(hover && enabled && !reduce ? 1.03 : 1)
+            .offset(y: hover && enabled && !reduce ? -2 : 0)
+            .shadow(color: .black.opacity(hover && enabled ? 0.22 : 0), radius: hover ? 14 : 0, y: hover ? 7 : 0)
+            .animation(reduce ? Motion.reducedFade : .spring(response: 0.32, dampingFraction: 0.7), value: hover)
             .onHover { hover = $0 }
     }
 }

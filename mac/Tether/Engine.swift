@@ -337,13 +337,15 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         let isMedia = PhoneKinds.isMedia(record.kind)
         let isClip = record.kind == FileKinds5.clip
         let isFs = record.kind == FileKinds5.fs
-        let notify = done && !isClip && (isMedia ? settings.mediaNotify : settings.notifyOnReceive)
+        let quiet = record.kind == FileKinds6.capture || record.kind == FileKinds6.shelf
+        let notify = done && !isClip && !quiet && (isMedia ? settings.mediaNotify : settings.notifyOnReceive)
         if done && isMedia { Log.info("media.received", ["kind": record.kind ?? "-", "size": "\(record.size)"]) }
         DispatchQueue.main.async {
             guard let m = self.model else { return }
             m.transfers = snapshot
             if done && isClip && record.direction == .IN { m.clipImageReceived(record) }
             if done && isFs { m.phoneFileArrived(record) }
+            if done && quiet { m.kindedFileArrived(record) }
             if notify { if isMedia { m.mediaReceived(record) } else { m.fileReceived(record) } }
         }
     }

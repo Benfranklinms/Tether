@@ -6,9 +6,16 @@ import TetherCore
 /// 0.5.1: an incoming or ongoing call floats over every app and Space (top right, like a
 /// Continuity banner) with Answer / Decline / Silence, then becomes a small live-call bar with
 /// Mute and End. It shows whether Tether's windows are open, closed or behind other windows.
+/// Drives the banner's spring in/out (0.5.2): the panel stays ordered in until the view has
+/// animated away.
+final class FloatingCallUI: ObservableObject {
+    @Published var visible = false
+}
+
 final class FloatingCallController {
     private weak var model: AppModel?
     private var panel: NSPanel?
+    private let ui = FloatingCallUI()
     private var bag = Set<AnyCancellable>()
     /// Calls the user closed the bar for (stays closed for the rest of that call).
     private var dismissed: Set<String> = []
@@ -51,7 +58,7 @@ final class FloatingCallController {
             p.hasShadow = true
             p.isMovableByWindowBackground = true
             p.becomesKeyOnlyIfNeeded = true
-            let root = FloatingCallView(onClose: { [weak self] id in self?.dismiss(id: id) })
+            let root = FloatingCallView(ui: ui, onClose: { [weak self] id in self?.dismiss(id: id) })
                 .environmentObject(m)
                 .environment(\.tetherStyle, m.settings.appearance)
             let host = NSHostingView(rootView: root)
@@ -60,51 +67,80 @@ final class FloatingCallController {
             panel = p
         }
         guard let p = panel else { return }
-        let fit = p.contentView?.fittingSize ?? p.frame.size
-        p.setContentSize(NSSize(width: 360, height: max(80, fit.height)))
-        if let screen = NSScreen.main ?? NSScreen.screens.first {
-            let v = screen.visibleFrame
-            let o = CallBannerPlacement.origin(visible: (Double(v.minX), Double(v.minY), Double(v.width), Double(v.height)),
-                                               size: (Double(p.frame.width), Double(p.frame.height)))
-            p.setFrameOrigin(NSPoint(x: o.x, y: o.y))
+        let wasVisible = p.isVisible && ui.visible
+        // Let SwiftUI lay out the new state (incoming → live) before measuring.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let fit = p.contentView?.fittingSize ?? p.frame.size
+            let size = NSSize(width: 360, height: max(80, fit.height))
+            var frame = NSRect(origin: p.frame.origin, size: size)
+            if let screen = NSScreen.main ?? NSScreen.screens.first {
+                let v = screen.visibleFrame
+                let o = CallBannerPlacement.origin(visible: (Double(v.minX), Double(v.minY), Double(v.width), Double(v.height)),
+                                                   size: (Double(size.width), Double(size.height)))
+                frame.origin = NSPoint(x: o.x, y: o.y)
+            }
+            if wasVisible && frame != p.frame && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                // Incoming → live: the window glides to its new height on the same top edge.
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.32
+                    ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
+                    p.animator().setFrame(frame, display: true)
+                }
+            } else {
+                p.setFrame(frame, display: true)
+            }
         }
         if !p.isVisible { p.orderFrontRegardless() }
+        if !ui.visible { ui.visible = true }
     }
 
+    /// Springs the banner away, then orders the panel out.
     private func hide() {
-        panel?.orderOut(nil)
+        guard let p = panel, p.isVisible else { return }
+        ui.visible = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self, !self.ui.visible else { return }
+            p.orderOut(nil)
+        }
     }
 }
 
 /// The banner's content: springs in from the top; incoming → live call.
 struct FloatingCallView: View {
     @EnvironmentObject var m: AppModel
+    /// nil in screenshots: always shown.
+    var ui: FloatingCallUI?
     var onClose: (String) -> Void
-    @State private var shown = false
     @State private var ring = false
+    @Namespace private var morph
     @Environment(\.accessibilityReduceMotion) private var reduce
 
     var body: some View {
+        FloatingCallBody(ui: ui ?? FloatingCallUI.alwaysOn, content: AnyView(content), reduce: reduce)
+            .onAppear {
+                if !reduce { withAnimation(.easeOut(duration: 1.3).repeatForever(autoreverses: false)) { ring = true } }
+            }
+            // The incoming card morphs into the live bar: icon, name and card travel together.
+            .animation(reduce ? Motion.reducedFade : .spring(response: 0.42, dampingFraction: 0.8), value: m.liveCall?.isOffhook)
+    }
+
+    @ViewBuilder private var content: some View {
         Group {
             if let live = m.liveCall, live.isOffhook {
-                liveBar(live)
+                liveBar(live).transition(.opacity)
             } else if let c = m.call {
-                incoming(c)
+                incoming(c).transition(.opacity)
             }
         }
         .padding(14)
         .frame(width: 360)
-        .tetherBackground()
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Mono.surface)
+                .matchedGeometryEffect(id: "card", in: morph)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Mono.line))
-        .offset(y: shown || reduce ? 0 : -30)
-        .opacity(shown ? 1 : 0)
-        .scaleEffect(shown || reduce ? 1 : 0.96, anchor: .top)
-        .onAppear {
-            withAnimation(reduce ? .easeOut(duration: 0.15) : .spring(response: 0.38, dampingFraction: 0.78)) { shown = true }
-            if !reduce { withAnimation(.easeOut(duration: 1.3).repeatForever(autoreverses: false)) { ring = true } }
-        }
-        .animation(Motion.spring(reduce), value: m.liveCall?.isOffhook)
     }
 
     private func incoming(_ c: CallStatePayload) -> some View {
@@ -112,11 +148,14 @@ struct FloatingCallView: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle().stroke(Mono.text.opacity(0.35), lineWidth: 1).scaleEffect(ring ? 1.45 : 1).opacity(ring ? 0 : 1)
-                    Image(systemName: "phone.fill").font(.system(size: 15)).foregroundColor(Mono.text).symbolPulse(!reduce)
+                    Circle().stroke(Mono.text.opacity(0.2), lineWidth: 1).scaleEffect(ring ? 1.9 : 1).opacity(ring ? 0 : 1)
+                    Image(systemName: "phone.fill").font(.system(size: 15)).foregroundColor(Mono.text).symbolRinging(!reduce)
                 }
                 .frame(width: 36, height: 36)
+                .matchedGeometryEffect(id: "icon", in: morph)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(c.caller).font(Typo.sans(15, .semibold)).foregroundColor(Mono.text).lineLimit(1)
+                        .matchedGeometryEffect(id: "name", in: morph)
                     Text("Incoming call · \(m.peer?.name ?? "your phone")").font(Typo.sans(11)).foregroundColor(Mono.muted).lineLimit(1)
                 }
                 Spacer(minLength: 4)
@@ -137,8 +176,10 @@ struct FloatingCallView: View {
         HStack(spacing: 10) {
             Image(systemName: "phone.fill").font(.system(size: 12)).foregroundColor(Mono.bg)
                 .frame(width: 30, height: 30).background(Circle().fill(Mono.accent))
+                .matchedGeometryEffect(id: "icon", in: morph)
             VStack(alignment: .leading, spacing: 1) {
                 Text(live.caller).font(Typo.sans(13, .semibold)).foregroundColor(Mono.text).lineLimit(1)
+                    .matchedGeometryEffect(id: "name", in: morph)
                 TimelineView(.periodic(from: .now, by: 1)) { ctx in
                     let now = Int64(ctx.date.timeIntervalSince1970 * 1000) + m.phoneClockSkew
                     Text(CallClock.elapsed(since: live.since, phoneNow: now)).font(Typo.mono(11)).foregroundColor(Mono.muted)
@@ -173,5 +214,30 @@ struct FloatingCallView: View {
         .buttonStyle(PressStyle())
         .help("Hide for this call (it stays in Tether)")
         .accessibilityLabel("Hide call banner")
+    }
+}
+
+extension FloatingCallUI {
+    static let alwaysOn: FloatingCallUI = {
+        let u = FloatingCallUI()
+        u.visible = true
+        return u
+    }()
+}
+
+/// Springs down from above the screen edge on show, back up on hide.
+private struct FloatingCallBody: View {
+    @ObservedObject var ui: FloatingCallUI
+    let content: AnyView
+    let reduce: Bool
+
+    var body: some View {
+        content
+            .offset(y: ui.visible || reduce ? 0 : -60)
+            .scaleEffect(ui.visible || reduce ? 1 : 0.9, anchor: .top)
+            .blur(radius: ui.visible || reduce ? 0 : 4)
+            .opacity(ui.visible ? 1 : 0)
+            .animation(reduce ? Motion.reducedFade : (ui.visible ? .spring(response: 0.42, dampingFraction: 0.7)
+                                                      : .spring(response: 0.3, dampingFraction: 0.9)), value: ui.visible)
     }
 }

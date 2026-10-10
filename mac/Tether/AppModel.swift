@@ -167,6 +167,7 @@ final class AppModel: ObservableObject {
         linkChanged3(wasConnected: wasConnected)
         linkChanged4(wasConnected: wasConnected)
         linkChanged5(wasConnected: wasConnected)
+        linkChanged6(wasConnected: wasConnected)
         WidgetBridge.publish(self)
         if screen.phase == .live || screen.phase == .consent || screen.phase == .requesting {
             if case .connected(_, let w) = link, w {} else {
@@ -280,6 +281,8 @@ final class AppModel: ObservableObject {
     }
 
     func fileReceived(_ r: TransferRecord) {
+        // 0.5.2: video playback fetches are cache copies, not downloads.
+        if let p = r.ref, p.hasPrefix(Self.videoCache.path) { return }
         notifier.postLocal(id: "file-\(r.id)", title: "Received \(r.name)", body: "Saved to \(settings.downloadURL.lastPathComponent)")
     }
 

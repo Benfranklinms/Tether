@@ -158,6 +158,16 @@ object MsgType {
     const val DND_STATE = 0xE0
     const val PHONE_STATUS = 0xE1
     const val PHONE_STATUS_REQ = 0xE2
+
+    // ---- revision 6 (0.5.2), gated on Hello.caps ----
+    const val CAPTURE_REQ = 0xE3
+    const val CAPTURE_RESULT = 0xE4
+    const val FIND_MAC = 0xE5
+    const val FIND_MAC_STATE = 0xE6
+    const val HOTSPOT_REQ = 0xE7
+    const val HOTSPOT_STATE = 0xE8
+    const val SHELF_SYNC = 0xE9
+    const val SHELF_FILE_REQ = 0xEA
 }
 
 @Serializable data class Ping(val t: Long) : Message { override val type get() = MsgType.PING }
@@ -362,6 +372,14 @@ object MessageCodec {
             is DndState -> enc(DndState.serializer(), m) to EMPTY
             is PhoneStatus -> enc(PhoneStatus.serializer(), m) to EMPTY
             is PhoneStatusReq -> enc(PhoneStatusReq.serializer(), m) to EMPTY
+            is CaptureReq -> enc(CaptureReq.serializer(), m) to EMPTY
+            is CaptureResult -> enc(CaptureResult.serializer(), m) to EMPTY
+            is FindMac -> enc(FindMac.serializer(), m) to EMPTY
+            is FindMacState -> enc(FindMacState.serializer(), m) to EMPTY
+            is HotspotReq -> enc(HotspotReq.serializer(), m) to EMPTY
+            is HotspotState -> enc(HotspotState.serializer(), m) to EMPTY
+            is ShelfSync -> enc(ShelfSync.serializer(), m) to EMPTY
+            is ShelfFileReq -> enc(ShelfFileReq.serializer(), m) to EMPTY
             is UnknownMessage -> throw ProtocolException("cannot encode unknown message")
         }
         val buf = ByteBuffer.allocate(PREFIX + header.size + body.size)
@@ -507,6 +525,18 @@ object MessageCodec {
         MsgType.DND_STATE -> dec(DndState.serializer(), header)
         MsgType.PHONE_STATUS -> dec(PhoneStatus.serializer(), header)
         MsgType.PHONE_STATUS_REQ -> dec(PhoneStatusReq.serializer(), header)
+        else -> decodeRevision6(type, header)
+    }
+
+    private fun decodeRevision6(type: Int, header: String): Message = when (type) {
+        MsgType.CAPTURE_REQ -> dec(CaptureReq.serializer(), header)
+        MsgType.CAPTURE_RESULT -> dec(CaptureResult.serializer(), header)
+        MsgType.FIND_MAC -> dec(FindMac.serializer(), header)
+        MsgType.FIND_MAC_STATE -> dec(FindMacState.serializer(), header)
+        MsgType.HOTSPOT_REQ -> dec(HotspotReq.serializer(), header)
+        MsgType.HOTSPOT_STATE -> dec(HotspotState.serializer(), header)
+        MsgType.SHELF_SYNC -> dec(ShelfSync.serializer(), header)
+        MsgType.SHELF_FILE_REQ -> dec(ShelfFileReq.serializer(), header)
         else -> UnknownMessage(type)
     }
 

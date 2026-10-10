@@ -198,7 +198,11 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     private val central = BleCentral(app, engine, this)
     private val wifi = WifiServer(app, engine, ::onWifiSocket, ::onNetworkChanged)
     private var tcp: TcpLink? = null
+    private var tcpAt = 0L
     private var offeredAddrs: List<String> = emptyList()
+    /** 0.5.2: keep trying the Wi-Fi fast path while Bluetooth-only (backoff + on every network change). */
+    private val fastPath = dev.benfranklin.tether.core.wifi.FastPathRetry()
+    private var fastPathTicker: java.util.concurrent.ScheduledFuture<*>? = null
     private var ticker: ScheduledFuture<*>? = null
     private var tickPeriod = 0L
     private var pairing: PairingContext? = null
@@ -863,6 +867,15 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         retick(state)
         if (state is LinkState.Connected) {
             this.state.update { it.copy(lastError = null) }
+            if (!state.wifi) {
+                val now = SystemClock.elapsedRealtime()
+                if (fastPath.nextAt == null) {
+                    fastPath.linkUp(now)
+                    fastPath.attempted(now)
+                }
+            } else {
+                fastPath.connected()
+            }
             maybeOfferWifi()
         }
         Notifications.updateOngoing(app, this.state.value)
@@ -963,6 +976,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             tcp?.close()
             tcp = null
             offeredAddrs = emptyList()
+            fastPath.wifiLost(SystemClock.elapsedRealtime())
             engine.schedule({ maybeOfferWifi() }, WIFI_RETRY_S, TimeUnit.SECONDS)
             return
         }
@@ -1025,6 +1039,8 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     private fun maybeOfferWifi() {
         if (!controller.bleReady || controller.wifiReady) return
         if (!settings.current.wifiFastPath) return stopWifi()
+        wifi.ensureWatching()
+        ensureFastPathTicker()
         val addrs = WifiServer.lanAddresses()
         if (addrs.isEmpty()) {
             if (offeredAddrs.isNotEmpty()) controller.revokeWifi()
@@ -1033,25 +1049,60 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         }
         wifi.start(wifiServiceId())
         if (!wifi.isRunning) return
+        // A fresh offer (new one-time token) every time: the Mac retries it right away, also
+        // when it just joined this phone's hotspot and mDNS isn't relayed there.
         if (controller.offerWifi(addrs, wifi.port)) {
             offeredAddrs = addrs
-            Log.i("wifi.offered", "count" to addrs.size)
+            Log.i("wifi.offered", "count" to addrs.size, "attempt" to fastPath.attempts)
         }
     }
 
     private fun onNetworkChanged() {
         watchdog.poke()
         val addrs = WifiServer.lanAddresses()
-        if (addrs == offeredAddrs) return
         if (controller.wifiReady && tcp != null && addrs.isNotEmpty()) return // live session survives
+        if (addrs == offeredAddrs && fastPath.nextAt != null) {
+            fastPath.networkChanged(SystemClock.elapsedRealtime())
+            return
+        }
+        Log.i("wifi.network_changed", "count" to addrs.size)
         offeredAddrs = emptyList()
-        if (addrs.isEmpty()) controller.revokeWifi() else maybeOfferWifi()
+        fastPath.networkChanged(SystemClock.elapsedRealtime())
+        if (addrs.isEmpty()) controller.revokeWifi()
+    }
+
+    /** Every 2 s while connected: notice address changes nobody broadcast, and retry the upgrade when due. */
+    private fun ensureFastPathTicker() {
+        if (fastPathTicker != null) return
+        fastPathTicker = engine.scheduleWithFixedDelay({ fastPathTick() }, FAST_PATH_TICK_S, FAST_PATH_TICK_S, TimeUnit.SECONDS)
+    }
+
+    private fun fastPathTick() {
+        val now = SystemClock.elapsedRealtime()
+        if (!controller.bleReady) {
+            fastPath.linkDown()
+            return
+        }
+        if (controller.wifiReady) {
+            fastPath.connected()
+            return
+        }
+        if (fastPath.nextAt == null) fastPath.linkUp(now)
+        val addrs = WifiServer.lanAddresses()
+        if (addrs != offeredAddrs && addrs.isNotEmpty() && offeredAddrs.isNotEmpty()) fastPath.networkChanged(now)
+        // A TCP session is mid-handshake; a new token would void it.
+        if (tcp != null && now - tcpAt < TCP_HANDSHAKE_MS) return
+        if (fastPath.due(now, controller.bleReady, controller.wifiReady)) {
+            fastPath.attempted(now)
+            maybeOfferWifi()
+        }
     }
 
     private fun onWifiSocket(socket: Socket) {
         tcp?.close()
         val link = TcpLink(socket, engine, controller::wifiRecord) { _ -> controller.wifiDisconnected() }
         tcp = link
+        tcpAt = SystemClock.elapsedRealtime()
         controller.wifiConnected(link::write, null)
         link.start()
         Log.i("wifi.accepted")
@@ -1102,6 +1153,8 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         private const val AVOID_MINUTES = 10L
         private const val PAIRING_TIMEOUT_S = 90L
         private const val WIFI_RETRY_S = 10L
+        private const val FAST_PATH_TICK_S = 2L
+        private const val TCP_HANDSHAKE_MS = 10_000L
         private const val WIFI_ID_BYTES = 8
         private const val FAST_TICK_S = 1L
         private const val IDLE_TICK_S = 5L

@@ -95,6 +95,24 @@ final class ClipboardWatcher {
         return (png, "png")
     }
 
+    /// A photo or scan for Insert from Phone: the picture (or PDF) plus its file URL, so apps
+    /// that take images and apps that take files can both paste it. Not echoed to the phone.
+    func setFile(_ url: URL) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        let item = NSPasteboardItem()
+        if url.pathExtension.lowercased() == "pdf", let pdf = try? Data(contentsOf: url) {
+            item.setData(pdf, forType: .pdf)
+        } else if let img = NSImage(contentsOf: url), let tiff = img.tiffRepresentation {
+            if let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) { item.setData(png, forType: .png) }
+            item.setData(tiff, forType: .tiff)
+        }
+        item.setString(url.absoluteString, forType: .fileURL)
+        pb.writeObjects([item])
+        ownCount = pb.changeCount
+        lastCount = pb.changeCount
+    }
+
     /// An image from the phone: put it on the pasteboard without echoing it back.
     func setImage(_ image: NSImage) {
         let pb = NSPasteboard.general

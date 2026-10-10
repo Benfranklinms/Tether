@@ -28,6 +28,15 @@ struct TetherApp: App {
         // The menu-bar item, its (detachable) panel and the windows are AppKit-managed;
         // see Support/Windows.swift. SwiftUI needs at least one scene.
         Settings { EmptyView() }
+            .commands {
+                // 0.5.2: Edit › Insert from Phone (Tether's own menu; other apps get it from Services).
+                CommandGroup(after: .pasteboard) {
+                    Divider()
+                    Button("Insert from Phone: Take Photo") { TetherLinks.post("tether://capture?kind=photo") }
+                        .keyboardShortcut("p", modifiers: [.command, .shift, .option])
+                    Button("Insert from Phone: Scan Document") { TetherLinks.post("tether://capture?kind=scan") }
+                }
+            }
     }
 }
 
@@ -52,6 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         router = r
         status = StatusController(model: m)
         callPanel = FloatingCallController(model: m)
+        NotificationCenter.default.addObserver(forName: .tetherLink, object: nil, queue: .main) { [weak m] n in
+            if let url = n.object as? URL, let m { TetherLinks.handle(url, model: m) }
+        }
         let early = pendingURLs
         pendingURLs.removeAll()
         handle(early)
@@ -79,6 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Send Clipboard to Phone", action: #selector(dockSendClipboard), keyEquivalent: "")
         menu.addItem(withTitle: "Send File to Phone…", action: #selector(dockSendFile), keyEquivalent: "")
         menu.addItem(withTitle: "Keyboard", action: #selector(dockKeyboard), keyEquivalent: "")
+        menu.addItem(withTitle: "Take Photo with Phone", action: #selector(dockPhoto), keyEquivalent: "")
+        menu.addItem(withTitle: "Scan Document with Phone", action: #selector(dockScan), keyEquivalent: "")
+        menu.addItem(withTitle: "Turn On Phone Hotspot", action: #selector(dockHotspot), keyEquivalent: "")
         menu.items.forEach { $0.target = self }
         return menu
     }
@@ -86,6 +101,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func dockSendClipboard() { model?.sendClipboardNow() }
     @objc private func dockSendFile() { model?.chooseFiles() }
     @objc private func dockKeyboard() { router?.show(.keyboard) }
+    @objc private func dockPhoto() { model?.startCapture(CaptureKinds.photo) }
+    @objc private func dockScan() { model?.startCapture(CaptureKinds.scan) }
+    @objc private func dockHotspot() { model?.startHotspot() }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
@@ -119,6 +137,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// tether://inbox (Finder Share extension), tether://dnd?on=1|0 (Focus automations),
 /// tether://open (bring up the window).
 enum TetherLinks {
+    /// Menu commands route through the same handler as tether:// links.
+    static func post(_ link: String) {
+        guard let url = URL(string: link) else { return }
+        NotificationCenter.default.post(name: .tetherLink, object: url)
+    }
+
     static func handle(_ url: URL, model m: AppModel) {
         let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         switch url.host?.lowercased() {
@@ -129,9 +153,20 @@ enum TetherLinks {
         case "open": m.windows?.show(.main)
         case "send":
             if let t = q.first(where: { $0.name == "text" })?.value { m.openOnPhone(text: t) }
+        // 0.5.2
+        case "shelf":
+            if let t = q.first(where: { $0.name == "text" })?.value { m.addToShelf(text: t) }
+            m.v5.page = .shelf
+        case "shelf-inbox": ShareInbox.drainToShelf(into: m)
+        case "capture": m.startCapture(q.first { $0.name == "kind" }?.value == CaptureKinds.scan ? CaptureKinds.scan : CaptureKinds.photo)
+        case "hotspot": m.startHotspot()
         default: Log.info("link.unknown", ["host": url.host ?? "-"])
         }
     }
+}
+
+extension Notification.Name {
+    static let tetherLink = Notification.Name("tether.link")
 }
 
 enum Screenshots {
@@ -188,6 +223,13 @@ enum Screenshots {
         },
         Shot(name: "settings-setup", scene: .connected) { AnyView(SettingsView(initialSection: .setup)) },
         Shot(name: "call-banner", scene: .call) { AnyView(FloatingCallView(onClose: { _ in }).padding(20)) },
+        // 0.5.2
+        Shot(name: "main-shelf", scene: .connected) { AnyView(main(.shelf)) },
+        Shot(name: "find-my-mac", scene: .connected) { AnyView(FindMacOverlay(phone: "Alex's Pixel") {}.frame(width: 900, height: 560)) },
+        Shot(name: "capture-card", scene: .connected) {
+            AnyView(CaptureCard(session: CaptureSession(ref: "r", kind: CaptureKinds.scan, state: CaptureStates.open, reason: nil,
+                                                        frontmostPid: nil, started: 0)).frame(width: 340).padding(20))
+        },
     ]
 
     /// The main window on one page (the model's V5State is swapped in by `next`).

@@ -223,6 +223,15 @@ public enum Message: Equatable {
     case dndState(DndStatePayload)
     case phoneStatus(PhoneStatusPayload)
     case phoneStatusReq(ts: Int64)
+    // revision 6 (0.5.2)
+    case captureReq(CaptureReq)
+    case captureResult(CaptureResultPayload)
+    case findMac(FindMacPayload)
+    case findMacState(FindMacStatePayload)
+    case hotspotReq(HotspotReq)
+    case hotspotState(HotspotStatePayload)
+    case shelfSync(ShelfSyncPayload)
+    case shelfFileReq(ShelfFileReq)
     case unknown(type: UInt8)
 
     public var type: UInt8 {
@@ -304,6 +313,14 @@ public enum Message: Equatable {
         case .dndState: return 0xE0
         case .phoneStatus: return 0xE1
         case .phoneStatusReq: return 0xE2
+        case .captureReq: return 0xE3
+        case .captureResult: return 0xE4
+        case .findMac: return 0xE5
+        case .findMacState: return 0xE6
+        case .hotspotReq: return 0xE7
+        case .hotspotState: return 0xE8
+        case .shelfSync: return 0xE9
+        case .shelfFileReq: return 0xEA
         case .unknown(let t): return t
         }
     }
@@ -431,6 +448,14 @@ public enum MessageCodec {
         case .dndState(let p): return (try encoder.encode(p), Data())
         case .phoneStatus(let p): return (try encoder.encode(p), Data())
         case .phoneStatusReq(let ts): return (try encoder.encode(StatusReqHeader(ts: ts)), Data())
+        case .captureReq(let p): return (try encoder.encode(p), Data())
+        case .captureResult(let p): return (try encoder.encode(p), Data())
+        case .findMac(let p): return (try encoder.encode(p), Data())
+        case .findMacState(let p): return (try encoder.encode(p), Data())
+        case .hotspotReq(let p): return (try encoder.encode(p), Data())
+        case .hotspotState(let p): return (try encoder.encode(p), Data())
+        case .shelfSync(let p): return (try encoder.encode(p), Data())
+        case .shelfFileReq(let p): return (try encoder.encode(p), Data())
         default: throw ProtocolError("cannot encode unknown message")
         }
     }
@@ -578,6 +603,14 @@ public enum MessageCodec {
         case 0xE0: return .dndState(try d(DndStatePayload.self))
         case 0xE1: return .phoneStatus(try d(PhoneStatusPayload.self))
         case 0xE2: return .phoneStatusReq(ts: try d(StatusReqHeader.self).ts ?? 0)
+        case 0xE3: return .captureReq(try d(CaptureReq.self))
+        case 0xE4: return .captureResult(try d(CaptureResultPayload.self))
+        case 0xE5: return .findMac(try d(FindMacPayload.self))
+        case 0xE6: return .findMacState(try d(FindMacStatePayload.self))
+        case 0xE7: return .hotspotReq(try d(HotspotReq.self))
+        case 0xE8: return .hotspotState(try d(HotspotStatePayload.self))
+        case 0xE9: return .shelfSync(try d(ShelfSyncPayload.self))
+        case 0xEA: return .shelfFileReq(try d(ShelfFileReq.self))
         default: return .unknown(type: type)
         }
     }

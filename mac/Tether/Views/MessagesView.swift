@@ -7,6 +7,7 @@ struct MessagesView: View {
     @Environment(\.accessibilityReduceMotion) private var reduce
     @State private var composing = false
     @State private var newTo = ""
+    @Namespace private var hero
 
     var body: some View {
         HStack(spacing: 0) {
@@ -18,7 +19,7 @@ struct MessagesView: View {
         .tetherBackground()
         .tetherWindowChrome()
         .onAppear { if m.sms.threads.isEmpty { m.refreshThreads() } }
-        .animation(Motion.spring(reduce), value: m.sms.selected)
+        .animation(Motion.hero(reduce), value: m.sms.selected)
     }
 
     // MARK: sidebar
@@ -60,20 +61,20 @@ struct MessagesView: View {
                             }
                         }
                     } else {
-                        ForEach(m.sms.threads) { t in
-                            ThreadRow(t: t, selected: m.sms.selected == t.id) {
+                        if m.sms.threads.isEmpty && m.sms.loadingThreads { SkeletonRows() }
+                        ForEach(Array(m.sms.threads.enumerated()), id: \.element.id) { i, t in
+                            ThreadRow(t: t, selected: m.sms.selected == t.id, hero: hero) {
                                 composing = false
                                 m.selectThread(t.id)
                                 if let i = m.sms.threads.firstIndex(where: { $0.id == t.id }) { m.sms.threads[i].unread = 0 }
                             }
                             .onAppear { if t.id == m.sms.threads.last?.id { m.loadMoreThreads() } }
+                            .staggerIn(min(i, 14))
+                            .transition(Motion.listRow(reduce))
                         }
-                        if m.sms.loadingThreads {
+                        if m.sms.loadingThreads && !m.sms.threads.isEmpty {
                             HStack(spacing: 8) {
                                 ProgressView().controlSize(.small)
-                                if m.sms.threads.isEmpty {
-                                    Text("Loading conversations…").font(Typo.sans(12)).foregroundColor(Mono.muted)
-                                }
                             }
                             .padding(12)
                         } else if let e = m.sms.threadsError, !m.sms.threads.isEmpty {
@@ -86,6 +87,8 @@ struct MessagesView: View {
                         }
                     }
                 }
+                .animation(Motion.spring(reduce), value: m.sms.threads.map(\.id))
+                .animation(.easeOut(duration: 0.25), value: m.sms.threads.isEmpty)
             }
         }
     }
@@ -108,12 +111,15 @@ struct MessagesView: View {
         } else if composing {
             NewMessage(to: $newTo) { done in if done { composing = false } }
         } else if let id = m.sms.selected {
-            Conversation(thread: id)
+            Conversation(thread: id, hero: hero)
                 .id(id)
-                .transition(.opacity)
+                // 0.5.2: the conversation slides in from the right while the avatar and name
+                // travel from the list row into its header.
+                .transition(reduce ? .opacity : .asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                                            removal: .opacity.combined(with: .scale(scale: 0.98))))
         } else {
             if m.sms.loadingThreads && m.sms.threads.isEmpty {
-                placeholder("ellipsis.message", "Loading conversations from your phone…")
+                SkeletonBubbles().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
                 placeholder("message", m.sms.threads.isEmpty ? "No conversations yet." : "Choose a conversation.")
             }
@@ -141,16 +147,19 @@ struct MessagesView: View {
 private struct ThreadRow: View {
     let t: SmsThread
     let selected: Bool
+    var hero: Namespace.ID?
     let action: () -> Void
     @State private var hover = false
+    @Environment(\.accessibilityReduceMotion) private var reduce
 
     var body: some View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 10) {
-                Monogram(text: t.title, size: 34)
+                Monogram(text: t.title, size: 34).hero("t-mono-\(t.id)", in: hero, active: !selected)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
                         Text(t.title).font(Typo.sans(13, t.unread > 0 ? .semibold : .medium)).foregroundColor(Mono.text).lineLimit(1)
+                            .hero("t-title-\(t.id)", in: hero, active: !selected)
                         Spacer(minLength: 6)
                         Text(SmsTime.short(t.date)).font(Typo.mono(10)).foregroundColor(Mono.muted)
                     }
@@ -160,6 +169,7 @@ private struct ThreadRow: View {
                         Spacer(minLength: 4)
                         if t.unread > 0 {
                             Text("\(t.unread)").font(Typo.mono(10, .semibold)).foregroundColor(Mono.bg)
+                                .contentTransition(.numericText())
                                 .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(Mono.accent))
                         }
                     }
@@ -170,7 +180,9 @@ private struct ThreadRow: View {
             .padding(.horizontal, 6)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressStyle(scale: 0.97))
+        .offset(x: hover && !selected && !reduce ? 3 : 0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hover)
         .onHover { hover = $0 }
         .accessibilityLabel("\(t.title). \(t.snippet)")
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -204,6 +216,7 @@ private struct Conversation: View {
     @EnvironmentObject var m: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduce
     let thread: Int64
+    var hero: Namespace.ID?
     @State private var draft = ""
 
     private var info: SmsThread? { m.sms.threads.first { $0.id == thread } }
@@ -220,7 +233,7 @@ private struct Conversation: View {
                             Button(m.sms.loadingThread == thread ? "Loading…" : "Load earlier messages") { m.loadOlder(thread) }
                                 .buttonStyle(.plain).font(Typo.sans(11)).foregroundColor(Mono.muted).padding(.vertical, 8)
                         } else if m.sms.loadingThread == thread && messages.isEmpty {
-                            ProgressView().controlSize(.small).padding(20)
+                            SkeletonBubbles()
                         }
                         if let e = m.sms.threadErrors[thread] {
                             VStack(spacing: 8) {
@@ -239,7 +252,9 @@ private struct Conversation: View {
                                 if let r = ref(of: msg) { m.retrySms(ref: r) }
                             }
                             .id(msg.id)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .transition(reduce ? .opacity : .asymmetric(
+                                insertion: .scale(scale: 0.6, anchor: msg.out ? .bottomTrailing : .bottomLeading).combined(with: .opacity),
+                                removal: .opacity))
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }
@@ -264,9 +279,10 @@ private struct Conversation: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Monogram(text: info?.title ?? "?", size: 30)
+            Monogram(text: info?.title ?? "?", size: 30).hero("t-mono-\(thread)", in: hero)
             VStack(alignment: .leading, spacing: 1) {
                 Text(info?.title ?? "Conversation").font(Typo.sans(14, .semibold)).foregroundColor(Mono.text).lineLimit(1)
+                    .hero("t-title-\(thread)", in: hero)
                 if let t = info, t.names.contains(where: { $0 != nil }) {
                     Text(t.addrs.joined(separator: ", ")).font(Typo.mono(10)).foregroundColor(Mono.muted).lineLimit(1)
                 }
