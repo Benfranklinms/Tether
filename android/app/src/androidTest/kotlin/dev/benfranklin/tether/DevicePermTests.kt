@@ -68,8 +68,6 @@ class DevicePermTests {
     fun fileBrowserNeedsAllFilesAccess() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val dl = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        sh("mkdir -p ${dl.path}/TetherTest")
-        sh("sh -c 'echo hello > ${dl.path}/TetherTest/note.txt'")
         val files = PhoneFiles(ctx)
         // Toggling MANAGE_EXTERNAL_STORAGE kills the app process, so the driver grants it before this
         // instrumentation starts (scripts/emulator-tests.sh). Without it, the browser must refuse.
@@ -79,6 +77,8 @@ class DevicePermTests {
             throw AssertionError("All files access was not granted by the driver")
         }
         assertTrue(row("allfiles").ok)
+        // Written from this (app) process: UiAutomation shell commands don't support redirection.
+        File(dl, "TetherTest").apply { mkdirs() }.resolve("note.txt").writeText("hello\n")
         val root = files.list("r2", FsRoots.DOWNLOADS, "", 0, 500)
         assertEquals(null, root.needs)
         assertTrue(root.entries.any { it.name == "TetherTest" && it.dir })
