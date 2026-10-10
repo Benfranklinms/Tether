@@ -61,6 +61,9 @@ class DeviceCallTests {
     fun setUp() {
         val tm = ctx.getSystemService(TelephonyManager::class.java)
         assumeTrue("no telephony on this device", tm != null && tm.phoneType != TelephonyManager.PHONE_TYPE_NONE)
+        // The rule's grant can take a moment to reach telephony's permission check right
+        // after install (getCallState threw "requires READ_PHONE_STATE" once on CI).
+        waitFor("READ_PHONE_STATE in effect", 10_000) { callStateOrNull() != null }
         bridge = CallBridge(ctx, { AppSettings() }, engine, { m -> sent += m; true }, { c -> c in Caps.CURRENT })
         engine.submit { bridge.apply(true, AppSettings()) }.get()
         waitFor("monitor running", 5_000) { bridge.monitor.isRunning }
@@ -74,7 +77,7 @@ class DeviceCallTests {
             bridge.monitor.current()?.let { bridge.monitor.act(CallAction(it.id, CallActions4.END)) }
             bridge.monitor.stop()
         }
-        waitFor("idle", 15_000, failIfNot = false) { callState() == TelephonyManager.CALL_STATE_IDLE }
+        waitFor("idle", 15_000, failIfNot = false) { callStateOrNull() == TelephonyManager.CALL_STATE_IDLE }
         engine.shutdownNow()
     }
 
@@ -83,6 +86,12 @@ class DeviceCallTests {
 
     @Suppress("DEPRECATION")
     private fun callState(): Int = ctx.getSystemService(TelephonyManager::class.java).callState
+
+    private fun callStateOrNull(): Int? = try {
+        callState()
+    } catch (_: SecurityException) {
+        null
+    }
 
     private fun idle() {
         waitFor("phone idle", 20_000) { callState() == TelephonyManager.CALL_STATE_IDLE }
@@ -125,6 +134,11 @@ class DeviceCallTests {
         assertEquals(legacy.id, live.id)
         assertEquals(CallDirs.IN, live.dir)
         assertTrue("Answer offered", live.canAnswer)
+        // Act like a person would, not within milliseconds of the first ring: answering while
+        // Telecom is still starting the ringtone crashed the emulator's system_server
+        // (AsyncRingtonePlayer.handlePlay NPE on API 34 with -noaudio), which no app can cause
+        // on a real phone at human speed.
+        Thread.sleep(RING_SETTLE_MS)
         return live
     }
 
@@ -185,5 +199,6 @@ class DeviceCallTests {
 
     private companion object {
         const val NUMBER = "5551234"
+        const val RING_SETTLE_MS = 2_500L
     }
 }

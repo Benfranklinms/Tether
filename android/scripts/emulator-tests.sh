@@ -36,8 +36,10 @@ if ! emu 90 gsm list >/dev/null; then
   fi
 fi
 echo "Emulator console ready."
-# Start from a quiet modem.
+# Start from a quiet modem, and keep the ringtone off: the emulator runs with -noaudio and
+# Telecom's ringtone player is the flakiest part of an incoming call there.
 adb emu gsm cancel 5551234 >/dev/null 2>&1 || true
+adb shell media volume --stream 2 --set 0 >/dev/null 2>&1 || echo "::warning::could not mute the ring stream"
 
 adb logcat -c || true
 (
