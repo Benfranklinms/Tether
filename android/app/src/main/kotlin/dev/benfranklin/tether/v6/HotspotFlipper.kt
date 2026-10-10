@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber", "SwallowedException")
+
 package dev.benfranklin.tether.v6
 
 import android.accessibilityservice.AccessibilityService

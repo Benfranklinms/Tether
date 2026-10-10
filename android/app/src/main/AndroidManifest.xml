@@ -157,6 +157,37 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
+        <!-- Share › Add to Shelf (0.5.2): text, links and files land on the Shelf (synced with the Mac). -->
+        <activity
+            android:name=".v6.ShelfShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/shelf_target"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Tether.Translucent">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <!-- Insert from Phone (0.5.2): camera / document scanner for the Mac, over the lock screen. -->
+        <activity
+            android:name=".v6.CaptureActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:taskAffinity=""
+            tools:targetApi="o_mr1" />
         <!-- Package installer results for in-app updates (0.5). -->
         <receiver
             android:name=".v5.InstallResultReceiver"
