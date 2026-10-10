@@ -88,13 +88,15 @@ final class L: ControllerListener {
 let args = CommandLine.arguments
 let maxFragment = args.count > 1 ? Int(args[1]) ?? 182 : 182
 let legacy = args.contains("legacy")
+let v03 = args.contains("v03") // a 0.3.x Mac: revision 3 caps, no calling (0.4) caps
 let future = args.contains("future") // a hypothetical protocol v2 build: must be refused cleanly
 let mem = Mem()
 let listener = L()
 controller = TetherController(role: .responder, identity: mem,
                               localHello: {
-                                  var h = Hello(name: "Ben’s MacBook Air", platform: "macos", app: legacy ? "0.1.1" : "0.3.0",
-                                                caps: legacy ? Caps.v1 : Caps.current)
+                                  let caps = legacy ? Caps.v1 : v03 ? Caps.current.filter { !Caps4.all.contains($0) } : Caps.current
+                                  var h = Hello(name: "Ben’s MacBook Air", platform: "macos",
+                                                app: legacy ? "0.1.1" : v03 ? "0.3.1" : "0.4.0", caps: caps)
                                   if future { h.v = 2 }
                                   return h
                               },

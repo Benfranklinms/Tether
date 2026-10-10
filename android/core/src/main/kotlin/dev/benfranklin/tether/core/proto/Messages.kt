@@ -127,6 +127,16 @@ object MsgType {
     const val NOW_PLAYING_ART = 0xB2
     const val RSSI = 0xD0
     const val PROXIMITY_CFG = 0xD1
+
+    // ---- revision 4 (0.4.0), gated on Hello.caps ----
+    const val NOTIF_ACCESS = 0x45
+    const val CALL_DIAL = 0xA2
+    const val CALL_DIAL_RESULT = 0xA3
+    const val CALL_LIVE = 0xA4
+    const val CALL_LOG_REQ = 0xA5
+    const val CALL_LOG = 0xA6
+    const val CONTACT_SEARCH = 0xA7
+    const val CONTACTS = 0xA8
 }
 
 @Serializable data class Ping(val t: Long) : Message { override val type get() = MsgType.PING }
@@ -302,6 +312,14 @@ object MessageCodec {
             is NowPlayingArt -> enc(ArtHeader.serializer(), ArtHeader(m.hash)) to m.data
             is Rssi -> enc(Rssi.serializer(), m) to EMPTY
             is ProximityCfg -> enc(ProximityCfg.serializer(), m) to EMPTY
+            is NotifAccess -> enc(NotifAccess.serializer(), m) to EMPTY
+            is CallDial -> enc(CallDial.serializer(), m) to EMPTY
+            is CallDialResult -> enc(CallDialResult.serializer(), m) to EMPTY
+            is CallLive -> enc(CallLive.serializer(), m) to EMPTY
+            is CallLogReq -> enc(CallLogReq.serializer(), m) to EMPTY
+            is CallLog -> enc(CallLog.serializer(), m) to EMPTY
+            is ContactSearch -> enc(ContactSearch.serializer(), m) to EMPTY
+            is Contacts -> enc(Contacts.serializer(), m) to EMPTY
             is UnknownMessage -> throw ProtocolException("cannot encode unknown message")
         }
         val buf = ByteBuffer.allocate(PREFIX + header.size + body.size)
@@ -404,6 +422,18 @@ object MessageCodec {
         }
         MsgType.RSSI -> dec(Rssi.serializer(), header)
         MsgType.PROXIMITY_CFG -> dec(ProximityCfg.serializer(), header)
+        else -> decodeRevision4(type, header)
+    }
+
+    private fun decodeRevision4(type: Int, header: String): Message = when (type) {
+        MsgType.NOTIF_ACCESS -> dec(NotifAccess.serializer(), header)
+        MsgType.CALL_DIAL -> dec(CallDial.serializer(), header)
+        MsgType.CALL_DIAL_RESULT -> dec(CallDialResult.serializer(), header)
+        MsgType.CALL_LIVE -> dec(CallLive.serializer(), header)
+        MsgType.CALL_LOG_REQ -> dec(CallLogReq.serializer(), header)
+        MsgType.CALL_LOG -> dec(CallLog.serializer(), header)
+        MsgType.CONTACT_SEARCH -> dec(ContactSearch.serializer(), header)
+        MsgType.CONTACTS -> dec(Contacts.serializer(), header)
         else -> UnknownMessage(type)
     }
 

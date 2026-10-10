@@ -40,6 +40,17 @@ final class AppModel: ObservableObject {
     @Published var nowPlaying: NowPlayingPayload?
     @Published var artwork: NSImage?
     @Published var proximity = ProximityStatus()
+    // 0.4.0
+    /// The call in progress on the phone (incoming once answered, or outgoing); nil when none.
+    @Published var liveCall: CallLivePayload?
+    @Published var calls = CallsModel()
+    /// Android 15+ sensitive-notification status from the phone (nil until it reports).
+    @Published var notifAccess: NotifAccessPayload?
+    /// Asks the panel to switch tab (tel: links open the Calls tab).
+    @Published var panelTabRequest: MenuView.Tab?
+    /// Shows the menu-bar panel (set by the status controller).
+    var showPanel: (() -> Void)?
+    var contactSearchWork: DispatchWorkItem?
     var artCache: [String: NSImage] = [:]
     /// Phone clock minus Mac clock (ms), estimated from now-playing timestamps.
     var phoneClockSkew: Int64 = 0
@@ -135,6 +146,7 @@ final class AppModel: ObservableObject {
             ringRequested = false
         }
         linkChanged3(wasConnected: wasConnected)
+        linkChanged4(wasConnected: wasConnected)
         if screen.phase == .live || screen.phase == .consent || screen.phase == .requesting {
             if case .connected(_, let w) = link, w {} else {
                 screen.phase = .ended("The Wi-Fi link to your phone dropped")
@@ -415,6 +427,7 @@ final class AppModel: ObservableObject {
         settingsFile.write(settings)
         engine?.apply(settings)
         settingsChanged3(old)
+        settingsChanged4(old)
         if settings.notifications.historyLimit != old.notifications.historyLimit {
             history.trim(settings.notifications.historyLimit)
             scheduleHistoryWrite()

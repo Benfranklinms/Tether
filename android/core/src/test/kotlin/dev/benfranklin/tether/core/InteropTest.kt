@@ -5,6 +5,22 @@ import dev.benfranklin.tether.core.features.AnnexB
 import dev.benfranklin.tether.core.features.FrameSplitter
 import dev.benfranklin.tether.core.features.GestureMapper
 import dev.benfranklin.tether.core.proto.CallAction
+import dev.benfranklin.tether.core.proto.CallActions4
+import dev.benfranklin.tether.core.proto.NotifAccess
+import dev.benfranklin.tether.core.proto.Contacts
+import dev.benfranklin.tether.core.proto.ContactSearch
+import dev.benfranklin.tether.core.proto.ContactNumber
+import dev.benfranklin.tether.core.proto.ContactInfo
+import dev.benfranklin.tether.core.proto.Caps4
+import dev.benfranklin.tether.core.proto.CallLogTypes
+import dev.benfranklin.tether.core.proto.CallLogReq
+import dev.benfranklin.tether.core.proto.CallLogEntry
+import dev.benfranklin.tether.core.proto.CallLog
+import dev.benfranklin.tether.core.proto.CallLiveStates
+import dev.benfranklin.tether.core.proto.CallLive
+import dev.benfranklin.tether.core.proto.CallDirs
+import dev.benfranklin.tether.core.proto.CallDialResult
+import dev.benfranklin.tether.core.proto.CallDial
 import dev.benfranklin.tether.core.proto.CallActions
 import dev.benfranklin.tether.core.proto.CallState
 import dev.benfranklin.tether.core.proto.CallStates
@@ -69,6 +85,8 @@ import kotlin.random.Random
  */
 class InteropTest {
     private val peerPath: String? = System.getenv("TETHER_SWIFT_PEER")
+    /** The released 0.3.1 Swift Mac core (tools/interop built at tag v0.3.1), for old-peer compatibility. */
+    private val oldPeerPath: String? = System.getenv("TETHER_SWIFT_PEER_OLD")
     /** Largest fragment the Kotlin phone wrote towards the Swift Mac in this test. */
     private val maxPhoneFragment = java.util.concurrent.atomic.AtomicInteger()
 
@@ -116,10 +134,10 @@ class InteropTest {
         macFragment: Int,
         qr: Boolean,
         vararg flags: String,
+        path: String? = peerPath,
         body: (Loop, Side, Peer) -> Unit = { _, _, _ -> },
     ) {
-        val path = peerPath
-        assumeTrue("TETHER_SWIFT_PEER not set", path != null)
+        assumeTrue("Swift peer binary not set (TETHER_SWIFT_PEER / TETHER_SWIFT_PEER_OLD)", path != null)
         val loop = Loop()
         loop.now = System.currentTimeMillis()
         val phone = Side("OnePlus Nord CE5", Role.INITIATOR, loop)
@@ -180,7 +198,9 @@ class InteropTest {
     @Test
     fun phoneToMacFeatureMessagesRoundTrip() = session(185, 185, qr = true) { loop, phone, peer ->
         assertTrue(phone.controller.peerSupports(Caps.SCREEN))
-        loop.runUntil(5_000) { peer.has("CAPS", "battery,call,clip,file,media,notif,nowplaying,proximity,reply,ring,screen,sms") }
+        loop.runUntil(5_000) {
+            peer.has("CAPS", "battery,call,callctl,calllog,clip,dial,file,media,notif,notifaccess,nowplaying,proximity,reply,ring,screen,sms")
+        }
         peer.send("ECHO on")
         val sent: List<Message> = listOf(
             Battery(83, true, "usb", "cellular", "5G", 3, 1_700_000_000_000),
@@ -404,5 +424,99 @@ class InteropTest {
         loop.runUntil(10_000) { phone.closes.isNotEmpty() }
         assertEquals(CloseReason.VERSION_MISMATCH, phone.closes.first().first)
         assertFalse(phone.controller.isConnected)
+    }
+
+    // ---------------- revision 4 (0.4.0) ----------------
+
+    private fun callLogEntries(n: Int) = (0 until n).map { i ->
+        CallLogEntry(
+            1000L - i, if (i % 9 == 0) "" else "+91 98470 ${10000 + i}", if (i % 3 == 0) null else "Contact ${i} — ✓",
+            listOf(CallLogTypes.IN, CallLogTypes.OUT, CallLogTypes.MISSED, CallLogTypes.REJECTED)[i % 4],
+            1_700_000_000_000 - i * 60_000L, (i * 7 % 600).toLong(), if (i % 2 == 0) 1 else null, isNew = i % 5 == 0,
+        )
+    }
+
+    /** Phone -> Mac 0.4 messages at the real-device fragment sizes: Swift decodes, re-encodes, echoes. */
+    @Test
+    fun phoneToMacRevision4RoundTrip() = session(514, 512, qr = true) { loop, phone, peer ->
+        assertTrue(phone.controller.peerSupports(Caps4.DIAL) && phone.controller.peerSupports(Caps4.CALL_CONTROL))
+        peer.send("ECHO on")
+        val sent: List<Message> = listOf(
+            CallLive("c1", CallDirs.IN, CallLiveStates.RINGING, "+919847012345", "Asha", canAnswer = true, canEnd = true, ts = 1),
+            CallLive(
+                "c1", CallDirs.IN, CallLiveStates.ACTIVE, "+919847012345", "Asha", since = 2, speaker = true,
+                canEnd = true, canSpeaker = true, canMute = true, sub = 2, ts = 3,
+            ),
+            CallLive("c2", CallDirs.OUT, CallLiveStates.ENDED, ts = 4, reason = "unsupported"),
+            CallDialResult("r1", true, via = "telecom"), CallDialResult("r2", false, "needs_permission"),
+            CallLog(callLogEntries(100), more = true), CallLog(emptyList(), needs = "calllog", before = 5),
+            Contacts("ra", listOf(ContactInfo("Rahul", listOf(ContactNumber("+91 99955 51234", "Mobile"), ContactNumber("0484"))))),
+            Contacts("x", emptyList(), needs = "contacts"),
+            NotifAccess(true, null, 36, "OnePlus", 6), NotifAccess(false, true, 36, "OnePlus", 7),
+        )
+        assertTrue("call log spans many fragments", MessageCodec.encode(sent[5]).size > 20 * 512)
+        for (m in sent) {
+            val before = phone.messages.size
+            loop.execute { assertTrue(phone.controller.send(m)) }
+            loop.runUntil(20_000) { phone.messages.size > before }
+            assertEquals(m, phone.messages.last())
+        }
+        val raws = peer.lines.filter { it.startsWith("RAW ") }.map { MessageCodec.decode(Hex.decode(it.substring(4))) }
+        assertTrue(raws.containsAll(sent.filter { MessageCodec.encode(it).size < 4096 }))
+        assertFalse(peer.has("CLOSED"))
+        assertTrue(maxPhoneFragment.get() <= 512)
+    }
+
+    /** Mac -> phone 0.4 messages: encoded by Kotlin, decoded + re-sent by the Swift controller. */
+    @Test
+    fun macToPhoneRevision4() = session(244, 244, qr = false) { loop, phone, peer ->
+        val fromMac: List<Message> = listOf(
+            CallDial("r1", "+919847012345"), CallDial("r2", "*121#", 2), CallLogReq(60), CallLogReq(60, 1_699_000_000_000),
+            ContactSearch("ra", 12),
+            CallAction("c1", CallActions4.ANSWER, speaker = true), CallAction("c1", CallActions4.END),
+            CallAction("c1", CallActions4.SPEAKER, on = true), CallAction("c1", CallActions4.MUTE, on = false),
+            CallAction("c1", CallActions.DECLINE),
+        )
+        for (m in fromMac) {
+            val before = phone.messages.size
+            peer.send("SEND " + Hex.encode(MessageCodec.encode(m)))
+            loop.runUntil(10_000) { phone.messages.size > before }
+            assertEquals(m, phone.messages.last())
+        }
+        assertFalse(peer.has("DECODE_ERROR"))
+    }
+
+    /** A 0.3.x Mac (revision 3 caps): the phone sees calling is unavailable; 0.3 call alerts still flow. */
+    @Test
+    fun v03MacDoesNotGetRevision4() = session(185, 185, qr = true, "v03") { loop, phone, peer ->
+        assertTrue(phone.controller.peerSupports(Caps3.CALL))
+        for (c in Caps4.ALL) assertFalse(c, phone.controller.peerSupports(c))
+        peer.send("ECHO on")
+        val ring = CallState("c1", CallStates.RINGING, "+919847012345", "Asha", 5)
+        loop.execute { assertTrue(phone.controller.send(ring)) }
+        loop.runUntil(10_000) { phone.messages.lastOrNull() == ring }
+        clipBothWays(loop, phone, peer)
+    }
+
+    /**
+     * The real released 0.3.1 Mac core (built from tag v0.3.1): even if a 0.4 phone sent it every
+     * revision-4 message, it ignores them (unknown types) and the link keeps working.
+     */
+    @Test
+    fun released031MacIgnoresRevision4() = session(185, 185, qr = true, path = oldPeerPath) { loop, phone, peer ->
+        assertTrue(phone.controller.peerSupports(Caps3.SMS))
+        for (c in Caps4.ALL) assertFalse(c, phone.controller.peerSupports(c))
+        val rev4: List<Message> = listOf(
+            CallLive("c1", CallDirs.OUT, CallLiveStates.DIALING, ts = 1), CallDialResult("r", true), CallLog(callLogEntries(30)),
+            Contacts("a", emptyList()), NotifAccess(true, null, 36, ts = 1),
+        )
+        for (m in rev4) loop.execute { assertTrue(phone.controller.send(m)) }
+        loop.runUntil(10_000) { peer.lines.count { it.startsWith("MSG unknown") } >= rev4.size }
+        // 0.3 traffic and the link itself are unaffected.
+        peer.send("SEND " + Hex.encode(MessageCodec.encode(CallAction("c9", CallActions.DECLINE))))
+        loop.runUntil(10_000) { phone.messages.lastOrNull() == CallAction("c9", CallActions.DECLINE) }
+        clipBothWays(loop, phone, peer)
+        assertFalse(peer.has("CLOSED"))
+        assertFalse(peer.has("DECODE_ERROR"))
     }
 }

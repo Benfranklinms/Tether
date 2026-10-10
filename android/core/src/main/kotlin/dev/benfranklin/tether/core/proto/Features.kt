@@ -22,7 +22,7 @@ object Caps {
     val V1: List<String> = listOf(CLIP, NOTIF, FILE)
 
     /** What this build announces. */
-    val CURRENT: List<String> = V1 + listOf(REPLY, MEDIA, BATTERY, RING, SCREEN) + Caps3.ALL
+    val CURRENT: List<String> = V1 + listOf(REPLY, MEDIA, BATTERY, RING, SCREEN) + Caps3.ALL + Caps4.ALL
 }
 
 /** One button on a mirrored notification. [reply] marks a RemoteInput (inline text) action. */

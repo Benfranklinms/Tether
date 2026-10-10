@@ -45,6 +45,12 @@ data class AppSettings(
     val shareNowPlaying: Boolean = true,
     /** Let the Mac measure Bluetooth signal strength to lock itself when the phone is away (0.3.0). */
     val allowProximity: Boolean = true,
+    /** Let the Mac place calls and control the call in progress (0.4.0). */
+    val allowCalling: Boolean = true,
+    /** Show recent calls on the Mac (0.4.0). */
+    val shareCallLog: Boolean = true,
+    /** The sensitive-notifications guide was dismissed (it comes back if the problem returns). */
+    val sensitiveGuideDismissed: Boolean = false,
 )
 
 /** App settings as a hot flow, persisted atomically on every change. */

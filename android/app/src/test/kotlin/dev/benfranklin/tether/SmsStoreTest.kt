@@ -22,6 +22,7 @@ import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.ConscryptMode
 
 /**
  * SmsStore against hostile providers: OEM providers that throw, refuse LIMIT, lack columns,
@@ -29,6 +30,7 @@ import org.robolectric.annotation.Config
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], application = Application::class)
+@ConscryptMode(ConscryptMode.Mode.OFF) // no conscrypt JNI on linux-aarch64 hosts; TLS is never used here
 class SmsStoreTest {
     private var now = 0L
     private val calls = ArrayList<String>()

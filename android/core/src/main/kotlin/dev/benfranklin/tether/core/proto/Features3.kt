@@ -143,8 +143,17 @@ object CallActions {
     const val SILENCE = "silence"
 }
 
-/** Mac -> phone: "decline" or "silence" the ringing call [id]. */
-@Serializable data class CallAction(val id: String, val action: String) : Message { override val type get() = MsgType.CALL_ACTION }
+/**
+ * Mac -> phone: "decline" or "silence" the ringing call [id]; with [Caps4.CALL_CONTROL] also
+ * "answer" ([speaker] = turn the speaker on once answered), "end", and "speaker" / "mute" /
+ * "hold" set to [on].
+ */
+@Serializable data class CallAction(
+    val id: String,
+    val action: String,
+    val on: Boolean? = null,
+    val speaker: Boolean? = null,
+) : Message { override val type get() = MsgType.CALL_ACTION }
 
 // ---------------- Now playing ----------------
 

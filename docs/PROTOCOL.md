@@ -205,3 +205,39 @@ Same rules as revision 2: `Hello.v` stays 1, features are announced in `Hello.ca
 - **Calls**: `ringing` may be sent more than once for one `id` as the number or name becomes known. A call that rang and went idle without being answered is `missed` (unless the Mac declined it, then `ended`). Outgoing calls are never reported. A failed CALL_ACTION is answered with the current state plus `reason` (`not_allowed`, `needs_dnd_access`, `no_call`).
 - **Now playing**: sent at once on track/state changes (at most every 300 ms) and re-sent every 15 s; the Mac extrapolates the position from `positionMs`, `speed` and `ts`. Artwork is sent once per hash per connection.
 - **Proximity**: the Mac turns reports on with PROXIMITY_CFG only while its lock feature is enabled; the phone reads the GATT link RSSI (`BluetoothGatt.readRemoteRssi`). Smoothing, thresholds, hysteresis and the dwell time are decided on the Mac (see `Proximity.swift`); losing the Bluetooth link after the phone was known to be near counts as away. The Mac never unlocks.
+
+## 14. Revision 4 (app 0.4.0)
+
+Same rules again: `Hello.v` stays 1, every feature is announced in `Hello.caps`, and a side only sends a revision-4 message (or a new CALL_ACTION action) when the peer announced the matching cap. 0.3.x builds decode the new types as unknown and ignore them (checked in CI against the released 0.3.1 Swift core), and ignore the new optional JSON fields.
+
+| Cap | Feature |
+|---|---|
+| `dial` | the Mac places calls through the phone (CALL_DIAL / CALL_DIAL_RESULT), contact search (CONTACT_SEARCH / CONTACTS); SIMS is also sent for calling |
+| `callctl` | the live call card (CALL_LIVE) and the CALL_ACTION actions `answer`, `end`, `speaker`, `mute`, `hold` |
+| `calllog` | call history (CALL_LOG_REQ / CALL_LOG) |
+| `notifaccess` | Android 15+ sensitive-notification status (NOTIF_ACCESS) |
+
+### Additions to existing messages
+
+- **CALL_ACTION** (0xA1) gains optional `"on"` (for `speaker` / `mute` / `hold`) and `"speaker"` (for `answer`: turn the phone's speaker on once the call is up). Both are omitted when absent, so the header a 0.3 phone receives for `decline` / `silence` is byte-for-byte the 0.3 one.
+- **SIMS** (0x98) is sent on connect when the Mac announced `sms` *or* `dial` (and the matching feature is on), so the dial pad can offer the SIM picker.
+
+### New messages
+
+| Type | Name | Direction | Header | Body |
+|---|---|---|---|---|
+| 0x45 | NOTIF_ACCESS | phone → Mac | `{"redacting","granted"?,"sdk","oem","ts"}`: `redacting` = Android replaced a notification's text with its "Sensitive notification content hidden" string since access was last granted; `granted` = the `RECEIVE_SENSITIVE_NOTIFICATIONS` app op is allowed (absent when the phone can't tell) | |
+| 0xA2 | CALL_DIAL | Mac → phone | `{"ref","number","sub"?}` (`sub` = subscription id; absent = the phone's default) | |
+| 0xA3 | CALL_DIAL_RESULT | phone → Mac | `{"ref","ok","reason"?,"via"?}`; `via` ∈ `telecom` (call placed), `notification` (the phone needs a tap); `reason` ∈ `needs_permission`, `disabled`, `invalid_number`, `no_sim`, `busy`, `emergency`, `no_call`, `failed` | |
+| 0xA4 | CALL_LIVE | phone → Mac | `{"id","dir" (in\|out),"state" (ringing\|dialing\|active\|ended),"number"?,"name"?,"since":ms,"speaker","muted","held","canAnswer","canEnd","canSpeaker","canMute","canHold","sub"?,"ts","reason"?}` | |
+| 0xA5 | CALL_LOG_REQ | Mac → phone | `{"limit":50,"before"?:ms}` | |
+| 0xA6 | CALL_LOG | phone → Mac | `{"calls":[Call] (newest first),"more","needs"?,"before"?}` (`needs` = `calllog` permission, `disabled`, `error:<reason>`; `before` echoes the request) | |
+| 0xA7 | CONTACT_SEARCH | Mac → phone | `{"query","limit":20}` | |
+| 0xA8 | CONTACTS | phone → Mac | `{"query","contacts":[{"name","numbers":[{"n","label"?}]}],"needs"?}` (`needs` = `contacts`, `disabled`, `error:<reason>`) | |
+
+`Call` = `{"id","number","name"?,"type" (in|out|missed|rejected|blocked|voicemail|other),"date":ms,"dur":s,"sub"?,"isNew"}`.
+
+- **Dialing**: the phone cleans the number (digits, leading `+`, `*`, `#`, `,` pause, `;` wait; anything else → `invalid_number`), refuses emergency numbers (dial those on the phone) and places the call with `TelecomManager.placeCall` (CALL_PHONE). That is a call into the system telecom service, not an activity start, so it works while Tether runs in the background on Android 10–16. CALL_DIAL_RESULT is sent when the phone goes off-hook (`ok`, `via:"telecom"`), or after 12 s without a call (`no_call`); if Telecom throws, the phone posts a "Tap to call" notification (`via:"notification"`). One dial at a time (`busy`).
+- **Live call**: CALL_LIVE is sent on every change and once on connect while a call is up. `since` is the phone's clock when the call went off-hook (0 while ringing); for outgoing calls Android doesn't tell other apps when the far end answers, so the timer starts at dialing. `can*` say which controls work right now: Answer needs ANSWER_PHONE_CALLS, End needs it on Android 9+, Speaker / Mute use AudioManager and are verified by reading the state back — when Android ignores them the phone clears the flag and reports `reason:"unsupported"`, so the Mac hides the control. Hold needs the default-dialer role and is never offered by Tether. Older Macs keep getting the revision-3 CALL_STATE events exactly as before (incoming calls only).
+- **Call audio** always stays on the phone or the earbuds connected to it: Android has no API for an app to route cellular call audio to another device.
+- CALL_LOG and CONTACTS prefer the Wi-Fi session (like SMS lists); lists are trimmed to stay under ~48 KiB (`more` is then true).

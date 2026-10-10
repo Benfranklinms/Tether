@@ -194,6 +194,15 @@ public enum Message: Equatable {
     case nowPlayingArt(hash: String, data: Data)
     case rssi(rssi: Int, ts: Int64)
     case proximityCfg(ProximityCfgPayload)
+    // revision 4 (0.4.0)
+    case notifAccess(NotifAccessPayload)
+    case callDial(CallDialPayload)
+    case callDialResult(CallDialResultPayload)
+    case callLive(CallLivePayload)
+    case callLogReq(CallLogReq)
+    case callLog(CallLogPayload)
+    case contactSearch(ContactSearchPayload)
+    case contacts(ContactsPayload)
     case unknown(type: UInt8)
 
     public var type: UInt8 {
@@ -248,6 +257,14 @@ public enum Message: Equatable {
         case .nowPlayingArt: return 0xB2
         case .rssi: return 0xD0
         case .proximityCfg: return 0xD1
+        case .notifAccess: return 0x45
+        case .callDial: return 0xA2
+        case .callDialResult: return 0xA3
+        case .callLive: return 0xA4
+        case .callLogReq: return 0xA5
+        case .callLog: return 0xA6
+        case .contactSearch: return 0xA7
+        case .contacts: return 0xA8
         case .unknown(let t): return t
         }
     }
@@ -333,6 +350,14 @@ public enum MessageCodec {
             body = d
         case .rssi(let r, let ts): header = try encoder.encode(RssiHeader(rssi: r, ts: ts))
         case .proximityCfg(let p): header = try encoder.encode(p)
+        case .notifAccess(let p): header = try encoder.encode(p)
+        case .callDial(let p): header = try encoder.encode(p)
+        case .callDialResult(let p): header = try encoder.encode(p)
+        case .callLive(let p): header = try encoder.encode(p)
+        case .callLogReq(let p): header = try encoder.encode(p)
+        case .callLog(let p): header = try encoder.encode(p)
+        case .contactSearch(let p): header = try encoder.encode(p)
+        case .contacts(let p): header = try encoder.encode(p)
         case .unknown: throw ProtocolError("cannot encode unknown message")
         }
         var out = Data(capacity: 5 + header.count + body.count)
@@ -437,6 +462,21 @@ public enum MessageCodec {
             return .nowPlayingArt(hash: try d(ArtHeader.self).hash, data: body)
         case 0xD0: let x = try d(RssiHeader.self); return .rssi(rssi: x.rssi, ts: x.ts)
         case 0xD1: return .proximityCfg(try d(ProximityCfgPayload.self))
+        default: return try decodeRevision4(type, h)
+        }
+    }
+
+    private static func decodeRevision4(_ type: UInt8, _ h: Data) throws -> Message {
+        func d<T: Decodable>(_ t: T.Type) throws -> T { try decoder.decode(t, from: h) }
+        switch type {
+        case 0x45: return .notifAccess(try d(NotifAccessPayload.self))
+        case 0xA2: return .callDial(try d(CallDialPayload.self))
+        case 0xA3: return .callDialResult(try d(CallDialResultPayload.self))
+        case 0xA4: return .callLive(try d(CallLivePayload.self))
+        case 0xA5: return .callLogReq(try d(CallLogReq.self))
+        case 0xA6: return .callLog(try d(CallLogPayload.self))
+        case 0xA7: return .contactSearch(try d(ContactSearchPayload.self))
+        case 0xA8: return .contacts(try d(ContactsPayload.self))
         default: return .unknown(type: type)
         }
     }

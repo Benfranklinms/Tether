@@ -18,7 +18,7 @@ public enum Caps {
     /// Everything a 0.1.x build announced.
     public static let v1 = [clip, notif, file]
     /// What this build announces.
-    public static let current = v1 + [reply, media, battery, ring, screen] + Caps3.all
+    public static let current = v1 + [reply, media, battery, ring, screen] + Caps3.all + Caps4.all
 }
 
 /// One button on a mirrored notification; `reply` marks an inline-text (RemoteInput) action.

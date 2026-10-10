@@ -6,8 +6,10 @@ import dev.benfranklin.tether.core.link.FragmentException
 import dev.benfranklin.tether.core.link.Fragmentation
 import dev.benfranklin.tether.core.link.Fragmenter
 import dev.benfranklin.tether.core.link.Reassembler
+import dev.benfranklin.tether.core.proto.CallLog
 import dev.benfranklin.tether.core.proto.Clip
 import dev.benfranklin.tether.core.proto.CloseReason
+import dev.benfranklin.tether.core.proto.Contacts
 import dev.benfranklin.tether.core.proto.Hello
 import dev.benfranklin.tether.core.proto.KeyRotate
 import dev.benfranklin.tether.core.proto.KeyRotateAck
@@ -328,7 +330,7 @@ class TetherController(
     /** Latency-sensitive screen control and anything big (lists, artwork) goes over Wi-Fi when it is up. */
     private fun prefersWifi(m: Message): Boolean =
         m is Clip || m is ScreenInput || m is VideoFeedback || m is ScreenStart || m is ScreenStop || m is ScreenState ||
-            m is SmsThreads || m is SmsMessages || m is NowPlayingArt
+            m is SmsThreads || m is SmsMessages || m is NowPlayingArt || m is CallLog || m is Contacts
 
     fun sendFile(record: TransferRecord) = engine.enqueue(record)
 

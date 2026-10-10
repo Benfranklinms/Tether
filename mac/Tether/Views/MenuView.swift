@@ -20,18 +20,19 @@ struct MenuView: View {
 
     private var detached: Bool { panel?.detached == true }
 
-    enum Tab: String, CaseIterable { case notifications = "Notifications", transfers = "Transfers" }
+    enum Tab: String, CaseIterable { case notifications = "Notifications", calls = "Calls", transfers = "Transfers" }
 
     var body: some View {
         VStack(spacing: 0) {
             header.background(panel.map { p in PanelDragArea(onTearOff: p.detach) })
             if m.peer != nil && !m.isConnected && m.pairingURI == nil && m.bluetooth == .on { ReconnectBanner() }
             if m.peer != nil && !m.notificationsAllowed { NotificationsOffBanner() }
+            if m.peer != nil && m.showCodesGuide { CodesBanner() }
             if m.peer == nil {
                 unpaired
             } else {
                 phoneCards
-                actions
+                ActionGrid(open: { open($0.rawValue) })
                 tabs
                 content
             }
@@ -51,6 +52,12 @@ struct MenuView: View {
         .animation(Motion.spring(reduce), value: m.notice)
         .animation(Motion.spring(reduce), value: m.notificationsAllowed)
         .animation(Motion.spring(reduce), value: m.isConnected)
+        .animation(Motion.spring(reduce), value: m.showCodesGuide)
+        .onReceive(m.$panelTabRequest) { t in
+            guard let t else { return }
+            withAnimation(Motion.spring(reduce)) { tab = t }
+            m.panelTabRequest = nil
+        }
     }
 
     // MARK: header
@@ -133,42 +140,30 @@ struct MenuView: View {
 
     @ViewBuilder private var phoneCards: some View {
         VStack(spacing: 8) {
-            if let c = m.call, m.settings.callAlerts {
+            if let c = m.call, m.settings.callAlerts, m.liveCall?.isOffhook != true {
                 CallBanner(call: c).transition(.move(edge: .top).combined(with: .opacity))
             }
+            if let live = m.liveCall, live.isOffhook {
+                LiveCallCard(call: live).transition(.move(edge: .top).combined(with: .opacity))
+            }
             if let np = m.nowPlaying, m.settings.nowPlayingEnabled {
-                NowPlayingCard(np: np).transition(.opacity)
+                if m.settings.panel.compactPlayer {
+                    CompactNowPlaying(np: np).transition(.opacity)
+                } else {
+                    NowPlayingCard(np: np).transition(.opacity)
+                }
             }
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, m.call != nil || m.nowPlaying != nil ? 12 : 0)
+        .padding(.bottom, m.call != nil || m.liveCall != nil || m.nowPlaying != nil ? 12 : 0)
         .animation(Motion.spring(reduce), value: m.call?.id)
+        .animation(Motion.spring(reduce), value: m.liveCall?.id)
+        .animation(Motion.spring(reduce), value: m.liveCall?.isOffhook)
         .animation(Motion.spring(reduce), value: m.nowPlaying == nil)
+        .animation(Motion.spring(reduce), value: m.settings.panel.compactPlayer)
     }
 
-    // MARK: actions
-
-    private var actions: some View {
-        let cols = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
-        return LazyVGrid(columns: cols, spacing: 8) {
-            ActionTile(title: "Send clipboard", symbol: "doc.on.clipboard", enabled: m.isConnected) { m.sendClipboardNow() }
-            ActionTile(title: "Send file…", symbol: "arrow.up.doc") { m.chooseFiles() }
-            ActionTile(title: "Downloads", symbol: "folder") { m.openDownloads() }
-            ActionTile(title: m.ringing || m.ringRequested ? "Stop ringing" : "Find phone",
-                       symbol: m.ringing ? "speaker.wave.3.fill" : "speaker.wave.2", enabled: m.supports(Caps.ring)) {
-                if m.ringing || m.ringRequested { m.stopRing() } else { m.ring() }
-            }
-            ActionTile(title: "Phone screen", symbol: "rectangle.on.rectangle", enabled: m.supports(Caps.screen)) {
-                open("screen")
-                if m.screen.phase != .live { m.startScreen() }
-            }
-            ActionTile(title: "Messages", symbol: "message", enabled: m.supports(Caps3.sms) && m.settings.smsEnabled) {
-                m.openMessages()
-            }
-        }
-        .tetherGlassGroup(spacing: 8)
-        .padding(.horizontal, 16).padding(.bottom, 12)
-    }
+    // MARK: tabs
 
     private var tabs: some View {
         HStack(spacing: 18) {
@@ -179,7 +174,7 @@ struct MenuView: View {
                     VStack(spacing: 6) {
                         HStack(spacing: 5) {
                             Text(t.rawValue).font(Typo.sans(12, tab == t ? .semibold : .regular))
-                            let count = t == .notifications ? m.history.items.count : activeTransfers
+                            let count = t == .notifications ? m.history.items.count : t == .calls ? m.missedBadge : activeTransfers
                             if count > 0 {
                                 Text("\(count)").font(Typo.mono(10, .medium)).foregroundColor(Mono.muted)
                                     .contentTransition(.numericText())
@@ -226,6 +221,8 @@ struct MenuView: View {
                             removal: .move(edge: .trailing).combined(with: .opacity)
                         ))
                     }
+                case .calls:
+                    CallsTab()
                 case .transfers:
                     if !m.recentMedia.isEmpty { RecentMediaStrip(items: m.recentMedia) }
                     if m.transfers.isEmpty {

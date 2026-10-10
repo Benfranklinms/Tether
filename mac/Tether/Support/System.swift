@@ -70,6 +70,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     static let callCategory = "tether.call"
     static let declineAction = "tether.call.decline"
     static let silenceAction = "tether.call.silence"
+    static let answerAction = "tether.call.answer"
+    /// Incoming call from a 0.4 phone: Answer as well.
+    static let callCategory4 = "tether.call4"
     static let smsCategory = "tether.sms"
     private let center = UNUserNotificationCenter.current()
     private var dynamic: [String: UNNotificationCategory] = [:]
@@ -103,6 +106,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         all.insert(UNNotificationCategory(
             identifier: Self.callCategory,
             actions: [
+                UNNotificationAction(identifier: Self.declineAction, title: "Decline", options: [.destructive]),
+                UNNotificationAction(identifier: Self.silenceAction, title: "Silence", options: []),
+            ],
+            intentIdentifiers: [], options: []
+        ))
+        all.insert(UNNotificationCategory(
+            identifier: Self.callCategory4,
+            actions: [
+                UNNotificationAction(identifier: Self.answerAction, title: "Answer", options: []),
                 UNNotificationAction(identifier: Self.declineAction, title: "Decline", options: [.destructive]),
                 UNNotificationAction(identifier: Self.silenceAction, title: "Silence", options: []),
             ],
@@ -191,12 +203,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    /// Incoming call banner with Decline / Silence (0.3.0).
-    func postCall(id: String, caller: String, number: String?) {
+    /// Incoming call banner with Decline / Silence (0.3.0), and Answer for a 0.4 phone.
+    func postCall(id: String, caller: String, number: String?, canAnswer: Bool = false) {
         let c = UNMutableNotificationContent()
         c.title = caller
         c.body = number.map { $0 == caller ? "Incoming call" : "Incoming call · \($0)" } ?? "Incoming call"
-        c.categoryIdentifier = Self.callCategory
+        c.categoryIdentifier = canAnswer ? Self.callCategory4 : Self.callCategory
         c.userInfo = ["call": id]
         c.sound = .default
         if #available(macOS 12.0, *) { c.interruptionLevel = .active }
@@ -245,7 +257,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                                 withCompletionHandler done: @escaping () -> Void) {
         let info = r.notification.request.content.userInfo
         if let call = info["call"] as? String {
-            if r.actionIdentifier == Self.declineAction {
+            if r.actionIdentifier == Self.answerAction {
+                onCall?(call, CallActions4.answer)
+            } else if r.actionIdentifier == Self.declineAction {
                 onCall?(call, CallActions.decline)
             } else if r.actionIdentifier == Self.silenceAction {
                 onCall?(call, CallActions.silence)

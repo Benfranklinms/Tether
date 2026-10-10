@@ -271,10 +271,27 @@ private struct Conversation: View {
                 if let t = info, t.names.contains(where: { $0 != nil }) {
                     Text(t.addrs.joined(separator: ", ")).font(Typo.mono(10)).foregroundColor(Mono.muted).lineLimit(1)
                 }
+                if let note = m.calls.dialNote, callNumber != nil {
+                    Text(note).font(Typo.sans(10)).foregroundColor(Mono.muted).lineLimit(2)
+                }
             }
             Spacer()
+            if let n = callNumber, m.canDial {
+                Button { m.dial(n, name: info?.names.first.flatMap { $0 }) } label: {
+                    Label("Call", systemImage: "phone.fill").font(Typo.sans(12, .medium)).foregroundColor(Mono.text)
+                        .padding(.horizontal, 12).frame(minHeight: 26).tetherControl(Capsule()).contentShape(Capsule())
+                }
+                .buttonStyle(PressStyle()).disabled(m.calls.dialing != nil)
+                .help("Call \(info?.title ?? n) from your phone").accessibilityLabel("Call \(info?.title ?? n)")
+            }
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    /// One-to-one conversations with a real number (not "AX-BANK" style senders) can be called.
+    private var callNumber: String? {
+        guard let t = info, t.addrs.count == 1, let a = t.addrs.first, Dialable.digits(a).count >= 3 else { return nil }
+        return Dialable.clean(a)
     }
 }
 

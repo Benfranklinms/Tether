@@ -43,6 +43,7 @@ class MirrorListenerService : NotificationListenerService() {
         val facts = facts(sbn, rankingMap) ?: return
         rt.seenApps.saw(facts.pkg, facts.appLabel, facts.isSystemApp, System.currentTimeMillis())
         if (facts.category == Notification.CATEGORY_CALL) rt.dialerNotification(facts.title)
+        rt.sensitiveSeen(facts.title, sbn.notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString())
         // With call alerts on, the Mac shows its own incoming/missed call UI; don't mirror the dialer's too.
         if (rt.callAlertsActive && (facts.category == Notification.CATEGORY_CALL || facts.category == CATEGORY_MISSED_CALL)) return
         val decision = NotificationFilter.decide(facts, rt.settings.current.notifications, deviceContext(), packageName)

@@ -15,11 +15,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import dev.benfranklin.tether.core.proto.Caps
 import dev.benfranklin.tether.core.proto.Caps3
+import dev.benfranklin.tether.core.proto.Caps4
 import dev.benfranklin.tether.data.AppSettings
 import dev.benfranklin.tether.ui.Card
 import dev.benfranklin.tether.ui.Divider
@@ -48,6 +53,15 @@ data class FeatureStatus(
     val callNumber: Boolean = true,
     val callDecline: Boolean = true,
     val dndAccess: Boolean = true,
+    // 0.4.0
+    val callPhone: Boolean = true,
+    val callAnswer: Boolean = true,
+    /** Android 15+ (sensitive notification redaction exists). */
+    val sensitiveApplies: Boolean = false,
+    val sensitiveRedacting: Boolean = false,
+    val sensitiveGranted: Boolean? = null,
+    val oem: String = "",
+    val adbCommand: String = "",
 )
 
 interface FeatureActions {
@@ -61,6 +75,8 @@ interface FeatureActions {
     fun grantContacts()
     fun grantCalls()
     fun openDndAccess()
+    fun copyAdbCommand()
+    fun openDeveloperOptions()
 }
 
 /** Next screen-size choice when the row is tapped. Pure; unit-tested. */
@@ -107,6 +123,10 @@ fun FeaturesScreen(s: AppSettings, st: FeatureStatus, a: FeatureActions, onBack:
                         }
                     }
                 }
+            }
+            if (st.sensitiveApplies) {
+                item { SectionHeader("One-time codes") }
+                item { SensitiveSection(s, st, a) }
             }
             item { SectionHeader("Photos") }
             item {
@@ -215,10 +235,10 @@ fun FeaturesScreen(s: AppSettings, st: FeatureStatus, a: FeatureActions, onBack:
                 Card {
                     Column {
                         ToggleRow(
-                            "Call alerts on the Mac", "Who's calling, with Decline and Silence. Missed calls too", s.callAlerts,
+                            "Call alerts on the Mac", "Who's calling, with Answer, Decline and Silence. Missed calls too", s.callAlerts,
                             enabled = !macLacks(Caps3.CALL),
                         ) { v -> a.update { it.copy(callAlerts = v) } }
-                        Reveal(s.callAlerts && !(st.callWatch && st.callNumber && st.callDecline), reduce) {
+                        Reveal(s.callAlerts && !(st.callWatch && st.callNumber && st.callDecline && st.callAnswer), reduce) {
                             Column {
                                 Divider()
                                 NavRow(
@@ -237,6 +257,30 @@ fun FeaturesScreen(s: AppSettings, st: FeatureStatus, a: FeatureActions, onBack:
                             Column {
                                 Divider()
                                 NavRow("Silence from the Mac", "Needs Do Not Disturb access", onClick = a::openDndAccess)
+                            }
+                        }
+                        Divider()
+                        ToggleRow(
+                            "Make calls from the Mac",
+                            "Dial pad, contacts and phone links on the Mac, plus End, Speaker and Mute. " +
+                                "Call audio stays on this phone or its earbuds: Android can't send call audio to a computer",
+                            s.allowCalling, enabled = !macLacks(Caps4.DIAL),
+                        ) { v -> a.update { it.copy(allowCalling = v) } }
+                        Reveal(s.allowCalling && !(st.callPhone && st.callWatch), reduce) {
+                            Column {
+                                Divider()
+                                NavRow("Allow calling", "Needed", onClick = a::grantCalls)
+                            }
+                        }
+                        Divider()
+                        ToggleRow(
+                            "Recent calls on the Mac", "Call history with call back and a missed-call badge", s.shareCallLog,
+                            enabled = !macLacks(Caps4.CALL_LOG),
+                        ) { v -> a.update { it.copy(shareCallLog = v) } }
+                        Reveal(s.shareCallLog && !st.callNumber, reduce) {
+                            Column {
+                                Divider()
+                                NavRow("Allow call log", "Needed", onClick = a::grantCalls)
                             }
                         }
                     }
@@ -296,4 +340,35 @@ private fun Reveal(visible: Boolean, reduce: Boolean, content: @Composable () ->
         enter = expandVertically(Motion.spring<IntSize>(reduce)) + fadeIn(Motion.spring(reduce)),
         exit = shrinkVertically(Motion.spring<IntSize>(reduce)) + fadeOut(Motion.spring(reduce)),
     ) { content() }
+}
+
+/** Android 15+: the guide opens by itself the first time codes are hidden, then folds into a row. */
+@Composable
+private fun SensitiveSection(s: AppSettings, st: FeatureStatus, a: FeatureActions) {
+    val fixed = st.sensitiveGranted == true && !st.sensitiveRedacting
+    var open by rememberSaveable { mutableStateOf(false) }
+    val auto = st.sensitiveRedacting && !s.sensitiveGuideDismissed
+    Card {
+        Column {
+            if (fixed || auto || open) {
+                SensitiveGuide(
+                    redacting = st.sensitiveRedacting, granted = st.sensitiveGranted, oem = st.oem, command = st.adbCommand,
+                    onCopy = a::copyAdbCommand, onDeveloperOptions = a::openDeveloperOptions,
+                    onDismiss = if (fixed) {
+                        null
+                    } else {
+                        {
+                            open = false
+                            a.update { it.copy(sensitiveGuideDismissed = true) }
+                        }
+                    },
+                )
+            } else {
+                NavRow(
+                    "Show one-time codes on the Mac", if (st.sensitiveRedacting) "Hidden by Android" else "Set up",
+                    onClick = { open = true },
+                )
+            }
+        }
+    }
 }

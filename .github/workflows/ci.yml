@@ -107,7 +107,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Build test APKs
         run: ./gradlew --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
-      - name: Instrumented tests (reply path, MediaStore watcher) on API 34
+      - name: Instrumented tests (reply path, MediaStore watcher, real calls via the emulator modem) on API 34
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -117,13 +117,16 @@ jobs:
           disk-size: 4096M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           working-directory: android
-          script: ./gradlew --stacktrace :app:connectedDebugAndroidTest
+          script: bash scripts/emulator-tests.sh
       - name: Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: emulator-reports
-          path: android/app/build/reports/androidTests
+          path: |
+            android/app/build/reports/androidTests
+            android/app/build/outputs/androidTest-results
+            android/app/build/emulator-logcat.txt
 
   interop:
     name: Interop (Kotlin ↔ Swift)
@@ -133,6 +136,8 @@ jobs:
       TETHER_CORE_ONLY: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the v0.3.1 tag: the released Mac core is the old-peer compatibility target
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -147,10 +152,15 @@ jobs:
       - name: Build the Swift peer (real TetherCore)
         working-directory: tools/interop
         run: swift --version && swift build
+      - name: Build the released 0.3.1 Swift peer (old-Mac compatibility)
+        run: |
+          git worktree add "$RUNNER_TEMP/old031" v0.3.1
+          (cd "$RUNNER_TEMP/old031/tools/interop" && swift build)
       - name: Kotlin phone core ↔ Swift Mac core
         working-directory: android
         run: |
           export TETHER_SWIFT_PEER="$GITHUB_WORKSPACE/tools/interop/.build/debug/tether-peer"
+          export TETHER_SWIFT_PEER_OLD="$RUNNER_TEMP/old031/tools/interop/.build/debug/tether-peer"
           ./gradlew --stacktrace :core:test --tests '*InteropTest*'
           # Fail if the tests were skipped (peer not found) instead of silently passing.
           f=core/build/test-results/test/TEST-dev.benfranklin.tether.core.InteropTest.xml

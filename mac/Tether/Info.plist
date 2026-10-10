@@ -38,6 +38,21 @@
 	<array>
 		<string>_tether._tcp</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Phone number</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>tel</string>
+				<string>callto</string>
+				<string>telprompt</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Tether shows your phone's notifications on your Mac.</string>
 </dict>

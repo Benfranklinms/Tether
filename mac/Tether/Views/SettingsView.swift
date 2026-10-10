@@ -135,6 +135,7 @@ private struct GeneralPage: View {
                     .fixedSize()
             }
         }
+        PanelSettings()
         SectionLabel(text: "Mac")
         Card {
             ToggleRow(title: "Open at login", isOn: Binding(get: { m.launchAtLogin }, set: { m.setLaunchAtLogin($0) }))
@@ -186,6 +187,7 @@ private struct NotificationsPage: View {
                     .fixedSize()
             }
         }
+        CodesSettings()
         SectionLabel(text: "Apps")
         if apps.isEmpty {
             Card {
@@ -314,11 +316,7 @@ private struct Features3Settings: View {
                 GhostButton(title: "Open…") { m.openMessages() }.disabled(!m.supports(Caps3.sms) || !m.settings.smsEnabled)
             }
         }
-        SectionLabel(text: "Calls")
-        Card {
-            ToggleRow(title: "Incoming call alerts", detail: "Caller name, Decline and Silence. Missed calls become notifications.",
-                      isOn: $m.settings.callAlerts, divider: false)
-        }
+        CallsSettings()
         SectionLabel(text: "Now playing")
         Card {
             ToggleRow(title: "Show what's playing on the phone", detail: "Title, artwork, play/pause, skip, seek and volume.",

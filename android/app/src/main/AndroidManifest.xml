@@ -55,6 +55,13 @@
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- Calling from the Mac (0.4.0): place calls (TelecomManager.placeCall), speaker / mute during a call. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Android 15+: one-time codes in notifications. Not grantable from the app: the user grants
+         the matching app op over adb (README › Sensitive notifications). Declared so the op applies. -->
+    <uses-permission android:name="android.permission.RECEIVE_SENSITIVE_NOTIFICATIONS"
+        tools:ignore="ProtectedPermissions" />
 
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
 

@@ -307,6 +307,11 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             case .nowPlaying(let np): m.nowPlayingUpdate(np)
             case .nowPlayingArt(let hash, let data): m.nowPlayingArt(hash: hash, data: data)
             case .rssi(let rssi, _): m.rssiReading(rssi)
+            case .callLive(let p): m.callLiveUpdate(p)
+            case .callDialResult(let p): m.callDialResult(p)
+            case .callLog(let p): m.callLogUpdate(p)
+            case .contacts(let p): m.contactsUpdate(p)
+            case .notifAccess(let p): m.notifAccessUpdate(p)
             default: Log.info("msg.ignored", ["type": "\(message.type)"])
             }
         }

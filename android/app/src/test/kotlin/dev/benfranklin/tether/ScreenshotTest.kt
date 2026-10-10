@@ -34,6 +34,7 @@ import java.io.File
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.ConscryptMode
 import org.robolectric.annotation.GraphicsMode
 
 /**
@@ -43,6 +44,7 @@ import org.robolectric.annotation.GraphicsMode
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w400dp-h860dp-night-xxhdpi", application = Application::class)
+@ConscryptMode(ConscryptMode.Mode.OFF) // no conscrypt JNI on linux-aarch64 hosts; TLS is never used here
 class ScreenshotTest {
     @get:Rule val compose = createComposeRule()
 
@@ -163,20 +165,39 @@ class ScreenshotTest {
         FeaturesScreen(
             AppSettings(sendPhotos = true),
             FeatureStatus(connected = true, macCaps = dev.benfranklin.tether.core.proto.Caps.CURRENT.toSet(), mediaPermission = false),
-            object : FeatureActions {
-                override fun update(change: (AppSettings) -> AppSettings) = Unit
-                override fun grantMedia() = Unit
-                override fun grantPhoneState() = Unit
-                override fun openFullScreenSettings() = Unit
-                override fun openAccessibility() = Unit
-                override fun openNotificationAccess() = Unit
-                override fun grantSms() = Unit
-                override fun grantContacts() = Unit
-                override fun grantCalls() = Unit
-                override fun openDndAccess() = Unit
-            },
+            NoFeatureActions,
             onBack = {},
         )
+    }
+
+    /** Android 15+ with one-time codes hidden: the guide opens by itself (0.4.0). */
+    @Test
+    fun featuresCodes() = shot("features-codes") {
+        FeaturesScreen(
+            AppSettings(),
+            FeatureStatus(
+                connected = true, macCaps = dev.benfranklin.tether.core.proto.Caps.CURRENT.toSet(), sensitiveApplies = true,
+                sensitiveRedacting = true, oem = "OnePlus",
+                adbCommand = "adb shell cmd appops set --user 0 in.benfranklin.tether RECEIVE_SENSITIVE_NOTIFICATIONS allow",
+            ),
+            NoFeatureActions,
+            onBack = {},
+        )
+    }
+
+    private object NoFeatureActions : FeatureActions {
+        override fun update(change: (AppSettings) -> AppSettings) = Unit
+        override fun grantMedia() = Unit
+        override fun grantPhoneState() = Unit
+        override fun openFullScreenSettings() = Unit
+        override fun openAccessibility() = Unit
+        override fun openNotificationAccess() = Unit
+        override fun grantSms() = Unit
+        override fun grantContacts() = Unit
+        override fun grantCalls() = Unit
+        override fun openDndAccess() = Unit
+        override fun copyAdbCommand() = Unit
+        override fun openDeveloperOptions() = Unit
     }
 
     private object NoActions : SettingsActions {

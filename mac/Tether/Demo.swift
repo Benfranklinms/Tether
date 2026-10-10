@@ -8,7 +8,7 @@ enum Demo {
         key: Data(repeating: 7, count: KeyPair.keyLength), token: Data(repeating: 3, count: PairingURI.tokenLength), name: "MacBook Air"
     ).encode()
 
-    enum Shot { case unpaired, connected, qr, code, done, linking, failed, glass, screen, call }
+    enum Shot { case unpaired, connected, qr, code, done, linking, failed, glass, screen, call, liveCall, calls, codes }
 
     static func now() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
@@ -55,6 +55,7 @@ enum Demo {
             m.screen.phase = .consent
         }
         loadFeatures3(m, scene, t)
+        loadFeatures4(m, scene, t)
         let notes = [
             NotifPayload(key: "d1", pkg: "com.google.android.gm", app: "Gmail", title: "Placement Cell",
                          text: "Drive registration closes at 5 PM", ts: t - 31 * 60_000),
@@ -106,6 +107,36 @@ enum Demo {
             SmsMessage(id: "s3", thread: 1, addr: "+919847012345", name: "Amma", body: "Reached? Call when free",
                        date: t - 4 * 60_000, sub: 1, read: false),
         ]
+    }
+
+    private static func loadFeatures4(_ m: AppModel, _ scene: Shot, _ t: Int64) {
+        m.calls.seenUntil = t - 50 * 60_000
+        m.calls.log = [
+            CallLogEntry(id: 9, number: "+919847012345", name: "Amma", type: CallLogTypes.missed, date: t - 6 * 60_000, sub: 1,
+                         isNew: true),
+            CallLogEntry(id: 8, number: "+919995551234", name: "Rahul (CSBS)", type: CallLogTypes.outgoing, date: t - 47 * 60_000,
+                         dur: 312, sub: 2),
+            CallLogEntry(id: 7, number: "+918089001122", name: "Placement Cell", type: CallLogTypes.incoming, date: t - 5 * 3_600_000,
+                         dur: 95, sub: 1),
+            CallLogEntry(id: 6, number: "1800 425 1425", type: CallLogTypes.outgoing, date: t - 26 * 3_600_000, dur: 64, sub: 1),
+            CallLogEntry(id: 5, number: "+914842345678", type: CallLogTypes.rejected, date: t - 30 * 3_600_000, sub: 2),
+        ]
+        m.calls.more = true
+        switch scene {
+        case .liveCall:
+            m.settings.panel.compactPlayer = true
+            m.liveCall = CallLivePayload(id: "c2", dir: CallDirs.outgoing, state: CallLiveStates.active, number: "+919847012345",
+                                         name: "Amma", since: t - 83_000, speaker: true, canEnd: true, canSpeaker: true,
+                                         canMute: true, sub: 1, ts: t)
+        case .calls:
+            m.settings.panel.moreExpanded = true
+            m.calls.query = "ra"
+            m.calls.contacts = [ContactInfo(name: "Rahul (CSBS)", numbers: [ContactNumber(n: "+91 99955 51234", label: "Mobile")])]
+        case .codes:
+            m.notifAccess = NotifAccessPayload(redacting: true, sdk: 36, oem: "OnePlus", ts: t)
+        default:
+            break
+        }
     }
 
     static func finishPairing(_ m: AppModel) {

@@ -25,7 +25,11 @@ struct CallBanner: View {
             }
             HStack(spacing: 8) {
                 MonoButton(title: "Silence", filled: false) { m.callAction(id: call.id, action: CallActions.silence) }
-                MonoButton(title: "Decline") { m.callAction(id: call.id, action: CallActions.decline) }
+                MonoButton(title: "Decline", filled: !canAnswer) { m.callAction(id: call.id, action: CallActions.decline) }
+                if canAnswer {
+                    MonoButton(title: "Answer") { m.answerCall(id: call.id) }
+                        .help(m.settings.speakerOnAnswer ? "Answers on your phone's speaker" : "Answers on your phone")
+                }
             }
             if let note = m.callNote {
                 Text(note).font(Typo.sans(11)).foregroundColor(Mono.muted).fixedSize(horizontal: false, vertical: true)
@@ -39,6 +43,13 @@ struct CallBanner: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Incoming call from \(call.caller)")
+    }
+
+    /// A 0.4 phone with answer access (the live card says so; before it arrives, the caps do).
+    private var canAnswer: Bool {
+        guard m.supports(Caps4.callControl) else { return false }
+        if let l = m.liveCall, l.id == call.id { return l.canAnswer }
+        return true
     }
 
     private var subtitle: String {
@@ -65,6 +76,7 @@ struct NowPlayingCard: View {
                 }
                 Spacer(minLength: 4)
                 transport
+                PlayerSizeToggle(compact: false)
             }
             if np.durationMs > 0 { progress }
             if np.volume != nil { volumeRow }

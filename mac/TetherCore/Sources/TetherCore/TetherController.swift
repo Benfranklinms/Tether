@@ -273,7 +273,7 @@ public final class TetherController {
         case .videoFrame: wifiOnly = true
         case .screenInput, .videoFeedback, .screenStart, .screenStop, .screenState: prefersWifi = true
         // Anything big goes over Wi-Fi when it is up.
-        case .smsThreads, .smsMessages, .nowPlayingArt: prefersWifi = true
+        case .smsThreads, .smsMessages, .nowPlayingArt, .callLog, .contacts: prefersWifi = true
         default: break
         }
         if wifiOnly && !wifiReady { return false }

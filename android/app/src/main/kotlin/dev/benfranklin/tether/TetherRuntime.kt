@@ -16,7 +16,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import dev.benfranklin.tether.ble.BleCentral
-import dev.benfranklin.tether.call.CallMonitor
+import dev.benfranklin.tether.call.CallBridge
 import dev.benfranklin.tether.core.ControllerListener
 import dev.benfranklin.tether.core.LinkState
 import dev.benfranklin.tether.core.TetherController
@@ -26,13 +26,17 @@ import dev.benfranklin.tether.core.features.BatteryThrottle
 import dev.benfranklin.tether.core.features.FrameSplitter
 import dev.benfranklin.tether.core.proto.Battery
 import dev.benfranklin.tether.core.proto.CallAction
-import dev.benfranklin.tether.core.proto.CallState
+import dev.benfranklin.tether.core.proto.CallDial
+import dev.benfranklin.tether.core.proto.CallLogReq
+import dev.benfranklin.tether.core.proto.ContactSearch
+import dev.benfranklin.tether.core.proto.Caps4
 import dev.benfranklin.tether.core.proto.Caps
 import dev.benfranklin.tether.core.proto.Caps3
 import dev.benfranklin.tether.core.proto.Clip
 import dev.benfranklin.tether.core.proto.CloseReason
 import dev.benfranklin.tether.core.proto.Hello
 import dev.benfranklin.tether.core.proto.MediaCmd
+import dev.benfranklin.tether.core.proto.NotifAccess
 import dev.benfranklin.tether.core.proto.Message
 import dev.benfranklin.tether.core.proto.MessageCodec
 import dev.benfranklin.tether.core.proto.Notif
@@ -89,6 +93,7 @@ import dev.benfranklin.tether.media.MediaWatcher
 import dev.benfranklin.tether.media.NowPlayingMonitor
 import dev.benfranklin.tether.notify.MirrorListenerService
 import dev.benfranklin.tether.notify.NotificationActions
+import dev.benfranklin.tether.notify.SensitiveWatch
 import dev.benfranklin.tether.screen.ControlService
 import dev.benfranklin.tether.screen.ScreenCaptureService
 import dev.benfranklin.tether.screen.ScreenConsentActivity
@@ -219,7 +224,11 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         onSent = { ref, ok, reason -> engine.execute { controller.send(SmsSendResult(ref, ok, reason)) } },
         onSimsChanged = { engine.execute { pushSims() } },
     )
-    private val calls = CallMonitor(app) { ev -> engine.execute { pushCall(ev) } }
+    private val calls = CallBridge(
+        app, { settings.current }, engine,
+        send = { m -> controller.send(m) }, supports = { c -> controller.peerSupports(c) },
+    )
+    val sensitive = SensitiveWatch(app)
     private val nowPlaying = NowPlayingMonitor(
         app,
         onState = { np -> engine.execute { pushNowPlaying(np) } },
@@ -431,13 +440,17 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         if (!s.allowRing && ringer.ringing) ringer.stop("disabled")
         // 0.3.0
         sms.watch(paired && s.shareSms)
-        main.post { if (paired && s.callAlerts) calls.start() else calls.stop() }
+        calls.apply(paired, s)
         if (paired && s.shareNowPlaying) nowPlaying.start() else nowPlaying.stop()
         if (!s.allowProximity) stopRssi()
     }
 
     /** Permissions changed (the app came back from a permission screen). */
-    fun permissionsChanged() = engine.execute { applyFeatures(settings.current) }
+    fun permissionsChanged() = engine.execute {
+        applyFeatures(settings.current)
+        calls.permissionsChanged()
+        sensitive.recheck()?.let(::pushNotifAccess)
+    }
 
     /** MediaStore changed while the process was asleep (content-trigger job). */
     fun mediaChanged() {
@@ -712,37 +725,29 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     }
 
     private fun pushSims() {
-        if (!smsAllowed()) return
+        val forCalls = settings.current.allowCalling && controller.peerSupports(Caps4.DIAL)
+        if (!smsAllowed() && !forCalls) return
         sms.io.execute {
             val list = sms.sims()
             engine.execute { controller.send(Sims(list)) }
         }
     }
 
-    private fun pushCall(ev: CallState) {
-        if (settings.current.callAlerts && controller.peerSupports(Caps3.CALL)) controller.send(ev)
-    }
-
-    private fun onCallAction(a: CallAction) {
-        if (!settings.current.callAlerts) {
-            controller.send(CallState(a.id, "ended", ts = System.currentTimeMillis(), reason = "disabled"))
-            return
-        }
-        main.post {
-            val reason = calls.act(a.id, a.action)
-            if (reason != null) {
-                engine.execute { controller.send(CallState(a.id, "ringing", ts = System.currentTimeMillis(), reason = reason)) }
-            }
-        }
-    }
-
     /** The Mac shows calls itself, so the dialer's call notifications aren't mirrored. */
     val callAlertsActive: Boolean
-        get() = settings.current.callAlerts && CallMonitor.canWatch(app) && Caps3.CALL in state.value.peerCaps &&
-            state.value.link is LinkState.Connected
+        get() = calls.alertsActive(state.value.link is LinkState.Connected, state.value.peerCaps)
 
     /** The dialer's incoming-call notification, for the caller's name when contacts can't be read. */
-    fun dialerNotification(title: String?) = main.post { calls.dialerTitle(title) }
+    fun dialerNotification(title: String?) = calls.dialerTitle(title)
+
+    /** Every posted notification passes here so Android 15+ redaction is noticed (0.4.0). */
+    fun sensitiveSeen(title: String?, text: String?) = engine.execute {
+        sensitive.onNotification(title, text)?.let(::pushNotifAccess)
+    }
+
+    private fun pushNotifAccess(a: NotifAccess) {
+        if (controller.peerSupports(Caps4.NOTIF_ACCESS)) controller.send(a)
+    }
 
     private fun nowPlayingAllowed() = settings.current.shareNowPlaying && controller.peerSupports(Caps3.NOW_PLAYING)
 
@@ -804,6 +809,11 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             media.poke()
             pushSims()
             nowPlaying.resend()
+            calls.connected()
+            if (SensitiveWatch.applies) {
+                sensitive.recheck()
+                pushNotifAccess(sensitive.status())
+            }
         } else {
             stopRssi()
             if (screenLive || screenPending) stopScreen("link")
@@ -835,7 +845,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             is SmsThreadReq -> onSmsThread(message)
             is SmsSearch -> onSmsSearch(message)
             is SmsSend -> onSmsSend(message)
-            is CallAction -> onCallAction(message)
+            is CallAction, is CallDial, is CallLogReq, is ContactSearch -> calls.handle(message)
             is MediaCmd -> onMediaCmd(message)
             is ProximityCfg -> onProximityCfg(message)
             else -> Log.i("msg.ignored", "type" to message.type)

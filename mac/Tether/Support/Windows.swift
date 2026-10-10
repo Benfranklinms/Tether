@@ -128,6 +128,17 @@ final class StatusController: NSObject, NSWindowDelegate {
             .store(in: &subs)
         refresh()
         if model.settings.panelDetached { DispatchQueue.main.async { self.showDetached() } }
+        model.showPanel = { [weak self] in self?.reveal() }
+    }
+
+    /// Shows the panel (attached under the menu-bar item, or the detached window).
+    func reveal() {
+        if model.settings.panelDetached {
+            showDetached()
+        } else if panel?.isVisible != true {
+            showAttached()
+        }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: status item

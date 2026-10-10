@@ -56,6 +56,11 @@ struct JSONFile<T: Codable> {
 }
 
 /// Mac-side settings (the phone keeps its own).
+/// Clicking a phone number link: confirm in the panel first, or call straight away.
+enum TelLinkMode: String, Codable, CaseIterable {
+    case ask, call
+}
+
 struct MacSettings: Codable, Equatable {
     var sendClipboard = true
     var receiveClipboard = true
@@ -88,6 +93,17 @@ struct MacSettings: Codable, Equatable {
     var proximityLock = false
     var proximityDistance = ProximityDistance.medium
     var proximityAwaySeconds = 30
+    // 0.4.0
+    /// Calling from the Mac: dial pad, recents, call card (needs a 0.4 phone).
+    var callsEnabled = true
+    /// Answering from the Mac turns the phone's speaker on (call audio never comes to the Mac).
+    var speakerOnAnswer = true
+    /// What clicking a tel: link does once Tether handles them.
+    var telLinks = TelLinkMode.ask
+    /// Pinned actions, "More" open, compact player.
+    var panel = PanelLayout()
+    /// The one-time-codes guide was dismissed in the panel.
+    var codesGuideDismissed = false
 
     init() {}
 
@@ -117,6 +133,11 @@ struct MacSettings: Codable, Equatable {
         proximityLock = try c.decodeIfPresent(Bool.self, forKey: .proximityLock) ?? false
         proximityDistance = (try? c.decodeIfPresent(ProximityDistance.self, forKey: .proximityDistance)) ?? .medium
         proximityAwaySeconds = try c.decodeIfPresent(Int.self, forKey: .proximityAwaySeconds) ?? 30
+        callsEnabled = try c.decodeIfPresent(Bool.self, forKey: .callsEnabled) ?? true
+        speakerOnAnswer = try c.decodeIfPresent(Bool.self, forKey: .speakerOnAnswer) ?? true
+        telLinks = (try? c.decodeIfPresent(TelLinkMode.self, forKey: .telLinks)) ?? .ask
+        panel = (try? c.decodeIfPresent(PanelLayout.self, forKey: .panel)) ?? PanelLayout()
+        codesGuideDismissed = try c.decodeIfPresent(Bool.self, forKey: .codesGuideDismissed) ?? false
     }
 
     var mediaURL: URL { mediaFolder.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? downloadURL }

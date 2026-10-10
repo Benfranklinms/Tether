@@ -315,12 +315,18 @@ public struct CallStatePayload: Codable, Equatable {
     public var caller: String { name ?? number ?? "Unknown caller" }
 }
 
+/// "decline" / "silence"; with `callctl` also "answer" (`speaker`: turn it on once answered),
+/// "end", and "speaker" / "mute" / "hold" set to `on`.
 public struct CallActionPayload: Codable, Equatable {
     public var id: String
     public var action: String
-    public init(id: String, action: String) {
+    public var on: Bool?
+    public var speaker: Bool?
+    public init(id: String, action: String, on: Bool? = nil, speaker: Bool? = nil) {
         self.id = id
         self.action = action
+        self.on = on
+        self.speaker = speaker
     }
 }
 

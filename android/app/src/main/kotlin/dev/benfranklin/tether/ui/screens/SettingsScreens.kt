@@ -119,7 +119,7 @@ fun SettingsScreen(s: AppSettings, d: DeviceInfo, a: SettingsActions, onBack: ()
             item { SectionHeader("Features") }
             item {
                 Card {
-                    NavRow("On your Mac", "Replies, photos, battery, ring, screen", onClick = a::openFeatures)
+                    NavRow("On your Mac", "Calls, texts, codes, photos, screen", onClick = a::openFeatures)
                 }
             }
             item { SectionHeader("Clipboard") }

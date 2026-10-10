@@ -361,12 +361,13 @@ extension AppModel {
             let first = call?.id != c.id
             call = c
             if first { callNote = nil }
-            notifier.postCall(id: c.id, caller: c.caller, number: c.number)
+            notifier.postCall(id: c.id, caller: c.caller, number: c.number, canAnswer: supports(Caps4.callControl))
             if first { Log.info("call.ringing", ["named": "\(c.name != nil)"]) }
         case CallStates.missed:
             notifier.removeCall(id: c.id)
             if call?.id == c.id { call = nil }
             notifier.postMissedCall(id: c.id, caller: c.caller, number: c.number)
+            missedCall(at: c.ts)
         default:
             notifier.removeCall(id: c.id)
             if call?.id == c.id { call = nil }
@@ -374,6 +375,7 @@ extension AppModel {
     }
 
     func callAction(id: String, action: String) {
+        if action == CallActions4.answer { return answerCall(id: id) }
         guard supports(Caps3.call) else { return }
         callNote = action == CallActions.silence ? "Silencing…" : "Declining…"
         engine?.send(.callAction(CallActionPayload(id: id, action: action))) { [weak self] in self?.callNote = "Not connected" }

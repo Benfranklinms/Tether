@@ -35,6 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel?
     private var status: StatusController?
     private var router: WindowRouter?
+    /// Links that arrived before launch finished.
+    private var pendingURLs: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let dir = Launch.screenshotDir {
@@ -48,6 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = m
         router = r
         status = StatusController(model: m)
+        pendingURLs.forEach(m.openPhoneLink)
+        pendingURLs.removeAll()
         // First launch with no phone paired: open the pairing window.
         let d = UserDefaults.standard
         if m.peer == nil, !d.bool(forKey: "didOfferPairing") {
@@ -63,6 +67,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// tel: / callto: links (Tether registered as their handler) and anything else opened with Tether.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where TelURL.schemes.contains(url.scheme?.lowercased() ?? "") {
+            if let m = model { m.openPhoneLink(url) } else { pendingURLs.append(url) }
+        }
+    }
 }
 
 /// Renders real views with demo data in an on-screen borderless window and writes PNGs
@@ -96,6 +107,9 @@ enum Screenshots {
         Shot(name: "screen", scene: .screen) { AnyView(ScreenWindow(screen: ScreenModel()).frame(width: 380, height: 760)) },
         Shot(name: "menu-call", scene: .call) { AnyView(MenuView()) },
         Shot(name: "messages", scene: .connected) { AnyView(MessagesView().frame(width: 820, height: 560)) },
+        Shot(name: "menu-live-call", scene: .liveCall) { AnyView(MenuView()) },
+        Shot(name: "menu-calls", scene: .calls) { AnyView(MenuView(initialTab: .calls)) },
+        Shot(name: "menu-codes", scene: .codes) { AnyView(MenuView()) },
     ]
 
     private static var window: NSWindow?
