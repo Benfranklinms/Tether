@@ -118,6 +118,8 @@ jobs:
           arch: x86_64
           disable-animations: true
           disk-size: 4096M
+          cores: 4
+          ram-size: 4096M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           working-directory: android
           script: bash scripts/emulator-tests.sh
@@ -129,7 +131,7 @@ jobs:
           path: |
             android/app/build/reports/androidTests
             android/app/build/outputs/androidTest-results
-            android/app/build/emulator-logcat.txt
+            android/app/build/emulator-logcat*.txt
 
   interop:
     name: Interop (Kotlin ↔ Swift)

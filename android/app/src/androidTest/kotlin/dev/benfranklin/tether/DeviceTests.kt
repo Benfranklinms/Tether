@@ -102,10 +102,10 @@ class DeviceTests {
         NotificationActions.register("k1", actions)
         val r = NotificationActions.perform(ctx, "k1", actions[0].id, "On my way 🚲")
         assertTrue(r.reason ?: "", r.ok)
-        assertEquals("On my way 🚲", ReplyReceiver.received.poll(10, TimeUnit.SECONDS))
+        assertEquals("On my way 🚲", ReplyReceiver.received.poll(BROADCAST_S, TimeUnit.SECONDS))
         // Plain button fires too; empty replies and unknown keys are refused.
         assertTrue(NotificationActions.perform(ctx, "k1", actions[1].id, null).ok)
-        assertNotNull(ReplyReceiver.received.poll(10, TimeUnit.SECONDS))
+        assertNotNull(ReplyReceiver.received.poll(BROADCAST_S, TimeUnit.SECONDS))
         assertFalse(NotificationActions.perform(ctx, "k1", actions[0].id, "  ").ok)
         assertEquals("gone", NotificationActions.perform(ctx, "nope", "reply0", "x").reason)
     }
@@ -149,5 +149,10 @@ class DeviceTests {
             ctx.contentResolver.delete(uri, null, null)
             watcher.configure(MediaWatcher.Prefs(screenshots = false, photos = false))
         }
+    }
+
+    private companion object {
+        /** Broadcast delivery lags on a busy CI emulator; on a phone it's milliseconds. */
+        const val BROADCAST_S = 30L
     }
 }

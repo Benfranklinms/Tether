@@ -6,7 +6,9 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.CallLog
 import android.provider.ContactsContract
+import android.telephony.PhoneNumberUtils
 import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import dev.benfranklin.tether.core.features.CallLogTypeMap
 import dev.benfranklin.tether.core.proto.CallLogEntry
 import dev.benfranklin.tether.core.proto.ContactInfo
@@ -14,6 +16,7 @@ import dev.benfranklin.tether.core.proto.ContactNumber
 import dev.benfranklin.tether.log.Log
 import dev.benfranklin.tether.sms.NameLookup
 import dev.benfranklin.tether.sms.SmsStore
+import java.util.Locale
 
 /**
  * Reads the phone's call log (READ_CALL_LOG) and searches contacts (READ_CONTACTS) for the
@@ -31,6 +34,7 @@ class CallLogStore(private val context: Context, private val names: NameLookup) 
         val sel = before?.let { "${CallLog.Calls.DATE} < ?" }
         val args = before?.let { arrayOf(it.toString()) }
         val subs = subscriptionIds()
+        val iso = countryIso()
         val out = ArrayList<CallLogEntry>()
         var more = false
         query(CallLog.Calls.CONTENT_URI, PROJECTION, sel, args, "${CallLog.Calls.DATE} DESC")?.use { c ->
@@ -40,20 +44,22 @@ class CallLogStore(private val context: Context, private val names: NameLookup) 
                     more = true
                     break
                 }
-                row(c, col, subs)?.let(out::add)
+                row(c, col, subs, iso)?.let(out::add)
             }
         }
         return out to more
     }
 
-    private fun row(c: Cursor, col: Map<String, Int>, subs: Map<String, Int>): CallLogEntry? = try {
+    private fun row(c: Cursor, col: Map<String, Int>, subs: Map<String, Int>, iso: String): CallLogEntry? = try {
         fun str(k: String) = col[k]?.takeIf { it >= 0 && !c.isNull(it) }?.let { c.getString(it) }
         fun long(k: String) = col[k]?.takeIf { it >= 0 && !c.isNull(it) }?.let { c.getLong(it) }
         val number = str(CallLog.Calls.NUMBER).orEmpty()
         val cached = str(CallLog.Calls.CACHED_NAME)?.takeIf { it.isNotBlank() }
         CallLogEntry(
             id = long(CallLog.Calls._ID) ?: 0,
-            number = number,
+            // The call log stores numbers bare (+919847012345); contacts keep them spaced as
+            // typed. Recents show them spaced the same way (matching and dialing use digits only).
+            number = displayNumber(number, iso),
             name = cached ?: names.lookup(number.ifBlank { null }),
             type = CallLogTypeMap.of(long(CallLog.Calls.TYPE)?.toInt() ?: 0),
             date = long(CallLog.Calls.DATE) ?: 0,
@@ -110,6 +116,17 @@ class CallLogStore(private val context: Context, private val names: NameLookup) 
         if (proj === PROJECTION) query(uri, BASIC, sel, args, order) else null
     }
 
+    /** The phone's country for number formatting: network, then SIM, then the locale. */
+    private fun countryIso(): String {
+        val tm = context.getSystemService(TelephonyManager::class.java)
+        val fromPhone = try {
+            tm?.networkCountryIso?.takeIf { it.isNotBlank() } ?: tm?.simCountryIso?.takeIf { it.isNotBlank() }
+        } catch (_: SecurityException) {
+            null
+        }
+        return (fromPhone ?: Locale.getDefault().country).uppercase(Locale.ROOT)
+    }
+
     /** PHONE_ACCOUNT_ID -> subscription id: the account id is the subId or the ICCID, by vendor. */
     @Suppress("MissingPermission")
     private fun subscriptionIds(): Map<String, Int> = try {
@@ -130,6 +147,24 @@ class CallLogStore(private val context: Context, private val names: NameLookup) 
 
     companion object {
         const val MAX_LIMIT = 100
+
+        /**
+         * [raw] grouped the way contacts show numbers ("+91 98470 12345", "(650) 253-0000"), using
+         * the phone's own formatter for [countryIso]. Already-formatted numbers, short codes,
+         * alphanumeric senders and anything the formatter can't parse come back unchanged.
+         */
+        fun displayNumber(raw: String, countryIso: String): String {
+            val n = raw.trim()
+            val bare = n.all { it.isDigit() || it == '+' }
+            if (!bare || n.count(Char::isDigit) < MIN_FORMAT_DIGITS) return n
+            return try {
+                PhoneNumberUtils.formatNumber(n, countryIso.ifBlank { "US" })?.takeIf { it.isNotBlank() } ?: n
+            } catch (@Suppress("TooGenericExceptionCaught", "SwallowedException") e: RuntimeException) {
+                n
+            }
+        }
+
+        private const val MIN_FORMAT_DIGITS = 7
         private const val MAX_CONTACT_ROWS = 400
         private const val COL_ID = 0
         private const val COL_NAME = 1
