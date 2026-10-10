@@ -82,8 +82,8 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: .
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "Benfranklin M S"
+          git config user.email "bfranklinms@gmail.com"
           git add docs/screenshots/android
           if git diff --cached --quiet; then echo "no changes"; exit 0; fi
           git commit -m "Update Android screenshots [skip ci]"
@@ -309,8 +309,8 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: .
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "Benfranklin M S"
+          git config user.email "bfranklinms@gmail.com"
           git add docs/screenshots/mac || true
           if git diff --cached --quiet; then echo "no changes"; exit 0; fi
           git commit -m "Update macOS screenshots [skip ci]"
