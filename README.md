@@ -13,7 +13,7 @@
 
 macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 
-**New in 0.4.1 (Mac):** **Panel only** — keep phone alerts, texts and calls in the panel with no Mac banners (tap **Panel only** on the notifications-off message, or Settings › Notifications).
+**New in 0.4.1 (Mac):** **Panel only** — keep phone alerts, texts and calls in the panel with no Mac banners (tap **Panel only** on the notifications-off message, or Settings › Notifications). Fixes: photos you delete or move in Finder now leave **From your phone** and Transfers instead of staying as empty tiles, and switching tabs in the panel always starts at the top (no more blank tab after scrolling down in Calls).
 
 **New in 0.4.0 (update both devices):** **calling from the Mac** — a dial pad and contact search in the panel, recent calls with call back and a missed-call badge, a **Call** button in Messages, phone-number links anywhere on the Mac (tel:), a SIM picker on dual-SIM phones, **Answer** (optionally straight onto the phone's speaker), Decline and Silence for incoming calls, and a live call card with a timer, **End**, **Speaker** and **Mute** where your phone allows them. Call audio stays on the phone or its earbuds (Android can't send phone-call audio to a computer). A **tidier panel**: collapse the player to one compact row, and keep three pinned actions with the rest under **More** (choose and order them in Settings). On **Android 15+**, Tether now notices when Android hides one-time codes ("Sensitive notification content hidden") and walks you through the one-time fix.
 

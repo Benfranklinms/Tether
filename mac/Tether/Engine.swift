@@ -27,6 +27,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
     private var watchdogTimer: DispatchSourceTimer?
     private var bluetoothOn = false
     private var radioRestarts = 0
+    private var folderWatchers: [FolderWatcher] = []
 
     init(model: AppModel, settings: MacSettings) {
         self.model = model
@@ -56,6 +57,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             wifi = WifiClient(queue: queue, delegate: self)
             updateAdvertising()
             startWatchdog()
+            pruneMissingFiles()
             Log.info("engine.start", ["version": Engine.version, "macOS": ProcessInfo.processInfo.operatingSystemVersionString])
         }
         // Advertising can silently stop across sleep; start it again on wake.
@@ -125,6 +127,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             let media = s.mediaURL
             files.downloadFolder = { downloads }
             files.mediaFolder = { media }
+            watchFolders()
             if !s.wifiFastPath { wifi?.revoke(); controller?.wifiDisconnected() }
         }
     }
@@ -471,4 +474,34 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
 
     /// Matches the phone's mDNS TXT `id`: base64url of the first 8 bytes of SHA-256(phone key).
     static func wifiId(_ key: Data) -> String { B64.encode(Data(SHA256.hash(data: key)).prefix(8)) }
+}
+
+// MARK: received files deleted in Finder (0.4.1)
+
+extension Engine {
+    /// Drop finished incoming transfers whose file no longer exists (deleted or moved in Finder).
+    /// Runs when the panel or the Transfers tab appears, and whenever the download folders change.
+    func dropMissingFiles() { queue.async { self.pruneMissingFiles() } }
+
+    private func pruneMissingFiles() {
+        watchFolders()
+        let gone = ReceivedFiles.missing(transfers) { FileManager.default.fileExists(atPath: $0) }
+        guard !gone.isEmpty else { return }
+        gone.forEach { controller?.removeTransfer($0) }
+        transfers.removeAll { gone.contains($0.id) }
+        transfersFile.write(transfers)
+        Log.info("transfers.files_missing", ["count": "\(gone.count)"])
+        let snapshot = transfers
+        DispatchQueue.main.async { self.model?.transfers = snapshot }
+    }
+
+    /// One cheap kqueue watcher per download/media folder; re-armed when a folder appears or changes.
+    private func watchFolders() {
+        let paths = Set([settings.downloadURL, settings.mediaURL].map { $0.standardizedFileURL.path })
+        folderWatchers.removeAll { !paths.contains($0.path) }
+        for path in paths where !folderWatchers.contains(where: { $0.path == path }) {
+            let watcher = FolderWatcher(path: path, queue: queue) { [weak self] in self?.pruneMissingFiles() }
+            if let watcher { folderWatchers.append(watcher) }
+        }
+    }
 }

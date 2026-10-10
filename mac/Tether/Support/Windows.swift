@@ -186,6 +186,7 @@ final class StatusController: NSObject, NSWindowDelegate {
     }
 
     private func showAttached() {
+        model.refreshReceivedFiles()
         let p = makePanel()
         p.isDetached = false
         p.level = panelLevel
@@ -209,6 +210,7 @@ final class StatusController: NSObject, NSWindowDelegate {
     }
 
     private func showDetached() {
+        model.refreshReceivedFiles()
         stopWatching()
         let p = makePanel()
         p.isDetached = true
