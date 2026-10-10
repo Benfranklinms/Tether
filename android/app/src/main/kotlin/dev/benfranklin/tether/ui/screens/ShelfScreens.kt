@@ -603,7 +603,7 @@ fun ShelfDetailScreen(item: ShelfItem?, a: ShelfActions, onBack: () -> Unit) {
             return@Scaffold
         }
         var reveal by remember { mutableStateOf(false) }
-        val maskLen = item.secret.orEmpty().length.coerceIn(8, 16)
+        val maskLen = 10 // fixed: never hint at the real length
         Column(
             Modifier.fillMaxSize().padding(top = pad.calculateTopPadding()).verticalScroll(rememberScrollState()).padding(16.dp),
         ) {
