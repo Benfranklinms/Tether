@@ -19,8 +19,8 @@ import androidx.core.content.ContextCompat
 import dev.benfranklin.tether.core.proto.SimInfo
 import dev.benfranklin.tether.core.proto.SmsMessage
 import dev.benfranklin.tether.log.Log
+import dev.benfranklin.tether.log.LoggedExecutor
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 
 /**
  * The phone side of Messages on the Mac: sending (SmsManager, per SIM, multipart), watching
@@ -34,7 +34,7 @@ class SmsBridge(
     private val onSimsChanged: () -> Unit,
 ) {
     val store = SmsStore(context)
-    val io: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "tether-sms").apply { isDaemon = true } }
+    val io: ExecutorService = LoggedExecutor("tether-sms")
     private val main = Handler(Looper.getMainLooper())
     private var watching = false
     private var lastId = 0L
@@ -113,6 +113,14 @@ class SmsBridge(
     }
 
     private fun scan() {
+        try {
+            scanNow()
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            Log.e("sms.scan_failed", e)
+        }
+    }
+
+    private fun scanNow() {
         if (!store.canRead()) return
         val fresh = store.since(lastId)
         for (m in fresh) {
@@ -192,6 +200,10 @@ class SmsBridge(
             sends.remove(ref)
             onSent(ref, false, "invalid")
             Log.w("sms.send_invalid", "err" to e.message)
+        } catch (@Suppress("TooGenericExceptionCaught") e: RuntimeException) {
+            sends.remove(ref)
+            onSent(ref, false, "failed")
+            Log.e("sms.send_failed", e)
         }
     }
 

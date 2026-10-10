@@ -14,6 +14,9 @@ public enum Fragmentation {
     public static let minFragment = 20
     public static let maxRecord = 128 * 1024
     public static let maxFragments = 0xFFFF
+    /// Largest fragment ever put on the air: a GATT attribute value is at most 512 bytes and
+    /// Android 13+ refuses longer writes even with MTU 517 (mirrors Fragmentation.kt).
+    public static let maxBleFragment = 512
 }
 
 public enum FragmentError: Error { case fragmentTooSmall, recordTooLarge, tooManyFragments }

@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import Foundation
 import TetherCore
+import UserNotifications
 
 /// UI state for every window. Only touched on the main thread (`Engine` hops there).
 final class AppModel: ObservableObject {
@@ -63,6 +64,7 @@ final class AppModel: ObservableObject {
     private let historyFile = JSONFile<NotificationHistory>("history.json")
     private var historyWrite: DispatchWorkItem?
     private var noticeClear: DispatchWorkItem?
+    private var activeObserver: NSObjectProtocol?
 
     init(demo: Bool = false) {
         self.demo = demo
@@ -94,6 +96,10 @@ final class AppModel: ObservableObject {
         e.attach(sink: screen.sink)
         screen.sink.onFirstFrame = { [weak self] in self?.screen.hasVideo = true }
         notifier.requestAuthorization { ok in DispatchQueue.main.async { self.notificationsAllowed = ok } }
+        // Coming back from System Settings: pick up a change to notification permission.
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.refreshNotificationAuth() }
         clipboard.onCopy = { [weak self] text in
             guard let self, self.settings.sendClipboard, self.isConnected else { return }
             self.engine?.sendClip(text, manual: false)
@@ -116,11 +122,13 @@ final class AppModel: ObservableObject {
     // MARK: engine -> UI
 
     func apply(link: LinkState, peer: PeerRecord?, caps: Set<String> = [], peerApp: String? = nil, wifi: Bool = false) {
+        // Read before assigning: 0.3.0 read it after, so reconnect hooks (re-requesting the
+        // Messages list, clearing a stale call) never ran.
+        let wasConnected = isConnected
         self.link = link
         self.peer = peer
         self.peerCaps = caps
         self.peerApp = peerApp
-        let wasConnected = isConnected
         if case .connected = link {} else {
             battery = nil
             ringing = false
@@ -340,9 +348,29 @@ final class AppModel: ObservableObject {
     func unpair() { engine?.unpair() }
     func rotateKey() { engine?.rotateKey() }
 
+    /// System Settings › Notifications (Tether's row when macOS supports deep links to it).
     func openNotificationSettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications")
-        if let url { NSWorkspace.shared.open(url) }
+        let id = Bundle.main.bundleIdentifier ?? ""
+        let candidates = [
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)",
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+            "x-apple.systempreferences:com.apple.preference.notifications",
+        ]
+        for c in candidates {
+            if let url = URL(string: c), NSWorkspace.shared.open(url) { return }
+        }
+    }
+
+    /// Re-reads whether macOS lets Tether post notifications (the user may have just changed it).
+    func refreshNotificationAuth() {
+        guard !demo else { return }
+        notifier.authorizationStatus { status in
+            let ok = status == .authorized || status == .provisional
+            DispatchQueue.main.async {
+                if ok != self.notificationsAllowed { Log.info("notify.auth", ["allowed": "\(ok)"]) }
+                self.notificationsAllowed = ok
+            }
+        }
     }
 
     func openLogsFolder() {

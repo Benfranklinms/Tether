@@ -262,6 +262,11 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         }
     }
 
+    func controllerUndecodable(type: UInt8, reason: String) {
+        Log.error("msg.decode_failed", nil, ["type": "\(type)", "reason": String(reason.prefix(240))])
+        DispatchQueue.main.async { self.model?.undecodable(type: type) }
+    }
+
     func controllerTransfer(_ record: TransferRecord, important: Bool) {
         if let i = transfers.firstIndex(where: { $0.id == record.id }) { transfers[i] = record } else { transfers.insert(record, at: 0) }
         if transfers.count > 200 { transfers.removeLast(transfers.count - 200) }

@@ -1,4 +1,4 @@
-# Tether protocol v1 (revision 3)
+# Tether protocol v1 (revision 3.1)
 
 Tether links one Android phone and one Mac directly: no server, no account, no cloud.
 Everything below is implemented twice, independently, and cross-checked with shared test vectors:
@@ -15,7 +15,7 @@ All integers are big-endian. "B64" means base64url without padding.
 - **Bluetooth LE (always on).** The phone is the GATT **central** (scans with a service-UUID filter and connects); the Mac is the GATT **peripheral** (advertises only while paired or pairing).
   - Service `7E7E0001-5A1D-4C6B-9C0E-7465746865B1`
   - One characteristic `7E7E0002-5A1D-4C6B-9C0E-7465746865B1`: phone → Mac by *write without response*, Mac → phone by *notify*.
-  - The phone requests a 517-byte MTU; the fragment size is `MTU − 3` (minimum 20).
+  - The phone requests a 517-byte MTU; the fragment size is `min(MTU − 3, 512)` (minimum 20). **Never more than 512**: a GATT attribute value is at most 512 bytes and Android 13+ (`BluetoothGatt.writeCharacteristic`) throws for longer values even when the MTU allows 514 — the 0.3.0 phone did exactly that, wedging its write queue after the handshake (fixed in 0.3.1).
 - **Wi-Fi fast path (optional).** When both devices share a network (or the Mac joins the phone's hotspot) the phone listens on TCP and advertises `_tether._tcp` over mDNS. It tells the Mac where to connect over the Bluetooth session (§6). Records on TCP are framed as `u32 length ‖ record` (max 2 MiB).
 - In both cases the **phone is the Noise initiator** and the Mac the responder.
 
@@ -31,7 +31,7 @@ u16 total
 …   data          (up to maxFragment − 7 bytes)
 ```
 
-Fragments of a record arrive in order (the link is ordered). The reassembler drops a record on any gap, version mismatch, or if it would exceed 128 KiB; a fragment with `index = 0` always starts a new record.
+Both sides cap `maxFragment` at 512 bytes (header included). Fragments of a record arrive in order (the link is ordered). The reassembler drops a record on any gap, version mismatch, or if it would exceed 128 KiB; a fragment with `index = 0` always starts a new record.
 
 ## 3. Records
 
@@ -53,7 +53,7 @@ Close reasons: `0 normal, 1 untrusted, 2 busy, 3 protocol error, 4 version misma
 - After message 3 both sides hold the peer's static key. If it is the paired key (or a pending rotated key, §7) the session is **established**. Otherwise:
   - If pairing is not open on this device → close *untrusted*.
   - Otherwise the session enters **verifying** (pairing, §5).
-- Heartbeat: `PING` every 45 s of silence, dead after 20 s more. Handshake timeout 15 s; pairing timeout 120 s.
+- Heartbeat: `PING` every 45 s of silence, dead after 20 s more. Each path (Bluetooth, Wi-Fi) has its own heartbeat; on Bluetooth every received *fragment* counts as proof of life (since 0.3.1), so a long record in flight can't trip it. A Bluetooth reconnect while the Wi-Fi session is bound does not change the visible link state. Handshake timeout 15 s; pairing timeout 120 s.
 - Handshake recovery (Bluetooth, since 0.1.1): if the phone hears nothing within 3 s of sending message 1, it starts a fresh session and sends a new message 1 (up to 3 times per link). The Mac starts a fresh session whenever a message 1 arrives while it is still handshaking or after its session closed with the radio link still up, so a lost write never wedges the link. Writes that reach the Mac before the phone's subscription is reported are held and replayed. Fragments are capped at 244 bytes (phone requests ATT MTU 247).
 
 ## 5. Pairing
@@ -181,9 +181,9 @@ Same rules as revision 2: `Hello.v` stays 1, features are announced in `Hello.ca
 | Type | Name | Direction | Header | Body |
 |---|---|---|---|---|
 | 0x90 | SMS_THREADS_REQ | Mac → phone | `{"limit":50,"before"?:ms,"query"?}` | |
-| 0x91 | SMS_THREADS | phone → Mac | `{"threads":[Thread],"more","query"?,"needs"?}` (`needs` = `sms` permission missing, or `disabled`) | |
+| 0x91 | SMS_THREADS | phone → Mac | `{"threads":[Thread],"more","query"?,"needs"?}` (`needs` = `sms` permission missing, `disabled`, or `error:<reason>` when the phone's store failed — 3.1) | |
 | 0x92 | SMS_THREAD_REQ | Mac → phone | `{"thread","limit":60,"before"?:ms}` | |
-| 0x93 | SMS_MESSAGES | phone → Mac | `{"thread","msgs":[Msg] (oldest first),"more","search"?}` (`thread` = -1 for search results) | |
+| 0x93 | SMS_MESSAGES | phone → Mac | `{"thread","msgs":[Msg] (oldest first),"more","search"?,"error"?}` (`thread` = -1 for search results; `error` = `sms`, `disabled` or `error:<reason>` — 3.1) | |
 | 0x94 | SMS_SEND | Mac → phone | `{"ref","to":[addr],"body","thread"?,"sub"?}` (`sub` = Android subscription id; absent = default SMS SIM) | |
 | 0x95 | SMS_SEND_RESULT | phone → Mac | `{"ref","ok","reason"?}` (`needs_permission`, `no_service`, `radio_off`, `no_sim`, `limit`, `short_code`, `invalid`, `disabled`, `failed`) | |
 | 0x96 | SMS_NEW | phone → Mac | `{"msg":Msg}`: a new message, or one of ours whose status changed | |
@@ -201,6 +201,7 @@ Same rules as revision 2: `Hello.v` stays 1, features are announced in `Hello.ca
 `Msg` = `{"id" ("s<n>" SMS / "m<n>" MMS),"thread","addr","name"?,"body","date","out","status" (received|sent|pending|failed),"sub"?,"att":[{"id","mime","w","h"}],"read"}`.
 
 - **SMS**: the phone reads the system SMS/MMS provider (it is not the default SMS app and never writes to it). Lists are trimmed so one message stays under ~60 KiB (`more` is then true and the Mac pages with `before`). The phone watches the provider and pushes SMS_NEW for new rows and for its own pending rows when they become sent/failed. Android records messages Tether sends, so they come back as SMS_NEW; the Mac replaces its placeholder with that copy. MMS text is included; attachments are listed (`att`) but their data is not transferred in revision 3.
+- **SMS reliability (3.1)**: every SMS_THREADS_REQ, SMS_THREAD_REQ and SMS_SEARCH gets exactly one answer, including on failure (`needs`/`error`). The phone reads the threads table (`content://mms-sms/conversations?simple=true` + canonical addresses) in one bounded query and falls back to a bounded scan of `content://sms`/`content://mms`; it answers within ~6 s. SMS_THREADS, SMS_MESSAGES and NOW_PLAYING_ART prefer the Wi-Fi session when it is bound. The Mac gives up on a request after 15 s and offers Retry, and re-sends open requests after a reconnect. An authenticated message whose header can't be decoded is dropped and logged (`msg.decode_failed`) instead of closing the session.
 - **Calls**: `ringing` may be sent more than once for one `id` as the number or name becomes known. A call that rang and went idle without being answered is `missed` (unless the Mac declined it, then `ended`). Outgoing calls are never reported. A failed CALL_ACTION is answered with the current state plus `reason` (`not_allowed`, `needs_dnd_access`, `no_call`).
 - **Now playing**: sent at once on track/state changes (at most every 300 ms) and re-sent every 15 s; the Mac extrapolates the position from `positionMs`, `speed` and `ts`. Artwork is sent once per hash per connection.
 - **Proximity**: the Mac turns reports on with PROXIMITY_CFG only while its lock feature is enabled; the phone reads the GATT link RSSI (`BluetoothGatt.readRemoteRssi`). Smoothing, thresholds, hysteresis and the dwell time are decided on the Mac (see `Proximity.swift`); losing the Bluetooth link after the phone was known to be near counts as away. The Mac never unlocks.

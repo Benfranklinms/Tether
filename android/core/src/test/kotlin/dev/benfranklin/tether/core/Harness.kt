@@ -188,6 +188,19 @@ class LoopbackBle(private val loop: Loop, val phone: Side, val mac: Side, val mt
     /** Silently lose the next N fragments towards the Mac / the phone (radio loss, setup races). */
     var dropToMac = 0
     var dropToPhone = 0
+    /**
+     * Behave like Android 13+: a write longer than 512 bytes (GATT_MAX_ATTR_LEN) throws inside
+     * the phone's write pump, which in 0.3.0 left that fragment at the head of the queue so
+     * nothing more ever reached the Mac. [wedged] records that it happened.
+     */
+    var androidAttrLimit = false
+    var wedged = false
+        private set
+    /** Largest fragment written towards the Mac / the phone. */
+    var maxToMac = 0
+        private set
+    var maxToPhone = 0
+        private set
     private var generation = 0
 
     fun connect(phonePairing: PairingContext = PairingContext.CLOSED, macPairing: PairingContext = PairingContext.CLOSED) {
@@ -200,6 +213,7 @@ class LoopbackBle(private val loop: Loop, val phone: Side, val mac: Side, val mt
     private fun deliver(gen: Int, fragment: ByteArray, mac: Boolean) {
         if (!up || gen != generation) return
         fragmentsSent++
+        if (lostToWedge(fragment, mac)) return
         if (mac && dropToMac > 0) {
             dropToMac--
             return
@@ -223,12 +237,30 @@ class LoopbackBle(private val loop: Loop, val phone: Side, val mac: Side, val mt
         }
     }
 
+    private fun lostToWedge(fragment: ByteArray, mac: Boolean): Boolean {
+        if (!mac) {
+            maxToPhone = maxOf(maxToPhone, fragment.size)
+            return false
+        }
+        maxToMac = maxOf(maxToMac, fragment.size)
+        if (androidAttrLimit && fragment.size > ANDROID_MAX_ATTR) wedged = true
+        return wedged
+    }
+
+    /** Put [fragment] on the air towards the Mac as if the phone wrote it (bypasses the controller). */
+    fun forceToMac(fragment: ByteArray) = deliver(generation, fragment, mac = true)
+
     fun disconnect() {
         if (!up) return
         up = false
         cutAfter = null
+        wedged = false
         phone.controller.bleDisconnected()
         mac.controller.bleDisconnected()
+    }
+
+    companion object {
+        const val ANDROID_MAX_ATTR = 512
     }
 }
 
@@ -278,4 +310,27 @@ fun pairedSides(loop: Loop = Loop()): Pair<Side, Side> {
     phone.identity.peer = PeerRecord.paired("MacBook", "macos", mac.identity.localKey.publicKey, 0)
     mac.identity.peer = PeerRecord.paired("Pixel", "android", phone.identity.localKey.publicKey, 0)
     return phone to mac
+}
+
+/**
+ * A realistic conversation list as a busy phone produces it: Indian and short-code numbers,
+ * missing contact names, emoji and RTL text, long snippets, group threads, an empty address.
+ */
+fun realisticThreads(n: Int, seed: Int = 7): List<dev.benfranklin.tether.core.proto.SmsThread> {
+    val r = kotlin.random.Random(seed)
+    val words = listOf("Running late", "OTP 482913 is your code", "ok 👍", "مرحبا كيف حالك", "Your order has shipped 📦", "", "😂😂😂")
+    return List(n) { i ->
+        val group = i % 9 == 0
+        val addrs = when {
+            i % 17 == 0 -> listOf("") // some providers store an empty address
+            i % 5 == 0 -> listOf("AX-HDFCBK") // alphanumeric sender
+            group -> listOf("+9198470${10000 + i}", "+9194470${20000 + i}", "+9190000${30000 + i}")
+            else -> listOf("+9198470${10000 + i}")
+        }
+        val names = addrs.mapIndexed { j, _ -> if ((i + j) % 3 == 0) null else "Contact $i.$j ✓" }
+        val snippet = (words[i % words.size] + " ").repeat(1 + r.nextInt(12)).take(160)
+        dev.benfranklin.tether.core.proto.SmsThread(
+            1_000L + i, addrs, names, snippet, 1_760_000_000_000L - i * 60_000L, r.nextInt(4), i % 2 == 0,
+        )
+    }
 }

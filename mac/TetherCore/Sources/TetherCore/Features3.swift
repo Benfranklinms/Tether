@@ -107,7 +107,7 @@ public struct SmsMessage: Codable, Equatable, Hashable, Identifiable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         thread = try c.decode(Int64.self, forKey: .thread)
-        addr = try c.decode(String.self, forKey: .addr)
+        addr = try c.value(.addr, "")
         name = try c.decodeIfPresent(String.self, forKey: .name)
         body = try c.value(.body, "")
         date = try c.decode(Int64.self, forKey: .date)
@@ -218,11 +218,14 @@ public struct SmsMessagesPayload: Codable, Equatable {
     public var msgs: [SmsMessage]
     public var more: Bool
     public var search: String?
-    public init(thread: Int64, msgs: [SmsMessage], more: Bool = false, search: String? = nil) {
+    /// Why the page is empty (revision 3.1): "disabled", "sms" or "error:<reason>".
+    public var error: String?
+    public init(thread: Int64, msgs: [SmsMessage], more: Bool = false, search: String? = nil, error: String? = nil) {
         self.thread = thread
         self.msgs = msgs
         self.more = more
         self.search = search
+        self.error = error
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -230,6 +233,7 @@ public struct SmsMessagesPayload: Codable, Equatable {
         msgs = try c.value(.msgs, [])
         more = try c.value(.more, false)
         search = try c.decodeIfPresent(String.self, forKey: .search)
+        error = try c.decodeIfPresent(String.self, forKey: .error)
     }
 }
 

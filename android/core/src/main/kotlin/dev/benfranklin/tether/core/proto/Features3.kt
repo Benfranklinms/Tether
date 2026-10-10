@@ -61,7 +61,11 @@ object Caps3 {
     val threads: List<SmsThread>,
     val more: Boolean = false,
     val query: String? = null,
-    /** Missing permission on the phone ("sms", "contacts"), if any. */
+    /**
+     * Why the list is empty or partial: a missing permission ("sms"), "disabled", or
+     * "error:<reason>" when the phone's message store failed (the list may still hold what was
+     * read before the failure).
+     */
     val needs: String? = null,
 ) : Message {
     override val type get() = MsgType.SMS_THREADS
@@ -72,12 +76,16 @@ object Caps3 {
     override val type get() = MsgType.SMS_THREAD_REQ
 }
 
-/** Phone -> Mac: a page of messages (oldest first). [search] is set for search results. */
+/**
+ * Phone -> Mac: a page of messages (oldest first). [search] is set for search results.
+ * [error] (revision 3.1) says why the page is empty: "disabled", "sms" or "error:<reason>".
+ */
 @Serializable data class SmsMessages(
     val thread: Long,
     val msgs: List<SmsMessage>,
     val more: Boolean = false,
     val search: String? = null,
+    val error: String? = null,
 ) : Message {
     override val type get() = MsgType.SMS_MESSAGES
 }

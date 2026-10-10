@@ -51,6 +51,13 @@ interface SessionListener {
 
     fun onMessage(message: Message)
 
+    /**
+     * An authenticated message of [type] whose header didn't parse (a peer bug, never an
+     * attack: it decrypted). Dropped without closing the session so one odd field can't take
+     * the link down; reported so the app can log it and fail the request it answered.
+     */
+    fun onUndecodable(type: Int, reason: String) {}
+
     fun onClosed(reason: CloseReason, byRemote: Boolean)
 }
 
@@ -201,7 +208,13 @@ class Session(
             return fail(CloseReason.PROTOCOL_ERROR)
         }
         val plain = cipher.decrypt(record.copyOfRange(1, record.size))
-        val message = MessageCodec.decode(plain)
+        val message = try {
+            MessageCodec.decode(plain)
+        } catch (e: ProtocolException) {
+            if (state != SessionState.ESTABLISHED) throw e
+            listener.onUndecodable(if (plain.isEmpty()) -1 else plain[0].toInt() and TYPE_MASK, e.message ?: "undecodable")
+            return
+        }
         if (state == SessionState.VERIFYING) onVerifyingMessage(message) else listener.onMessage(message)
     }
 
@@ -258,6 +271,7 @@ class Session(
         private const val SAS_MOD = 1_000_000L
         private const val SAS_BYTES = 4
         private const val BYTE_MASK = 0xFFL
+        private const val TYPE_MASK = 0xFF
         private const val BYTE_BITS = 8
 
         /** Six-digit short authentication string, identical on both sides of one handshake. */

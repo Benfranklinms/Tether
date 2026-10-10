@@ -32,6 +32,13 @@ public protocol SessionListener: AnyObject {
     func sessionEstablished(remote: Hello, remoteKey: Data, newlyPaired: Bool)
     func sessionMessage(_ message: Message)
     func sessionClosed(reason: CloseReason, byRemote: Bool)
+    /// An authenticated message of `type` whose header didn't parse (a peer bug, never an
+    /// attack: it decrypted). It is dropped without closing the session.
+    func sessionUndecodable(type: UInt8, reason: String)
+}
+
+public extension SessionListener {
+    func sessionUndecodable(type: UInt8, reason: String) {}
 }
 
 public final class Session {
@@ -176,7 +183,13 @@ public final class Session {
     private func onTransport(_ record: Data) throws {
         guard let cipher = rx, state == .established || state == .verifying else { throw CloseReason.protocolError }
         let plain = try cipher.decrypt(Data(record.dropFirst()))
-        let message = try MessageCodec.decode(plain)
+        let message: Message
+        do {
+            message = try MessageCodec.decode(plain)
+        } catch let e as ProtocolError where state == .established {
+            listener?.sessionUndecodable(type: plain.first ?? 0, reason: e.message)
+            return
+        }
         if state == .verifying { try onVerifying(message) } else { listener?.sessionMessage(message) }
     }
 
@@ -219,6 +232,12 @@ public final class Session {
         guard let cipher = tx else { throw ProtocolError("no transport cipher") }
         let ct = try cipher.encrypt(try MessageCodec.encode(message))
         listener?.sessionOutput(Data([RecordKind.transport]) + ct)
+    }
+
+    /// Encrypts and sends raw message bytes (tests: a peer that sends a header this side can't parse).
+    func sendRawForTesting(_ plain: Data) throws {
+        guard state == .established, let cipher = tx else { throw ProtocolError("session not established") }
+        listener?.sessionOutput(Data([RecordKind.transport]) + (try cipher.encrypt(plain)))
     }
 
     private func finish(_ reason: CloseReason, byRemote: Bool) {

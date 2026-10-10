@@ -8,9 +8,11 @@
   <img src="docs/screenshots/mac/messages.png" width="440" alt="Messages on the Mac: the phone's SMS conversations with dual-SIM reply">
 </p>
 
-**Download v0.3.0:** [Mac (.dmg)](https://github.com/Benfranklinms/Tether/releases/download/v0.3.0/Tether-0.3.0.dmg) · [Mac (.zip)](https://github.com/Benfranklinms/Tether/releases/download/v0.3.0/Tether-0.3.0.zip) · [Android (.apk)](https://github.com/Benfranklinms/Tether/releases/download/v0.3.0/Tether-0.3.0.apk) · [all releases](https://github.com/Benfranklinms/Tether/releases)
+**Download v0.3.1:** [Mac (.dmg)](https://github.com/Benfranklinms/Tether/releases/download/v0.3.1/Tether-0.3.1.dmg) · [Mac (.zip)](https://github.com/Benfranklinms/Tether/releases/download/v0.3.1/Tether-0.3.1.zip) · [Android (.apk)](https://github.com/Benfranklinms/Tether/releases/download/v0.3.1/Tether-0.3.1.apk) · [all releases](https://github.com/Benfranklinms/Tether/releases)
 
 macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
+
+**New in 0.3.1 (fix release, update both devices):** the Bluetooth link no longer drops and reconnects every minute on phones with a 517-byte MTU (Android 13+ refused the 514-byte writes 0.3.0 used, so nothing reached the Mac after connecting); Messages loads reliably (one bounded read of the phone's threads, an answer even when the phone's SMS store fails, Wi-Fi for big lists, a 15 s timeout with **Retry** on the Mac, re-requests after a reconnect); the Mac panel tells you when macOS has Tether's notifications turned off and opens the right settings page.
 
 ---
 
@@ -41,21 +43,21 @@ macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 
 ### Mac
 
-1. Download `Tether-0.3.0.dmg` (or the `.zip`), open it and drag **Tether** to **Applications**.
+1. Download `Tether-0.3.1.dmg` (or the `.zip`), open it and drag **Tether** to **Applications**.
 2. Tether is **ad-hoc signed and not notarized** (no paid Apple Developer account), so the first open is blocked:
    - **Right-click** Tether in Applications → **Open** → **Open**.
    - macOS 15 Sequoia and later: open it once, then **System Settings › Privacy & Security** → **Open Anyway**.
    - Or in Terminal: `xattr -dr com.apple.quarantine /Applications/Tether.app`
 3. Allow **Bluetooth** when asked (required) and **Notifications** (to show your phone's notifications). On macOS 15+, allow **Local Network** for the Wi-Fi fast path.
-4. Tether lives in the menu bar (two rings); no Dock icon. Click it for the panel; drag the panel's header to detach it as a floating window. **Updating** from 0.1.x/0.2.x: replace the app; you stay paired.
+4. Tether lives in the menu bar (two rings); no Dock icon. Click it for the panel; drag the panel's header to detach it as a floating window. **Updating** from any earlier version: replace the app; you stay paired.
 
 Liquid Glass needs **macOS 26 Tahoe**. On older macOS the Liquid Glass option uses translucent vibrancy instead.
 
 ### Android
 
-1. Download `Tether-0.3.0.apk` on the phone and open it. Allow *Install unknown apps* for your browser or file manager.
+1. Download `Tether-0.3.1.apk` on the phone and open it. Allow *Install unknown apps* for your browser or file manager.
 2. **Play Protect** may warn about an app from an unknown developer: tap **More details → Install anyway**. Tether has no internet servers; the APK is built in public CI from this repository.
-3. Open Tether and follow the setup. Updating from 0.1.x/0.2.x installs over it (same signing key) and keeps the pairing.
+3. Open Tether and follow the setup. Updating from any earlier version installs over it (same signing key) and keeps the pairing.
 4. **Allow restricted settings** (Android 13+, sideloaded apps): before Android lets you turn on **Notification access** or **Accessibility**, or grant **SMS** and **Call logs / Phone** permissions to Tether (they appear greyed out or the request is silently refused), go to **Settings › Apps › Tether › ⋮ (top right) › Allow restricted settings**, confirm, then grant them. You only do this once. On Android 15 some phones ask again per permission group.
 
 ## Pair
@@ -127,6 +129,9 @@ Wire protocol: [docs/PROTOCOL.md](docs/PROTOCOL.md).
 | Photos stay "Waiting for Wi-Fi" | Expected on Bluetooth: join the same Wi-Fi or the phone's hotspot |
 | Screen says "needs Wi-Fi" | Same as above; screen video never goes over Bluetooth |
 | Screen shows but clicks do nothing | Enable *Tether screen control* in phone Accessibility settings (allow restricted settings first) and *Control with mouse and keyboard* on the Mac |
+| Messages spins or the list stays empty | Update **both** apps to 0.3.1 or later. The window now gives up after 15 s with the reason and **Retry**. Still empty: export diagnostics on both and look for `sms.threads` on the phone (it shows `ms`, `count`, `path` and `err`) and `sms.threads_failed` / `msg.decode_failed` on the Mac |
+| Mac panel says "Mac notifications are off for Tether" | Click **Open Settings** (System Settings › Notifications › Tether) and allow notifications; the banner goes away when you come back |
+| Link keeps reconnecting every minute or two | Update both apps to 0.3.1+. Mac diagnostics showing `link.closed reason=timeout remote=false` again and again mean the phone's Bluetooth writes aren't arriving: look on the phone for `ble.write_failed` / `executor.uncaught` and `ble.link_up` (its `frag` must be ≤ 512) |
 | Messages window says "Allow SMS" / SMS permission greyed out | Phone: Settings › Apps › Tether › ⋮ › **Allow restricted settings**, then Tether › Settings › On your Mac › Allow SMS access |
 | A text shows "Not sent" | Signal, airplane mode or the chosen SIM; press **Retry**. Short codes may be blocked by your carrier |
 | Calls show a number instead of a name | Grant **Contacts** and **Call logs** to Tether on the phone |

@@ -69,7 +69,22 @@ struct MessagesView: View {
                             }
                             .onAppear { if t.id == m.sms.threads.last?.id { m.loadMoreThreads() } }
                         }
-                        if m.sms.loadingThreads { ProgressView().controlSize(.small).padding(12) }
+                        if m.sms.loadingThreads {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                if m.sms.threads.isEmpty {
+                                    Text("Loading conversations…").font(Typo.sans(12)).foregroundColor(Mono.muted)
+                                }
+                            }
+                            .padding(12)
+                        } else if let e = m.sms.threadsError, !m.sms.threads.isEmpty {
+                            HStack(spacing: 8) {
+                                Text(SmsModel.describe(e)).font(Typo.sans(11)).foregroundColor(Mono.muted).lineLimit(2)
+                                Spacer(minLength: 4)
+                                GhostButton(title: "Retry") { m.refreshThreads() }
+                            }
+                            .padding(12)
+                        }
                     }
                 }
             }
@@ -89,6 +104,8 @@ struct MessagesView: View {
             placeholder("lock", "Allow SMS for Tether on your phone:\nSettings › On your Mac › Texts on the Mac › Allow SMS access.")
         } else if m.sms.needs == "disabled" {
             placeholder("message", "Texts are off in Tether on your phone (Settings › On your Mac).")
+        } else if let e = m.sms.threadsError, m.sms.threads.isEmpty, !composing {
+            placeholder("exclamationmark.triangle", SmsModel.describe(e), retry: { m.refreshThreads() })
         } else if composing {
             NewMessage(to: $newTo) { done in if done { composing = false } }
         } else if let id = m.sms.selected {
@@ -96,15 +113,20 @@ struct MessagesView: View {
                 .id(id)
                 .transition(.opacity)
         } else {
-            placeholder("message", m.sms.threads.isEmpty && !m.sms.loadingThreads ? "No conversations yet." : "Choose a conversation.")
+            if m.sms.loadingThreads && m.sms.threads.isEmpty {
+                placeholder("ellipsis.message", "Loading conversations from your phone…")
+            } else {
+                placeholder("message", m.sms.threads.isEmpty ? "No conversations yet." : "Choose a conversation.")
+            }
         }
     }
 
-    private func placeholder(_ symbol: String, _ text: String) -> some View {
+    private func placeholder(_ symbol: String, _ text: String, retry: (() -> Void)? = nil) -> some View {
         VStack(spacing: 12) {
             Image(systemName: symbol).font(.system(size: 26, weight: .light)).foregroundColor(Mono.muted)
             Text(text).font(Typo.sans(13)).foregroundColor(Mono.muted).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+            if let retry { GhostButton(title: "Retry", action: retry).padding(.top, 4) }
         }
         .padding(30)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -200,6 +222,14 @@ private struct Conversation: View {
                                 .buttonStyle(.plain).font(Typo.sans(11)).foregroundColor(Mono.muted).padding(.vertical, 8)
                         } else if m.sms.loadingThread == thread && messages.isEmpty {
                             ProgressView().controlSize(.small).padding(20)
+                        }
+                        if let e = m.sms.threadErrors[thread] {
+                            VStack(spacing: 8) {
+                                Text(SmsModel.describe(e)).font(Typo.sans(12)).foregroundColor(Mono.muted)
+                                    .multilineTextAlignment(.center)
+                                GhostButton(title: "Retry") { m.retryThread(thread) }
+                            }
+                            .padding(20)
                         }
                         ForEach(Array(messages.enumerated()), id: \.element.id) { i, msg in
                             if i == 0 || !SmsTime.sameDay(messages[i - 1].date, msg.date) {

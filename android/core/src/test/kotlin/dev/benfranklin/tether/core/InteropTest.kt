@@ -69,6 +69,8 @@ import kotlin.random.Random
  */
 class InteropTest {
     private val peerPath: String? = System.getenv("TETHER_SWIFT_PEER")
+    /** Largest fragment the Kotlin phone wrote towards the Swift Mac in this test. */
+    private val maxPhoneFragment = java.util.concurrent.atomic.AtomicInteger()
 
     private class Peer(path: String, macFragment: Int, private val loop: Loop, private val phone: Side, vararg flags: String) {
         val proc: Process = ProcessBuilder(listOf(path, macFragment.toString()) + flags).redirectErrorStream(false).start()
@@ -135,7 +137,12 @@ class InteropTest {
         } else {
             PairingContext(acceptNew = true)
         }
-        loop.execute { phone.controller.bleConnected(phoneFragment, { f -> peer.send("F " + Hex.encode(f)) }, ctx) }
+        loop.execute {
+            phone.controller.bleConnected(phoneFragment, { f ->
+                maxPhoneFragment.accumulateAndGet(f.size, ::maxOf)
+                peer.send("F " + Hex.encode(f))
+            }, ctx)
+        }
         loop.runUntil(10_000) { phone.state is LinkState.Pairing || phone.state is LinkState.Connected || phone.closes.isNotEmpty() }
         if (phone.closes.isNotEmpty()) return
         val sas = (phone.state as? LinkState.Pairing)?.sas
@@ -253,6 +260,40 @@ class InteropTest {
         }
         val raws = peer.lines.filter { it.startsWith("RAW ") }.map { MessageCodec.decode(Hex.decode(it.substring(4))) }
         assertTrue(raws.containsAll(sent))
+    }
+
+    /**
+     * 0.3.1: realistic, large conversation lists both ways at the real-device fragment sizes
+     * (phone MTU 517 -> clamped to 512, Mac 512), many fragments per record, plus the new
+     * error fields. Swift decodes, re-encodes and echoes; Kotlin must get the same values.
+     */
+    @Test
+    fun largeThreadListsAtRealDeviceFragmentSizes() = session(514, 512, qr = true) { loop, phone, peer ->
+        peer.send("ECHO on")
+        val big = SmsThreads(realisticThreads(200), more = true)
+        assertTrue("record should span many fragments", MessageCodec.encode(big).size > 40 * 512)
+        val msgs = realisticThreads(60).mapIndexed { i, t ->
+            SmsMessage(
+                "s$i", 7, t.addrs.first(), t.names.first(), t.snippet, t.date, out = i % 3 == 0,
+                status = if (i % 7 == 0) "failed" else "received", sub = if (i % 4 == 0) null else i % 2 + 1,
+                att = if (i % 5 == 0) listOf(SmsAttachment("p$i", "image/jpeg")) else emptyList(), read = i % 2 == 0,
+            )
+        }
+        val sent: List<Message> = listOf(
+            big,
+            SmsThreads(emptyList(), needs = "error:SQLiteException"),
+            SmsMessages(7, msgs, more = true),
+            SmsMessages(7, emptyList(), error = "error:timeout"),
+            SmsMessages(-1, emptyList(), search = "otp", error = "sms"),
+        )
+        for (m in sent) {
+            val before = phone.messages.size
+            loop.execute { assertTrue(phone.controller.send(m)) }
+            loop.runUntil(20_000) { phone.messages.size > before }
+            assertEquals(m, phone.messages.last())
+        }
+        assertTrue("phone wrote ${maxPhoneFragment.get()}-byte fragments", maxPhoneFragment.get() <= 512)
+        assertFalse(peer.has("CLOSED"))
     }
 
     /** Mac -> phone 0.3.0 messages: encoded by Kotlin, decoded + re-sent by the Swift controller. */

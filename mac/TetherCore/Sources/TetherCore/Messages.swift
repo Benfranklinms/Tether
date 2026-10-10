@@ -356,7 +356,7 @@ public enum MessageCodec {
         } catch let e as ProtocolError {
             throw e
         } catch {
-            throw ProtocolError("bad header for type \(type)")
+            throw ProtocolError("bad header for type \(type): \(String(describing: error).prefix(240))")
         }
     }
 

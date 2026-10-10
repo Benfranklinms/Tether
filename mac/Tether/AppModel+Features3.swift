@@ -11,6 +11,14 @@ struct SmsModel: Equatable {
     var paging = false
     /// Missing permission on the phone ("sms") or "disabled", from the last thread list.
     var needs: String?
+    /// Why the conversation list didn't load: "timeout", "offline", "decode" or "error:<reason>"
+    /// from the phone. Shown with a Retry button instead of a spinner.
+    var threadsError: String?
+    /// Same for one conversation's messages, by thread.
+    var threadErrors: [Int64: String] = [:]
+    /// Bumped on every request so a late timeout can't clear a newer one.
+    var threadsRequest = 0
+    var threadRequest = 0
     var selected: Int64?
     var conversations: [Int64: [SmsMessage]] = [:]
     var moreMessages: [Int64: Bool] = [:]
@@ -23,6 +31,27 @@ struct SmsModel: Equatable {
     /// Messages being sent, by ref, shown in the conversation until the phone's copy arrives.
     var sending: [String: SmsMessage] = [:]
     var sendErrors: [String: String] = [:]
+
+    /// Seconds before a list or conversation request gives up and offers Retry.
+    static let requestTimeout: TimeInterval = 15
+
+    /// A sentence for an error code from the phone or from the Mac's own timeout.
+    static func describe(_ error: String) -> String {
+        switch error {
+        case "timeout": return "Your phone didn't answer in time."
+        case "offline": return "Not connected to your phone."
+        case "decode": return "Your phone sent something this Mac couldn't read. Update Tether on both devices."
+        case "sms": return "Allow SMS for Tether on your phone."
+        case "disabled": return "Texts are off in Tether on your phone."
+        default:
+            if error.hasPrefix("error:") {
+                let why = error.dropFirst("error:".count)
+                return why == "timeout" ? "Your phone took too long reading its messages."
+                    : "Your phone couldn't read its messages (\(why))."
+            }
+            return "Couldn't load messages (\(error))."
+        }
+    }
 
     func messages(in thread: Int64) -> [SmsMessage] {
         let sent = conversations[thread] ?? []
@@ -61,9 +90,17 @@ extension AppModel {
     func linkChanged3(wasConnected: Bool) {
         if isConnected && !wasConnected {
             sms.sending.removeAll()
-            if supports(Caps3.sms) && settings.smsEnabled && (windows?.isOpen(.messages) ?? false) { refreshThreads() }
+            // Re-ask for anything that was open, loading or failed when the link dropped:
+            // a request sent just before a reconnect is otherwise lost for good.
+            let wanted = (windows?.isOpen(.messages) ?? false) || sms.loadingThreads || sms.threadsError != nil
+            if supports(Caps3.sms) && settings.smsEnabled && wanted {
+                refreshThreads()
+                if let t = sms.selected, sms.loadingThread == t || sms.threadErrors[t] != nil { loadThread(t, before: nil) }
+            }
             configureProximity()
         } else if !isConnected && wasConnected {
+            if sms.loadingThreads { failThreads("offline") }
+            if let t = sms.loadingThread { failThread(t, "offline") }
             if let c = call { notifier.removeCall(id: c.id) }
             call = nil
             nowPlaying = nil
@@ -95,27 +132,57 @@ extension AppModel {
 
     func openMessages(thread: Int64? = nil) {
         open(.messages)
-        if sms.threads.isEmpty || sms.needs != nil { refreshThreads() }
+        if sms.threads.isEmpty || sms.needs != nil || sms.threadsError != nil { refreshThreads() }
         if let thread { selectThread(thread) }
     }
 
     func refreshThreads(query: String? = nil) {
         guard supports(Caps3.sms) else { return }
-        sms.loadingThreads = true
         sms.paging = false
-        engine?.send(.smsThreadsReq(SmsThreadsReq(limit: 40, query: query))) { [weak self] in self?.sms.loadingThreads = false }
+        requestThreads(SmsThreadsReq(limit: 40, query: query))
     }
 
     func loadMoreThreads() {
         guard sms.moreThreads, !sms.loadingThreads, let last = sms.threads.last else { return }
-        sms.loadingThreads = true
         sms.paging = true
-        engine?.send(.smsThreadsReq(SmsThreadsReq(limit: 40, before: last.date))) { [weak self] in self?.sms.loadingThreads = false }
+        requestThreads(SmsThreadsReq(limit: 40, before: last.date))
+    }
+
+    /// Sends a thread-list request and arms its timeout: the spinner never outlives 15 s.
+    private func requestThreads(_ req: SmsThreadsReq) {
+        sms.loadingThreads = true
+        sms.threadsError = nil
+        sms.threadsRequest += 1
+        let n = sms.threadsRequest
+        Log.info("sms.threads_request", ["paging": "\(req.before != nil)", "wifi": "\(onWifi)"])
+        engine?.send(.smsThreadsReq(req)) { [weak self] in self?.failThreads("offline") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + SmsModel.requestTimeout) { [weak self] in
+            guard let self, self.sms.loadingThreads, self.sms.threadsRequest == n else { return }
+            self.failThreads("timeout")
+        }
+    }
+
+    func failThreads(_ reason: String) {
+        guard sms.loadingThreads || reason == "decode" else { return }
+        sms.loadingThreads = false
+        sms.paging = false
+        sms.threadsError = reason
+        sms.threadsRequest += 1
+        Log.warn("sms.threads_failed", ["reason": reason, "wifi": "\(onWifi)"])
     }
 
     func smsThreads(_ p: SmsThreadsPayload) {
         sms.loadingThreads = false
-        sms.needs = p.needs
+        sms.threadsRequest += 1
+        // "error:<reason>" means the phone's store failed; a permission or switch is a "needs".
+        if let n = p.needs, n.hasPrefix("error:") {
+            sms.threadsError = n
+            sms.needs = nil
+            Log.warn("sms.threads_failed", ["reason": n])
+        } else {
+            sms.threadsError = nil
+            sms.needs = p.needs
+        }
         guard p.query == nil else { return }
         // A first page replaces the list; an older page (paging) appends, skipping threads already shown.
         if sms.paging {
@@ -139,17 +206,53 @@ extension AppModel {
         loadThread(id, before: first.date)
     }
 
-    private func loadThread(_ id: Int64, before: Int64?) {
+    func loadThread(_ id: Int64, before: Int64?) {
         sms.loadingThread = id
-        engine?.send(.smsThreadReq(SmsThreadReq(thread: id, limit: 40, before: before))) { [weak self] in self?.sms.loadingThread = nil }
+        sms.threadErrors[id] = nil
+        sms.threadRequest += 1
+        let n = sms.threadRequest
+        engine?.send(.smsThreadReq(SmsThreadReq(thread: id, limit: 40, before: before))) { [weak self] in self?.failThread(id, "offline") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + SmsModel.requestTimeout) { [weak self] in
+            guard let self, self.sms.loadingThread == id, self.sms.threadRequest == n else { return }
+            self.failThread(id, "timeout")
+        }
+    }
+
+    func retryThread(_ id: Int64) { loadThread(id, before: nil) }
+
+    func failThread(_ id: Int64, _ reason: String) {
+        if sms.loadingThread == id { sms.loadingThread = nil }
+        sms.threadErrors[id] = reason
+        sms.threadRequest += 1
+        Log.warn("sms.thread_failed", ["reason": reason])
+    }
+
+    /// A message from the phone this Mac couldn't decode: fail whatever it was likely answering.
+    func undecodable(type: UInt8) {
+        switch type {
+        case 0x91: failThreads("decode")
+        case 0x93: if let t = sms.loadingThread { failThread(t, "decode") }
+        default: break
+        }
     }
 
     func smsMessages(_ p: SmsMessagesPayload) {
         if let q = p.search {
-            if q == sms.search.trimmingCharacters(in: .whitespaces) { sms.searchResults = p.msgs }
+            if q == sms.search.trimmingCharacters(in: .whitespaces) {
+                sms.searchResults = p.msgs
+                if let e = p.error { Log.warn("sms.search_failed", ["reason": e]) }
+            }
             return
         }
-        if sms.loadingThread == p.thread { sms.loadingThread = nil }
+        if sms.loadingThread == p.thread {
+            sms.loadingThread = nil
+            sms.threadRequest += 1
+        }
+        if let e = p.error {
+            failThread(p.thread, e)
+            return
+        }
+        sms.threadErrors[p.thread] = nil
         sms.merge(p.msgs, into: p.thread)
         sms.moreMessages[p.thread] = p.more
     }

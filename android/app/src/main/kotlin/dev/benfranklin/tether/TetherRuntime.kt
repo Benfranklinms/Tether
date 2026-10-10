@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PersistableBundle
+import android.os.SystemClock
 import dev.benfranklin.tether.ble.BleCentral
 import dev.benfranklin.tether.core.ControllerListener
 import dev.benfranklin.tether.core.LinkState
@@ -63,6 +64,7 @@ import dev.benfranklin.tether.data.SettingsRepository
 import dev.benfranklin.tether.data.TransferRepository
 import dev.benfranklin.tether.files.AndroidFiles
 import dev.benfranklin.tether.log.Log
+import dev.benfranklin.tether.log.LoggedExecutor
 import dev.benfranklin.tether.notify.MirrorListenerService
 import dev.benfranklin.tether.service.Notifications
 import dev.benfranklin.tether.service.TetherService
@@ -95,6 +97,8 @@ import dev.benfranklin.tether.core.proto.SmsThreads
 import dev.benfranklin.tether.core.proto.SmsThreadsReq
 import dev.benfranklin.tether.media.NowPlayingMonitor
 import dev.benfranklin.tether.sms.SmsBridge
+import dev.benfranklin.tether.sms.SmsStore
+import dev.benfranklin.tether.sms.StoreException
 import java.util.UUID
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.ScheduledThreadPoolExecutor
@@ -163,7 +167,7 @@ fun pairFailure(d: BleCentral.Diag, link: LinkState): String = when {
  */
 @Suppress("TooManyFunctions", "LargeClass")
 class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.Listener {
-    val engine = ScheduledThreadPoolExecutor(1) { r -> Thread(r, "tether-engine").apply { isDaemon = true } }
+    val engine: ScheduledThreadPoolExecutor = LoggedExecutor("tether-engine")
     val settings = SettingsRepository(app)
     val transfers = TransferRepository(app)
     val seenApps = SeenAppsRepository(app)
@@ -563,36 +567,82 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         else -> null
     }
 
+    /**
+     * Every SMS request gets exactly one answer, even when the provider throws, stalls or the
+     * permission is gone: the Mac shows that reason instead of spinning. Timings and failures
+     * land in Export diagnostics as sms.threads / sms.thread / sms.search lines.
+     */
     private fun onSmsThreads(r: SmsThreadsReq) {
         val blocker = smsBlocker()
         if (blocker != null) {
             controller.send(SmsThreads(emptyList(), query = r.query, needs = blocker))
+            Log.i("sms.threads", "needs" to blocker)
             return
         }
         sms.io.execute {
-            val (threads, more) = sms.store.threads(r.limit, r.before, r.query)
-            val fitted = fit(threads) { SmsThreads(it, more, r.query) }
-            engine.execute { controller.send(fitted) }
+            val started = SystemClock.elapsedRealtime()
+            val reply = try {
+                val page = sms.store.threads(r.limit, r.before, r.query)
+                val fitted = fit(page.threads) { SmsThreads(it, page.more || it.size < page.threads.size, r.query, page.error) }
+                Log.i(
+                    "sms.threads", "ms" to SystemClock.elapsedRealtime() - started, "count" to page.threads.size,
+                    "path" to page.path, "more" to page.more, "err" to page.error, "paging" to (r.before != null),
+                    "limitInOrder" to sms.store.limitInOrder,
+                )
+                fitted
+            } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
+                Log.e("sms.threads_failed", t, "ms" to SystemClock.elapsedRealtime() - started)
+                SmsThreads(emptyList(), query = r.query, needs = "error:" + t.javaClass.simpleName)
+            }
+            engine.execute { if (!controller.send(reply)) Log.w("sms.reply_offline", "type" to "threads") }
         }
     }
 
     private fun onSmsThread(r: SmsThreadReq) {
-        if (smsBlocker() != null) return
+        val blocker = smsBlocker()
+        if (blocker != null) {
+            controller.send(SmsMessages(r.thread, emptyList(), error = blocker))
+            return
+        }
         sms.io.execute {
-            val (msgs, more) = sms.store.messages(r.thread, r.limit, r.before)
-            // Too big for one record: drop the oldest and let the Mac page for them.
-            val fitted = fit(msgs.reversed()) { SmsMessages(r.thread, it.reversed(), more || it.size < msgs.size) }
-            engine.execute { controller.send(fitted) }
+            val started = SystemClock.elapsedRealtime()
+            val reply = try {
+                val (msgs, more) = sms.store.messages(r.thread, r.limit, r.before)
+                Log.i("sms.thread", "ms" to SystemClock.elapsedRealtime() - started, "count" to msgs.size)
+                // Too big for one record: drop the oldest and let the Mac page for them.
+                fit(msgs.reversed()) { SmsMessages(r.thread, it.reversed(), more || it.size < msgs.size) }
+            } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
+                Log.e("sms.thread_failed", t, "ms" to SystemClock.elapsedRealtime() - started)
+                SmsMessages(r.thread, emptyList(), error = storeError(t))
+            }
+            engine.execute { if (!controller.send(reply)) Log.w("sms.reply_offline", "type" to "thread") }
         }
     }
 
     private fun onSmsSearch(r: SmsSearch) {
-        if (smsBlocker() != null) return
-        sms.io.execute {
-            val found = sms.store.search(r.query, r.limit)
-            val fitted = fit(found) { SmsMessages(-1, it, it.size < found.size, search = r.query) }
-            engine.execute { controller.send(fitted) }
+        val blocker = smsBlocker()
+        if (blocker != null) {
+            controller.send(SmsMessages(-1, emptyList(), search = r.query, error = blocker))
+            return
         }
+        sms.io.execute {
+            val started = SystemClock.elapsedRealtime()
+            val reply = try {
+                val found = sms.store.search(r.query, r.limit)
+                Log.i("sms.search", "ms" to SystemClock.elapsedRealtime() - started, "count" to found.size)
+                fit(found) { SmsMessages(-1, it, it.size < found.size, search = r.query) }
+            } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
+                Log.e("sms.search_failed", t)
+                SmsMessages(-1, emptyList(), search = r.query, error = storeError(t))
+            }
+            engine.execute { if (!controller.send(reply)) Log.w("sms.reply_offline", "type" to "search") }
+        }
+    }
+
+    private fun storeError(t: Throwable): String = when {
+        t is StoreException && (t.reason == "sms" || t.reason == SmsStore.DENIED) -> "sms"
+        t is StoreException -> "error:" + t.reason
+        else -> "error:" + t.javaClass.simpleName
     }
 
     private fun onSmsSend(r: SmsSend) {
@@ -700,6 +750,10 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             maybeOfferWifi()
         }
         Notifications.updateOngoing(app, this.state.value)
+    }
+
+    override fun onUndecodable(type: Int, reason: String) {
+        Log.w("msg.decode_failed", "type" to type, "reason" to reason.take(DECODE_REASON_MAX))
     }
 
     override fun onMessage(message: Message) {
@@ -913,6 +967,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     companion object {
         private const val MAX_LIST_BYTES = 60 * 1024
+        private const val DECODE_REASON_MAX = 160
         private const val FIT_STEP = 4
         private const val RSSI_MIN_MS = 1000L
         private const val RSSI_MAX_MS = 10_000L

@@ -29,6 +29,12 @@ public protocol ControllerListener: AnyObject {
     func controllerWifiOffer(_ offer: WifiOfferPayload)
     func controllerWifiRevoked()
     func controllerKeyRotated()
+    /// An authenticated message couldn't be decoded and was dropped (see SessionListener).
+    func controllerUndecodable(type: UInt8, reason: String)
+}
+
+public extension ControllerListener {
+    func controllerUndecodable(type: UInt8, reason: String) {}
 }
 
 /// Single-use tokens for the Wi-Fi bind (phone side; mirrors WifiBindGate.kt).
@@ -110,6 +116,8 @@ public final class TetherController {
     }
 
     public var bleReady: Bool { ble?.state == .established }
+    /// The current Bluetooth session (tests).
+    var bleSessionForTesting: Session? { ble }
     public var wifiReady: Bool { wifi?.state == .established && wifiBound }
     public var isConnected: Bool { bleReady || wifiReady }
 
@@ -134,7 +142,7 @@ public final class TetherController {
 
     public func bleConnected(maxFragment: Int, writer: @escaping (Data) -> Void, pairing: PairingContext = .closed) {
         ble?.linkLost()
-        self.maxFragment = max(maxFragment, Self.defaultFragment)
+        self.maxFragment = Self.clampFragment(maxFragment)
         bleWriter = writer
         blePairing = pairing
         bleLinkUp = true
@@ -166,15 +174,21 @@ public final class TetherController {
                         isTrusted: { [weak self] in self?.trusts($0) ?? false }, pairing: blePairing, listener: delegate)
         delegate.session = s
         ble = s
-        setState(.handshaking)
+        // A Bluetooth reconnect while Wi-Fi carries the session is not a visible state change.
+        if wifiReady { refreshState() } else { setState(.handshaking) }
         s.start()
     }
 
-    public func setMaxFragment(_ n: Int) { maxFragment = max(n, Self.defaultFragment) }
+    public func setMaxFragment(_ n: Int) { maxFragment = Self.clampFragment(n) }
+
+    /// Fragment size actually used for a reported ATT MTU - 3: never above 512 (GATT value limit).
+    public static func clampFragment(_ n: Int) -> Int { min(max(n, defaultFragment), Fragmentation.maxBleFragment) }
 
     public func bleFragment(_ fragment: Data) {
-        guard bleLinkUp, let record = reassembler.accept(fragment) else { return }
+        guard bleLinkUp else { return }
+        // Any fragment proves the radio path is alive, even mid-way through a long record.
         heartbeat.heard(clock())
+        guard let record = reassembler.accept(fragment) else { return }
         bleHeard = true
         if role == .responder && Self.isFirstHandshakeMessage(record) {
             // The phone (re)started the handshake: a lost message or a session that already
@@ -258,6 +272,8 @@ public final class TetherController {
         switch message {
         case .videoFrame: wifiOnly = true
         case .screenInput, .videoFeedback, .screenStart, .screenStop, .screenState: prefersWifi = true
+        // Anything big goes over Wi-Fi when it is up.
+        case .smsThreads, .smsMessages, .nowPlayingArt: prefersWifi = true
         default: break
         }
         if wifiOnly && !wifiReady { return false }
@@ -457,6 +473,10 @@ public final class TetherController {
             o.handleCommon(s, message, o.bleChannel)
         }
 
+        func sessionUndecodable(type: UInt8, reason: String) {
+            live?.listener?.controllerUndecodable(type: type, reason: reason)
+        }
+
         func sessionClosed(reason: CloseReason, byRemote: Bool) {
             guard let o = live else { return }
             o.ble = nil
@@ -492,6 +512,10 @@ public final class TetherController {
                 return
             }
             o.handleCommon(s, message, o.wifiChannel)
+        }
+
+        func sessionUndecodable(type: UInt8, reason: String) {
+            owner?.listener?.controllerUndecodable(type: type, reason: reason)
         }
 
         func sessionClosed(reason: CloseReason, byRemote: Bool) {

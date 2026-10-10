@@ -3,6 +3,7 @@ package dev.benfranklin.tether.core
 import dev.benfranklin.tether.core.crypto.KeyPair
 import dev.benfranklin.tether.core.crypto.Role
 import dev.benfranklin.tether.core.link.FragmentException
+import dev.benfranklin.tether.core.link.Fragmentation
 import dev.benfranklin.tether.core.link.Fragmenter
 import dev.benfranklin.tether.core.link.Reassembler
 import dev.benfranklin.tether.core.proto.Clip
@@ -11,20 +12,23 @@ import dev.benfranklin.tether.core.proto.Hello
 import dev.benfranklin.tether.core.proto.KeyRotate
 import dev.benfranklin.tether.core.proto.KeyRotateAck
 import dev.benfranklin.tether.core.proto.Message
+import dev.benfranklin.tether.core.proto.NowPlayingArt
 import dev.benfranklin.tether.core.proto.Ping
 import dev.benfranklin.tether.core.proto.Pong
 import dev.benfranklin.tether.core.proto.Protocol
 import dev.benfranklin.tether.core.proto.RecordKind
-import dev.benfranklin.tether.core.proto.Unpair
-import dev.benfranklin.tether.core.proto.WifiBind
-import dev.benfranklin.tether.core.proto.WifiOffer
-import dev.benfranklin.tether.core.proto.WifiRevoke
 import dev.benfranklin.tether.core.proto.ScreenInput
 import dev.benfranklin.tether.core.proto.ScreenStart
 import dev.benfranklin.tether.core.proto.ScreenState
 import dev.benfranklin.tether.core.proto.ScreenStop
+import dev.benfranklin.tether.core.proto.SmsMessages
+import dev.benfranklin.tether.core.proto.SmsThreads
+import dev.benfranklin.tether.core.proto.Unpair
 import dev.benfranklin.tether.core.proto.VideoFeedback
 import dev.benfranklin.tether.core.proto.VideoFrame
+import dev.benfranklin.tether.core.proto.WifiBind
+import dev.benfranklin.tether.core.proto.WifiOffer
+import dev.benfranklin.tether.core.proto.WifiRevoke
 import dev.benfranklin.tether.core.session.PairingContext
 import dev.benfranklin.tether.core.session.PeerRecord
 import dev.benfranklin.tether.core.session.Session
@@ -86,6 +90,9 @@ interface ControllerListener {
 
     /** The Wi-Fi offer was withdrawn. */
     fun onWifiRevoked() {}
+
+    /** An authenticated message of [type] couldn't be decoded and was dropped (see SessionListener.onUndecodable). */
+    fun onUndecodable(type: Int, reason: String) {}
 
     /** The rotated key was acknowledged; the app should reconnect so it takes effect. */
     fun onKeyRotated() {}
@@ -171,11 +178,11 @@ class TetherController(
 
     /**
      * A BLE connection is up (GATT connected and subscribed). [writer] puts one fragment on
-     * the air; [maxFragment] is ATT MTU minus 3.
+     * the air; [maxFragment] is ATT MTU minus 3, capped at [Fragmentation.MAX_BLE_FRAGMENT].
      */
     fun bleConnected(maxFragment: Int, writer: (ByteArray) -> Unit, pairing: PairingContext = PairingContext.CLOSED) {
         ble?.linkLost()
-        this.maxFragment = maxFragment.coerceAtLeast(DEFAULT_FRAGMENT)
+        this.maxFragment = clampFragment(maxFragment)
         bleWriter = writer
         blePairing = pairing
         bleLinkUp = true
@@ -209,18 +216,20 @@ class TetherController(
         val s = Session(role, identity.localKey, localHello(), ::trusts, blePairing, listener, random)
         listener.session = s
         ble = s
-        setState(LinkState.Handshaking)
+        // A Bluetooth reconnect while Wi-Fi carries the session is not a visible state change.
+        if (wifiReady) refreshState() else setState(LinkState.Handshaking)
         s.start()
     }
 
     fun setMaxFragment(maxFragment: Int) {
-        this.maxFragment = maxFragment.coerceAtLeast(DEFAULT_FRAGMENT)
+        this.maxFragment = clampFragment(maxFragment)
     }
 
     fun bleFragment(fragment: ByteArray) {
         if (!bleLinkUp) return
-        val record = reassembler.accept(fragment) ?: return
+        // Any fragment proves the radio path is alive, even mid-way through a long record.
         heartbeat.heard(clock())
+        val record = reassembler.accept(fragment) ?: return
         bleHeard = true
         if (role == Role.RESPONDER && isFirstHandshakeMessage(record)) {
             // The phone (re)started the handshake: a lost message or a session that already
@@ -316,8 +325,10 @@ class TetherController(
         return true
     }
 
+    /** Latency-sensitive screen control and anything big (lists, artwork) goes over Wi-Fi when it is up. */
     private fun prefersWifi(m: Message): Boolean =
-        m is Clip || m is ScreenInput || m is VideoFeedback || m is ScreenStart || m is ScreenStop || m is ScreenState
+        m is Clip || m is ScreenInput || m is VideoFeedback || m is ScreenStart || m is ScreenStop || m is ScreenState ||
+            m is SmsThreads || m is SmsMessages || m is NowPlayingArt
 
     fun sendFile(record: TransferRecord) = engine.enqueue(record)
 
@@ -500,6 +511,10 @@ class TetherController(
             handleCommon(s, message, bleChannel)
         }
 
+        override fun onUndecodable(type: Int, reason: String) {
+            if (current) listener.onUndecodable(type, reason)
+        }
+
         override fun onClosed(reason: CloseReason, byRemote: Boolean) {
             if (!current) return
             ble = null
@@ -536,6 +551,8 @@ class TetherController(
             handleCommon(s, message, wifiChannel)
         }
 
+        override fun onUndecodable(type: Int, reason: String) = listener.onUndecodable(type, reason)
+
         override fun onClosed(reason: CloseReason, byRemote: Boolean) {
             val wasBound = wifiBound
             wifi = null
@@ -555,6 +572,9 @@ class TetherController(
     }
 
     companion object {
+        /** Fragment size the link will actually use for a reported [maxFragment] (ATT MTU - 3). */
+        fun clampFragment(maxFragment: Int): Int = maxFragment.coerceIn(DEFAULT_FRAGMENT, Fragmentation.MAX_BLE_FRAGMENT)
+
         const val DEFAULT_FRAGMENT = 20
         const val HANDSHAKE_TIMEOUT_MS = 15_000L
         const val HANDSHAKE_RETRY_MS = 3_000L

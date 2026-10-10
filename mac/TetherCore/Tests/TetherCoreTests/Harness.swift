@@ -146,6 +146,8 @@ final class Side: ControllerListener {
     func controllerWifiOffer(_ offer: WifiOfferPayload) { wifiOffers.append(offer) }
     func controllerWifiRevoked() {}
     func controllerKeyRotated() { rotated += 1 }
+    var undecodable: [(UInt8, String)] = []
+    func controllerUndecodable(type: UInt8, reason: String) { undecodable.append((type, reason)) }
 }
 
 final class LoopbackBle {
@@ -159,6 +161,9 @@ final class LoopbackBle {
     /// Silently lose the next N fragments towards the Mac / the phone.
     var dropToMac = 0
     var dropToPhone = 0
+    /// Largest fragment written towards the Mac / the phone.
+    private(set) var maxToMac = 0
+    private(set) var maxToPhone = 0
     private var generation = 0
 
     init(_ loop: Loop, _ phone: Side, _ mac: Side, mtu: Int = 185) {
@@ -181,6 +186,7 @@ final class LoopbackBle {
     private func deliver(_ gen: Int, _ fragment: Data, toMac: Bool) {
         guard up, gen == generation else { return }
         fragmentsSent += 1
+        if toMac { maxToMac = max(maxToMac, fragment.count) } else { maxToPhone = max(maxToPhone, fragment.count) }
         if toMac && dropToMac > 0 {
             dropToMac -= 1
             return

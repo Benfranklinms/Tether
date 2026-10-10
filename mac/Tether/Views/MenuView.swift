@@ -25,6 +25,7 @@ struct MenuView: View {
     var body: some View {
         VStack(spacing: 0) {
             header.background(panel.map { p in PanelDragArea(onTearOff: p.detach) })
+            if m.peer != nil && !m.notificationsAllowed { notificationsOff }
             if m.peer == nil {
                 unpaired
             } else {
@@ -47,6 +48,7 @@ struct MenuView: View {
         .animation(Motion.spring(reduce), value: m.peer?.key)
         .animation(Motion.spring(reduce), value: dropping)
         .animation(Motion.spring(reduce), value: m.notice)
+        .animation(Motion.spring(reduce), value: m.notificationsAllowed)
     }
 
     // MARK: header
@@ -113,6 +115,26 @@ struct MenuView: View {
         .animation(Motion.spring(reduce), value: m.battery?.level)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(statusTitle). \(statusLine)")
+    }
+
+    /// macOS refused Tether's notification permission: say so where it matters and link to the fix.
+    private var notificationsOff: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: "bell.slash").font(.system(size: 13)).foregroundColor(Mono.text)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Mac notifications are off for Tether").font(Typo.sans(12, .medium)).foregroundColor(Mono.text)
+                Text("Phone alerts, texts and calls stay in this panel until you allow them.")
+                    .font(Typo.sans(11)).foregroundColor(Mono.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 6)
+            GhostButton(title: "Open Settings") { m.openNotificationSettings() }
+                .accessibilityHint("Opens System Settings, Notifications")
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Mono.line))
+        .padding(.horizontal, 16).padding(.bottom, 10)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .onAppear { m.refreshNotificationAuth() }
     }
 
     private var unpaired: some View {

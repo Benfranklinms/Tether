@@ -110,6 +110,7 @@ class BleCentral(
     private val queue = ArrayDeque<ByteArray>()
     private var writing = false
     private var writeStartedAt = 0L
+    private var refusedWrites = 0
     private val backoff = Backoff(baseMs = 1_000, maxMs = 30_000)
     private var pending: ScheduledFuture<*>? = null
     private var connectTimeout: ScheduledFuture<*>? = null
@@ -489,8 +490,10 @@ class BleCentral(
         setRadio(RadioState.CONNECTED)
         diag = diag.copy(linkUps = diag.linkUps + 1, lastError = null)
         setStage(Stage.CONNECTED)
-        Log.i("ble.link_up", "mtu" to mtu)
-        listener.onLinkUp(mtu - ATT_OVERHEAD)
+        Log.i("ble.link_up", "mtu" to mtu, "frag" to minOf(mtu - ATT_OVERHEAD, MAX_ATTR_LEN))
+        // A GATT value is at most 512 bytes and Android 13+ throws for longer writes, so even
+        // with MTU 517 a fragment must not exceed 512 (TetherController clamps it too).
+        listener.onLinkUp(minOf(mtu - ATT_OVERHEAD, MAX_ATTR_LEN))
     }
 
     private fun pump() {
@@ -504,20 +507,17 @@ class BleCentral(
         val g = gatt ?: return
         val ch = characteristic ?: return
         val next = queue.peekFirst() ?: return
-        val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val rc = g.writeCharacteristic(ch, next, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
-            if (rc == BluetoothStatusCodes.ERROR_GATT_WRITE_REQUEST_BUSY) {
-                engine.schedule({ pump() }, BUSY_RETRY_MS, TimeUnit.MILLISECONDS)
-                return
-            }
-            rc == BluetoothStatusCodes.SUCCESS
-        } else {
-            @Suppress("DEPRECATION")
-            ch.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            @Suppress("DEPRECATION")
-            ch.value = next
-            @Suppress("DEPRECATION")
-            g.writeCharacteristic(ch)
+        val ok = try {
+            writeNow(g, ch, next) ?: return
+        } catch (@Suppress("TooGenericExceptionCaught") e: RuntimeException) {
+            // IllegalArgumentException (value too long), SecurityException (permission revoked),
+            // DeadObjectException wrappers... A fragment that can't be written leaves its record
+            // undeliverable, so restart the link instead of retrying it forever (0.3.0 wedged here).
+            queue.clear()
+            writing = false
+            Log.e("ble.write_failed", e, "bytes" to next.size)
+            restart("write failed")
+            return
         }
         if (ok) {
             queue.removeFirst()
@@ -527,6 +527,38 @@ class BleCentral(
         } else {
             engine.schedule({ pump() }, BUSY_RETRY_MS, TimeUnit.MILLISECONDS)
         }
+    }
+
+    /** Writes one fragment: true when queued, false to retry shortly, null when a retry is already scheduled. */
+    @SuppressLint("MissingPermission")
+    private fun writeNow(g: BluetoothGatt, ch: BluetoothGattCharacteristic, next: ByteArray): Boolean? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val rc = g.writeCharacteristic(ch, next, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+            if (rc == BluetoothStatusCodes.ERROR_GATT_WRITE_REQUEST_BUSY) {
+                engine.schedule({ pump() }, BUSY_RETRY_MS, TimeUnit.MILLISECONDS)
+                return null
+            }
+            return accepted(rc == BluetoothStatusCodes.SUCCESS, rc)
+        }
+        @Suppress("DEPRECATION")
+        ch.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        @Suppress("DEPRECATION")
+        ch.value = next
+        @Suppress("DEPRECATION")
+        return accepted(g.writeCharacteristic(ch), -1)
+    }
+
+    /** Counts refused writes; a stack that keeps refusing (not just busy) gets a fresh link. */
+    private fun accepted(ok: Boolean, rc: Int): Boolean {
+        if (ok) {
+            refusedWrites = 0
+            return true
+        }
+        if (++refusedWrites >= MAX_REFUSED_WRITES) {
+            refusedWrites = 0
+            error("writes refused (rc=$rc)")
+        }
+        return false
     }
 
     private fun restart(reason: String) {
@@ -590,8 +622,11 @@ class BleCentral(
         /** 247 = 244-byte payloads: fits one LE data-length-extended packet and every Mac. */
         private const val REQUEST_MTU = 247
         private const val ATT_OVERHEAD = 3
+        /** GATT_MAX_ATTR_LEN: BluetoothGatt.writeCharacteristic rejects longer values (Android 13+). */
+        const val MAX_ATTR_LEN = 512
         private const val CONNECT_TIMEOUT_S = 15L
         private const val BUSY_RETRY_MS = 8L
+        private const val MAX_REFUSED_WRITES = 250
         private const val WRITE_STALL_MS = 400L
         private const val SETTLE_MS = 300L
         private const val SUBSCRIBE_SETTLE_MS = 150L

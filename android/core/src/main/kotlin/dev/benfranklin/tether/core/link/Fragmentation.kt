@@ -24,6 +24,12 @@ object Fragmentation {
     /** Upper bound on a reassembled record. File chunks are 16 KiB, so this is generous. */
     const val MAX_RECORD: Int = 128 * 1024
     const val MAX_FRAGMENTS: Int = 0xFFFF
+    /**
+     * Largest fragment ever put on the air. A GATT attribute value is at most 512 bytes; since
+     * Android 13 `BluetoothGatt.writeCharacteristic` throws for anything longer, even when the
+     * negotiated ATT MTU is 517 (MTU - 3 = 514). See docs/PROTOCOL.md §2.
+     */
+    const val MAX_BLE_FRAGMENT: Int = 512
 }
 
 class FragmentException(message: String) : Exception(message)
