@@ -11,6 +11,7 @@ struct MenuView: View {
     /// Set when hosted in the menu-bar panel (attach/detach controls); nil in screenshots.
     var panel: PanelControls?
     @State private var dropping = false
+    @AppStorage("panelOnlyAlerts") private var panelOnlyAlerts = false
     @Namespace private var ns
 
     init(initialTab: Tab = .notifications, panel: PanelControls? = nil) {
@@ -26,7 +27,7 @@ struct MenuView: View {
         VStack(spacing: 0) {
             header.background(panel.map { p in PanelDragArea(onTearOff: p.detach) })
             if m.peer != nil && !m.isConnected && m.pairingURI == nil && m.bluetooth == .on { ReconnectBanner() }
-            if m.peer != nil && !m.notificationsAllowed { NotificationsOffBanner() }
+            if m.peer != nil && !m.notificationsAllowed && !panelOnlyAlerts { NotificationsOffBanner() }
             if m.peer != nil && m.showCodesGuide { CodesBanner() }
             if m.peer == nil {
                 unpaired

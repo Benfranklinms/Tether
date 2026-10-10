@@ -19,6 +19,7 @@ struct ReconnectBanner: View {
 /// macOS refused Tether's notification permission: say so where it matters and link to the fix.
 struct NotificationsOffBanner: View {
     @EnvironmentObject var m: AppModel
+    @AppStorage("panelOnlyAlerts") private var panelOnly = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -29,8 +30,13 @@ struct NotificationsOffBanner: View {
                     .font(Typo.sans(11)).foregroundColor(Mono.muted).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 6)
-            GhostButton(title: "Open Settings") { m.openNotificationSettings() }
-                .accessibilityHint("Opens System Settings, Notifications")
+            VStack(alignment: .trailing, spacing: 6) {
+                GhostButton(title: "Open Settings") { m.openNotificationSettings() }
+                    .accessibilityHint("Opens System Settings, Notifications")
+                Button("Panel only") { panelOnly = true }
+                    .buttonStyle(.plain).font(Typo.sans(11)).foregroundColor(Mono.muted)
+                    .accessibilityHint("Keeps alerts in this panel and hides this message")
+            }
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Mono.line))

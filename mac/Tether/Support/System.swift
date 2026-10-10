@@ -160,8 +160,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.getNotificationSettings { done($0.authorizationStatus) }
     }
 
+    /// Settings › Notifications › Panel only (0.4.1): alerts live in the panel, no Mac banners.
+    static var panelOnly: Bool { UserDefaults.standard.bool(forKey: "panelOnlyAlerts") }
+
     func post(key: String, threadId: String, title: String, subtitle: String?, body: String, banner: Bool, sound: Bool,
               actions: [NotifActionInfo] = []) {
+        guard !Self.panelOnly else { return }
         let c = UNMutableNotificationContent()
         c.title = title
         if let subtitle { c.subtitle = subtitle }
@@ -177,6 +181,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func postLocal(id: String, title: String, body: String, sound: Bool = false) {
+        guard !Self.panelOnly else { return }
         let c = UNMutableNotificationContent()
         c.title = title
         c.body = body
@@ -186,6 +191,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// "Screenshot from your phone" with the image as a thumbnail. Clicking opens it.
     func postMedia(id: String, title: String, body: String, file: URL) {
+        guard !Self.panelOnly else { return }
         let c = UNMutableNotificationContent()
         c.title = title
         c.body = body
@@ -205,6 +211,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// Incoming call banner with Decline / Silence (0.3.0), and Answer for a 0.4 phone.
     func postCall(id: String, caller: String, number: String?, canAnswer: Bool = false) {
+        guard !Self.panelOnly else { return }
         let c = UNMutableNotificationContent()
         c.title = caller
         c.body = number.map { $0 == caller ? "Incoming call" : "Incoming call · \($0)" } ?? "Incoming call"
@@ -216,6 +223,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func postMissedCall(id: String, caller: String, number: String?) {
+        guard !Self.panelOnly else { return }
         let c = UNMutableNotificationContent()
         c.title = "Missed call"
         c.body = number.map { $0 == caller ? caller : "\(caller) · \($0)" } ?? caller

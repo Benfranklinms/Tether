@@ -159,6 +159,7 @@ private struct GeneralPage: View {
 
 private struct NotificationsPage: View {
     @EnvironmentObject var m: AppModel
+    @AppStorage("panelOnlyAlerts") private var panelOnly = false
     @Environment(\.accessibilityReduceMotion) private var reduce
 
     private var apps: [(pkg: String, name: String)] {
@@ -167,8 +168,10 @@ private struct NotificationsPage: View {
     }
 
     var body: some View {
-        if !m.notificationsAllowed {
-            Card {
+        Card {
+            ToggleRow(title: "Panel only", detail: "Keep phone alerts, texts and calls in the panel, with no Mac banners.",
+                      isOn: $panelOnly, divider: !m.notificationsAllowed && !panelOnly)
+            if !m.notificationsAllowed && !panelOnly {
                 Row(title: "Notifications are off for Tether", detail: "Banners need permission in System Settings.", divider: false) {
                     GhostButton(title: "Open") { m.openNotificationSettings() }
                 }

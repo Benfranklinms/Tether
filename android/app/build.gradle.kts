@@ -15,7 +15,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = (System.getenv("TETHER_VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("TETHER_VERSION_NAME") ?: "0.4.0-dev"
+        versionName = System.getenv("TETHER_VERSION_NAME") ?: "0.4.1-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
