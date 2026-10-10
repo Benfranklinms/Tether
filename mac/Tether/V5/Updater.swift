@@ -49,7 +49,8 @@ final class MacUpdater: NSObject, URLSessionTaskDelegate {
         session.dataTask(with: request(url, binary: false)) { [weak self] data, resp, err in
             guard let self else { return }
             let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            Log.info("update.check", ["status": "\(status)", "custom": "\(custom)", "token": custom ? "-" : (Keychain.githubToken == nil ? "none" : "set")])
+            let tok = custom ? "-" : (Keychain.githubToken == nil ? "none" : "set")
+            Log.info("update.check", ["status": "\(status)", "custom": "\(custom)", "token": tok])
             guard err == nil, status == 200, let data, let info = UpdateFeed.parse(data) else {
                 let msg = err != nil ? "Couldn't reach GitHub"
                     : (status == 200 ? "No usable release" : GitHubReleases.explain(status: status))

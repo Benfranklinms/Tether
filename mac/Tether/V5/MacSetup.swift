@@ -13,7 +13,8 @@ extension AppModel {
                       ok: notificationsAllowed || PanelOnlyAlerts.isOn(), fix: "notifications"),
             SetupItem(id: "login", title: "Open at login", detail: "Stay connected after a restart.", ok: launchAtLogin,
                 optional: true, fix: "login"),
-            SetupItem(id: "updates", title: "Updates", detail: "Checking \(settings.updateFeed?.isEmpty == false ? "your feed" : "GitHub releases")",
+            SetupItem(id: "updates", title: "Updates",
+                      detail: "Checking \(settings.updateFeed?.isEmpty == false ? "your feed" : "GitHub releases")",
                       ok: true, optional: true, fix: "updates"),
         ]
         if settings.proximityUnlock {
