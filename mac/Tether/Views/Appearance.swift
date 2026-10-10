@@ -78,7 +78,9 @@ extension View {
     /// A small control surface (ghost buttons, chips, toolbar buttons).
     func tetherControl<S: InsettableShape>(_ shape: S, interactive: Bool = true) -> some View {
         modifier(Effective { glass, content in
-            if !glass { return AnyView(content.overlay(shape.stroke(Mono.line))) }
+            // strokeBorder keeps the hairline inside the control's bounds; a centred stroke spilled half a
+            // point outside and was clamped into a "bracket" at the ends of capsules (GhostButton).
+            if !glass { return AnyView(content.overlay(shape.strokeBorder(Mono.line, lineWidth: 1))) }
             return AnyView(content.glassSurface(shape, tint: 0.06, interactive: interactive))
         })
     }

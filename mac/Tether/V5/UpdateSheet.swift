@@ -138,7 +138,7 @@ struct WhatsNewSheet: View {
         SheetChrome(shown: shown, reduce: reduce, dismiss: { v5.whatsNew = false }, content: {
             VStack(alignment: .leading, spacing: 14) {
                 Text("What's new in \(WhatsNew.version)").font(Typo.sans(22, .medium)).foregroundColor(Mono.text)
-                MarkdownNotes(text: WhatsNew.notes).frame(maxHeight: 320)
+                MarkdownNotes(text: WhatsNew.notes).frame(maxHeight: 440)
                 HStack {
                     Spacer()
                     MonoButton(title: "Continue") { v5.whatsNew = false }.frame(width: 140)
@@ -181,16 +181,23 @@ struct SheetChrome<Content: View>: View {
 struct MarkdownNotes: View {
     let text: String
 
+    /// As tall as the notes when they fit the space offered, otherwise a scroll view (so short
+    /// notes don't leave an empty box and long ones never cut a line in half).
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(text.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
-                    row(line)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .textSelection(.enabled)
+        ViewThatFits(in: .vertical) {
+            rows.fixedSize(horizontal: false, vertical: true)
+            ScrollView { rows }
         }
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(text.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+                row(line)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
     }
 
     @ViewBuilder private func row(_ raw: String) -> some View {
