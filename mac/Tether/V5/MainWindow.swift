@@ -9,6 +9,7 @@ struct MainWindowView: View {
     @ObservedObject var v5: V5State
     @Environment(\.accessibilityReduceMotion) private var reduce
     @FocusState private var searchFocused: Bool
+    @Namespace private var sidebarNS
 
     var body: some View {
         HStack(spacing: 0) {
@@ -17,7 +18,7 @@ struct MainWindowView: View {
             ZStack(alignment: .top) {
                 detail
                     .id(v5.page)
-                    .transition(.opacity)
+                    .transition(Motion.page(reduce))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 if !v5.searchQuery.isEmpty { SearchResults(v5: v5).transition(.move(edge: .top).combined(with: .opacity)) }
             }
@@ -62,7 +63,12 @@ struct MainWindowView: View {
                     }
                     .foregroundColor(v5.page == p ? Mono.text : Mono.muted)
                     .padding(.horizontal, 10).frame(height: 30)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(v5.page == p ? Mono.surfaceHigh : Color.clear))
+                    .background {
+                        // 0.5.1: the selection slides between pages.
+                        if v5.page == p {
+                            RoundedRectangle(cornerRadius: 8).fill(Mono.surfaceHigh).matchedGeometryEffect(id: "page", in: sidebarNS)
+                        }
+                    }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PressStyle())
@@ -145,7 +151,10 @@ struct DeviceFooter: View {
                     .font(Typo.mono(10)).foregroundColor(Mono.muted)
             }
             Spacer()
-            if let b = m.battery { Text("\(b.level)%\(b.charging ? "+" : "")").font(Typo.mono(11, .medium)).foregroundColor(Mono.text) }
+            if let b = m.battery {
+                Text("\(b.level)%\(b.charging ? "+" : "")").font(Typo.mono(11, .medium)).foregroundColor(Mono.text)
+                    .rollingNumber().animation(.spring(response: 0.35, dampingFraction: 0.8), value: b.level)
+            }
         }
         .padding(10)
         .tetherCard()
@@ -235,6 +244,7 @@ struct SearchResults: View {
 
 struct NotificationsPage5: View {
     @EnvironmentObject var m: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduce
     var body: some View {
         PageScroll {
             HStack {
@@ -247,9 +257,11 @@ struct NotificationsPage5: View {
                     NotificationRow(n: n, privacy: m.settings.notifications.privacyMode,
                                     actionsEnabled: m.settings.notificationActions && m.peerCaps.contains(Caps.reply),
                                     onDismiss: { m.dismiss(n.key) })
+                        .transition(Motion.row(reduce))
                 }
             }
             .tetherCard()
+            .animation(Motion.spring(reduce), value: m.history.items.map(\.key))
         }
     }
 }

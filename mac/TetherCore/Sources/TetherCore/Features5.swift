@@ -17,7 +17,9 @@ public enum Caps5 {
     public static let dnd = "dnd"
     public static let status = "status"
     public static let clipImage = "clipimg"
-    public static let all = [fs, photos, otp, continueCards, openURL, type, dnd, status, clipImage]
+    /// 0.5.1: ALBUMS_REQ / ALBUMS, PHOTOS_REQ album + filter, PhotoItem dur/bucket/fav.
+    public static let albums = "albums"
+    public static let all = [fs, photos, otp, continueCards, openURL, type, dnd, status, clipImage, albums]
 }
 
 public enum FileKinds5 {
@@ -213,10 +215,72 @@ public struct PhotosReq: Codable, Equatable {
     public var ref: String
     public var limit: Int
     public var before: Int64?
-    public init(ref: String, limit: Int = 60, before: Int64? = nil) {
+    /// 0.5.1: an AlbumInfo id (nil = all) and a PhotoFilters value (nil = everything).
+    public var album: String?
+    public var filter: String?
+    public init(ref: String, limit: Int = 60, before: Int64? = nil, album: String? = nil, filter: String? = nil) {
         self.ref = ref
         self.limit = limit
         self.before = before
+        self.album = album
+        self.filter = filter
+    }
+}
+
+public enum PhotoFilters {
+    public static let photos = "photos"
+    public static let videos = "videos"
+    public static let screenshots = "screenshots"
+}
+
+public enum AlbumKinds {
+    public static let all = "all"
+    public static let camera = "camera"
+    public static let screenshots = "screenshots"
+    public static let whatsapp = "whatsapp"
+    public static let downloads = "downloads"
+    public static let videos = "videos"
+    public static let favorites = "favorites"
+    public static let bucket = "bucket"
+}
+
+public struct AlbumInfo: Codable, Equatable, Hashable, Identifiable {
+    public var id: String
+    public var name: String
+    public var count: Int
+    public var cover: String?
+    public var kind: String
+    public init(id: String, name: String, count: Int, cover: String? = nil, kind: String = AlbumKinds.bucket) {
+        self.id = id
+        self.name = name
+        self.count = count
+        self.cover = cover
+        self.kind = kind
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        count = try c.decodeIfPresent(Int.self, forKey: .count) ?? 0
+        cover = try c.decodeIfPresent(String.self, forKey: .cover)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? AlbumKinds.bucket
+    }
+}
+
+public struct AlbumsReq: Codable, Equatable {
+    public var ref: String
+    public init(ref: String) { self.ref = ref }
+}
+
+public struct AlbumsPayload: Codable, Equatable {
+    public var ref: String
+    public var albums: [AlbumInfo]
+    public var needs: String?
+    public init(ref: String, albums: [AlbumInfo], needs: String? = nil) {
+        self.ref = ref
+        self.albums = albums
+        self.needs = needs
     }
 }
 
@@ -229,9 +293,16 @@ public struct PhotoItem: Codable, Equatable, Hashable, Identifiable {
     public var h: Int
     public var mime: String
     public var video: Bool
+    /// 0.5.1: video duration (ms), MediaStore bucket id, favourite.
+    public var dur: Int64
+    public var bucket: String?
+    public var fav: Bool
 
     public init(id: String, name: String, size: Int64 = 0, date: Int64 = 0, w: Int = 0, h: Int = 0,
-                mime: String = "image/jpeg", video: Bool = false) {
+                mime: String = "image/jpeg", video: Bool = false, dur: Int64 = 0, bucket: String? = nil, fav: Bool = false) {
+        self.dur = dur
+        self.bucket = bucket
+        self.fav = fav
         self.id = id
         self.name = name
         self.size = size
@@ -252,6 +323,9 @@ public struct PhotoItem: Codable, Equatable, Hashable, Identifiable {
         h = try c.decodeIfPresent(Int.self, forKey: .h) ?? 0
         mime = try c.decodeIfPresent(String.self, forKey: .mime) ?? "image/jpeg"
         video = try c.decodeIfPresent(Bool.self, forKey: .video) ?? false
+        dur = try c.decodeIfPresent(Int64.self, forKey: .dur) ?? 0
+        bucket = try c.decodeIfPresent(String.self, forKey: .bucket)
+        fav = try c.decodeIfPresent(Bool.self, forKey: .fav) ?? false
     }
 }
 

@@ -111,7 +111,12 @@ class ControlService : AccessibilityService() {
 
     private fun setText(node: AccessibilityNodeInfo, text: String, cursor: Int): Boolean {
         val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-        val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        var ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (!ok) {
+            // Some fields refuse SET_TEXT on a stale node: refresh it once and retry.
+            ok = node.refresh() && node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            Log.i("type.set_text_retry", "ok" to ok)
+        }
         if (ok) {
             val sel = Bundle().apply {
                 putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, cursor)
@@ -158,8 +163,31 @@ class ControlService : AccessibilityService() {
 
     private fun hint(n: AccessibilityNodeInfo): Boolean = n.isShowingHintText
 
-    private fun focused(): AccessibilityNodeInfo? =
-        rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+    /**
+     * The field to type into. `findFocus(FOCUS_INPUT)` on the active window misses Compose and
+     * WebView fields on some OEM builds and fields in other windows (0.5.1): fall back to every
+     * window's input focus, then to the focused (or only) editable node in the active window.
+     */
+    private fun focused(): AccessibilityNodeInfo? {
+        rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }?.let { return it }
+        for (w in runCatching { windows }.getOrNull().orEmpty()) {
+            w.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }?.let { return it }
+        }
+        val root = rootInActiveWindow ?: return null
+        val nodes = ArrayList<AccessibilityNodeInfo>()
+        collectEditable(root, nodes, 0)
+        val candidates = nodes.mapIndexed { i, n ->
+            dev.benfranklin.tether.core.features.FocusPick.Candidate(i, n.isEditable, n.isFocused, n.isVisibleToUser)
+        }
+        val pick = dev.benfranklin.tether.core.features.FocusPick.pick(candidates) ?: return null
+        return nodes[pick]
+    }
+
+    private fun collectEditable(n: AccessibilityNodeInfo, out: MutableList<AccessibilityNodeInfo>, depth: Int) {
+        if (depth > MAX_DEPTH || out.size > MAX_EDITABLE) return
+        if (n.isEditable) out += n
+        for (i in 0 until n.childCount) n.getChild(i)?.let { collectEditable(it, out, depth + 1) }
+    }
 
     private fun editFocused(change: (AccessibilityNodeInfo) -> String): Boolean {
         val node = focused() ?: return false
@@ -192,6 +220,8 @@ class ControlService : AccessibilityService() {
         private const val MAX_MS = 5_000L
         private const val TAB_SCAN_MS = 1_500L
         private const val FIELD_MAX = 80
+        private const val MAX_DEPTH = 40
+        private const val MAX_EDITABLE = 50
         @Volatile private var instance: WeakReference<ControlService>? = null
 
         val current: ControlService? get() = instance?.get()

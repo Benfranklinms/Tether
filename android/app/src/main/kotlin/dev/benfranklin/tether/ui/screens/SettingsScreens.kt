@@ -125,11 +125,13 @@ fun SettingsScreen(s: AppSettings, d: DeviceInfo, a: SettingsActions, onBack: ()
             item {
                 Card {
                     Column {
-                        NavRow("Setup checklist", a.setupSummary(), onClick = a::openSetup)
+                        NavRow("Setup checklist", null, valueText = setupValueText(a.setupSummary()), onClick = a::openSetup)
                         Divider()
-                        NavRow("On your Mac", "Calls, texts, codes, photos, screen", onClick = a::openFeatures)
+                        NavRow("On your Mac", null, subtitle = "Calls, texts, codes, photos, screen", onClick = a::openFeatures)
                         Divider()
-                        NavRow("Continue, files & updates", "New in 0.5", onClick = a::openMore5)
+                        NavRow(
+                            "Continue, files & updates", null, subtitle = "Continue on Mac, phone files, updates", onClick = a::openMore5,
+                        )
                     }
                 }
             }

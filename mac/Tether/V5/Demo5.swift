@@ -31,10 +31,20 @@ enum Demo5 {
         for i in 0..<18 {
             let video = i % 7 == 3
             let date: Int64 = t - Int64(i) * 3_600_000
-            photos.append(PhotoItem(id: "\(1000 + i)", name: "IMG_\(1000 + i).jpg", size: 2_000_000, date: date,
-                                    w: 3000, h: 4000, mime: video ? "video/mp4" : "image/jpeg", video: video))
+            photos.append(PhotoItem(id: "\(1000 + i)", name: "IMG_\(1000 + i).jpg", size: 2_000_000, date: date - (i > 9 ? 86_400_000 : 0),
+                                    w: 3000, h: 4000, mime: video ? "video/mp4" : "image/jpeg", video: video,
+                                    dur: video ? 42_000 : 0, fav: i == 1))
         }
         v.library = PhoneLibrary(items: photos, more: true)
+        v.albums = [
+            AlbumInfo(id: AlbumKinds.all, name: "All Photos", count: 1284, cover: "1000", kind: AlbumKinds.all),
+            AlbumInfo(id: AlbumKinds.camera, name: "Camera", count: 912, cover: "1001", kind: AlbumKinds.camera),
+            AlbumInfo(id: AlbumKinds.screenshots, name: "Screenshots", count: 203, cover: "1002", kind: AlbumKinds.screenshots),
+            AlbumInfo(id: AlbumKinds.whatsapp, name: "WhatsApp Images", count: 96, cover: "1004", kind: AlbumKinds.whatsapp),
+            AlbumInfo(id: AlbumKinds.videos, name: "Videos", count: 41, cover: "1003", kind: AlbumKinds.videos),
+            AlbumInfo(id: AlbumKinds.favorites, name: "Favorites", count: 12, cover: "1001", kind: AlbumKinds.favorites),
+            AlbumInfo(id: "b:77", name: "Instagram", count: 20, cover: "1005"),
+        ]
         for i in 0..<18 { v.thumbs[m.thumbKey(root: FsRoots.photos, path: "\(1000 + i)")] = image(0.2 + Double(i % 6) * 0.12) }
         let clips: [ClipItem] = [
             ClipItem(kind: .text, text: "482913", direction: .fromPhone, ts: t - 20_000, hash: "a"),
@@ -45,9 +55,16 @@ enum Demo5 {
         for c in clips.reversed() { v.clips.add(c) }
         v.phoneDnd = DndStatePayload(on: false, src: "phone", ts: t, canSet: true)
         v.phoneStatus = PhoneStatusPayload(perms: [
+            PermInfo(id: "nearby", label: "Nearby devices", ok: true, required: true),
             PermInfo(id: "notif", label: "Notification access", ok: true, required: true),
-            PermInfo(id: "files", label: "All files access", ok: false),
+            PermInfo(id: "battery", label: "Battery unrestricted", ok: false, required: true),
+            PermInfo(id: "sms", label: "SMS", ok: true),
+            PermInfo(id: "allfiles", label: "All files access", ok: true),
+            PermInfo(id: "accessibility", label: "Accessibility (Tether control)", ok: false),
+            PermInfo(id: "readlogs", label: "Read logs (adb)", ok: false),
+            PermInfo(id: "sensitive", label: "Sensitive notifications (adb)", ok: false),
         ], sdk: 35, ts: t)
+        v.setupGate = SetupHomeGate()
         v.update.tokenSet = false
         v.update.phase = .idle
     }
@@ -74,9 +91,13 @@ enum Demo5 {
 struct MainShot: View {
     @EnvironmentObject var m: AppModel
     let page: MainPage
+    var prepare: (AppModel) -> Void = { _ in }
     var body: some View {
         MainWindowView(v5: m.v5)
             .frame(width: 1040, height: 700)
-            .onAppear { m.v5.page = page }
+            .onAppear {
+                prepare(m)
+                m.v5.page = page
+            }
     }
 }

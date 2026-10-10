@@ -37,6 +37,9 @@ final class AppModel: ObservableObject {
     /// The incoming call ringing right now (nil when none).
     @Published var call: CallStatePayload?
     @Published var callNote: String?
+    /// 0.5.1: the phone refused Mute on this call (Android doesn't let other apps mute): hide the button.
+    @Published var callMuteBlocked = false
+    var lastCallControl: String?
     @Published var nowPlaying: NowPlayingPayload?
     @Published var artwork: NSImage?
     @Published var proximity = ProximityStatus()
@@ -125,7 +128,7 @@ final class AppModel: ObservableObject {
             self.engine?.sendClip(text, manual: false)
         }
         clipboard.onCopyAny = { [weak self] text in self?.addClip(text: text, fromPhone: false) }
-        clipboard.onImage = { [weak self] png in self?.macCopiedImage(png) }
+        clipboard.onImage = { [weak self] data, ext in self?.macCopiedImage(data, ext: ext) }
         clipboard.start()
         e.start()
         setUp3()
@@ -319,18 +322,6 @@ final class AppModel: ObservableObject {
     }
 
     func rejectPairing() { engine?.rejectPairing() }
-
-    func sendClipboardNow() {
-        if clipboard.currentText?.isEmpty != false, let png = clipboard.currentImagePNG {
-            guard supports(Caps5.clipImage) else { return toast(isConnected ? "Update Tether on your phone" : "Not connected") }
-            let url = Self.clipsDir.appendingPathComponent("mac-\(Self.nowMs).png")
-            guard (try? png.write(to: url)) != nil else { return }
-            engine?.sendClipImage(url)
-            return toast("Sending the image to your phone")
-        }
-        guard let text = clipboard.currentText, !text.isEmpty else { return toast("The clipboard is empty") }
-        engine?.sendClip(text, manual: true)
-    }
 
     func sendFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }

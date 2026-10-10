@@ -201,6 +201,7 @@ class ScreenshotTest {
     }
 
     private object NoActions : SettingsActions {
+        override fun setupSummary() = "13/17 · 1 required"
         override fun update(change: (AppSettings) -> AppSettings) = Unit
         override fun openApps() = Unit
         override fun openKeywords() = Unit
@@ -236,6 +237,20 @@ class ScreenshotTest {
         ),
     )
 
+    /** 0.5.1: row titles stay on one line at a large font scale (Settings › Display size and text). */
+    @Test
+    @Config(fontScale = 1.3f)
+    fun settingsLargeFont() = shot("settings-font130") {
+        SettingsScreen(AppSettings(), DeviceInfo("MacBook Air", "3F9A·0C21·77B4", "8B12·E4D0·19AF", true, true, "0.1.0", false),
+            NoActions, onBack = {})
+    }
+
+    @Test
+    @Config(fontScale = 1.3f)
+    fun setupLargeFont() = shot("setup-font130") {
+        dev.benfranklin.tether.ui.screens.SetupScreen(setupRowsSample, onFix = {}, onCopy = {}, onBack = {})
+    }
+
     @Test
     fun setup() = shot("setup") {
         dev.benfranklin.tether.ui.screens.SetupScreen(setupRowsSample, onFix = {}, onCopy = {}, onBack = {})
@@ -244,7 +259,7 @@ class ScreenshotTest {
     @Test
     fun more5() = shot("continue-files-updates") {
         dev.benfranklin.tether.ui.screens.More5Screen(
-            AppSettings(continueTabs = true), "11 of 16 ready",
+            AppSettings(continueTabs = true), "11/16 · 1 required",
             dev.benfranklin.tether.ui.screens.UpdateUi("Tether 0.5.1 is available", "Download and install"), "0.5.0",
             object : dev.benfranklin.tether.ui.screens.More5Actions {
                 override fun update(change: (AppSettings) -> AppSettings) = Unit

@@ -170,15 +170,21 @@ struct ActionTile: View {
     var title: String
     var symbol: String
     var enabled = true
+    /// 0.5.1: morphs into a check for a moment after the action succeeded.
+    var done = false
     var action: () -> Void
     @State private var hover = false
+    @Environment(\.accessibilityReduceMotion) private var reduce
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: symbol).font(.system(size: 15, weight: .regular))
-                Text(title).font(Typo.sans(11, .medium))
+                Image(systemName: done ? "checkmark" : symbol).font(.system(size: 15, weight: done ? .semibold : .regular))
+                    .symbolBounce(done)
+                Text(done ? "Sent" : title).font(Typo.sans(11, .medium))
+                    .lineLimit(1).minimumScaleFactor(0.8).allowsTightening(true)
             }
+            .animation(Motion.bouncy(reduce), value: done)
             .foregroundColor(enabled ? Mono.text : Mono.muted)
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 12)
@@ -187,6 +193,8 @@ struct ActionTile: View {
         }
         .buttonStyle(PressStyle())
         .disabled(!enabled)
+        .scaleEffect(hover && enabled && !reduce ? 1.02 : 1)
+        .animation(Motion.spring(reduce), value: hover)
         .onHover { hover = $0 }
         .accessibilityLabel(title)
     }

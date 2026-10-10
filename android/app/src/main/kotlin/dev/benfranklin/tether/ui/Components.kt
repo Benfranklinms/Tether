@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -153,7 +154,10 @@ fun ToggleRow(title: String, subtitle: String?, checked: Boolean, enabled: Boole
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = if (enabled) Mono.Text else Mono.Muted)
+            Text(
+                title, style = MaterialTheme.typography.bodyLarge, color = if (enabled) Mono.Text else Mono.Muted,
+                maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Mono.Muted)
         }
         Spacer(Modifier.width(12.dp))
@@ -161,21 +165,65 @@ fun ToggleRow(title: String, subtitle: String?, checked: Boolean, enabled: Boole
     }
 }
 
+/**
+ * A navigation row (0.5.1): the title always stays on one line; a long [value] ellipsizes at
+ * one line instead of squeezing the title, and descriptions go under the title as [subtitle].
+ * [valueText] (annotated, e.g. a mono count) wins over [value].
+ */
 @Composable
-fun NavRow(title: String, value: String?, icon: ImageVector? = null, onClick: () -> Unit) {
+fun NavRow(
+    title: String,
+    value: String?,
+    icon: ImageVector? = null,
+    subtitle: String? = null,
+    valueText: androidx.compose.ui.text.AnnotatedString? = null,
+    chevron: Boolean = true,
+    onClick: () -> Unit,
+) {
     val source = remember { MutableInteractionSource() }
+    val view = LocalView.current
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp)
-            .clickable(interactionSource = source, indication = androidx.compose.material3.ripple(), role = Role.Button, onClick = onClick)
+            .clickable(interactionSource = source, indication = androidx.compose.material3.ripple(), role = Role.Button) {
+                Haptics.tick(view)
+                onClick()
+            }
+            .pressScale(source)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (icon != null) Icon(icon, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(20.dp))
-        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        if (value != null) Text(value, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted)
+        Column(Modifier.weight(1f)) {
+            Text(
+                title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle, style = MaterialTheme.typography.bodySmall, color = Mono.Muted, maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+        }
+        val v = valueText ?: value?.let { androidx.compose.ui.text.AnnotatedString(it) }
+        if (v != null) {
+            Text(
+                v, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1, softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = NAV_VALUE_MAX),
+            )
+        }
+        if (chevron) {
+            Icon(
+                androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
+                tint = Mono.Muted, modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
+
+private val NAV_VALUE_MAX = 150.dp
 
 @Composable
 fun Divider() {

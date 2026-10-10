@@ -367,9 +367,9 @@ struct NotificationRow: View {
                 Monogram(text: n.app, size: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        Text(n.app).font(Typo.sans(11)).foregroundColor(Mono.muted)
-                        Spacer()
-                        Text(relativeTime(n.ts)).font(Typo.sans(10)).foregroundColor(Mono.muted)
+                        Text(n.app).font(Typo.sans(11)).foregroundColor(Mono.muted).lineLimit(1)
+                        Spacer(minLength: 6)
+                        Text(relativeTime(n.ts)).font(Typo.sans(10)).foregroundColor(Mono.muted).lineLimit(1).fixedSize()
                     }
                     if privacy {
                         Text("New notification").font(Typo.sans(13)).foregroundColor(Mono.text)
@@ -409,7 +409,8 @@ struct NotificationRow: View {
                     if replying { DispatchQueue.main.async { focused = true } }
                 }
             }
-            ForEach(buttons, id: \.id) { a in
+            // 0.5.1: at most three buttons so a row never overflows its card.
+            ForEach(buttons.prefix(3), id: \.id) { a in
                 SmallAction(title: a.title, symbol: nil) { m.performAction(key: n.key, action: a.id, text: nil) }
             }
             Spacer(minLength: 0)
@@ -427,13 +428,22 @@ struct NotificationRow: View {
                 .padding(.horizontal, 10).padding(.vertical, 6)
                 .tetherCard(cornerRadius: 8)
             Button(action: send) {
-                Image(systemName: m.actionStatus[n.key] == "sending" ? "ellipsis" : "arrow.up")
+                Image(systemName: sendSymbol)
                     .font(.system(size: 11, weight: .semibold)).foregroundColor(Mono.bg)
                     .frame(width: 26, height: 26).background(Circle().fill(draft.isEmpty ? Mono.muted : Mono.accent))
             }
             .buttonStyle(PressStyle())
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityLabel("Send reply")
+        }
+    }
+
+    /// send → progress → check (0.5.1 morph).
+    private var sendSymbol: String {
+        switch m.actionStatus[n.key] {
+        case "sending": return "ellipsis"
+        case "sent": return "checkmark"
+        default: return "arrow.up"
         }
     }
 

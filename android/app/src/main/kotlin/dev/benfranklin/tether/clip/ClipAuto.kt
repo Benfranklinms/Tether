@@ -19,6 +19,7 @@ import android.widget.Toast
 import dev.benfranklin.tether.core.LinkState
 import dev.benfranklin.tether.core.features.ClipAutoGate
 import dev.benfranklin.tether.core.features.ClipAutoSetup
+import dev.benfranklin.tether.core.features.ClipContent
 import dev.benfranklin.tether.core.features.ClipLogMatcher
 import dev.benfranklin.tether.log.Log
 import dev.benfranklin.tether.runtime
@@ -51,6 +52,7 @@ class ClipWatcher(
     private val lastHash: () -> String?,
     private val connected: () -> Boolean,
     private val send: (String) -> Unit,
+    private val sendImage: (String) -> Unit = {},
 ) {
     private val app = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
@@ -304,6 +306,12 @@ class ClipWatcher(
     }
 
     private fun deliver(read: ClipRead?, via: String) {
+        read?.image?.let { uri ->
+            if (read.sensitive && !allowSensitive) return Log.i("clip.auto_skip", "why" to "sensitive", "via" to via)
+            Log.i("clip.auto_image", "via" to via)
+            sendImage(uri)
+            return
+        }
         val r = synchronized(gate) { gate.onRead(read?.text, read?.sensitive == true, allowSensitive, lastHash()) }
         when (r) {
             is ClipAutoGate.Read.Send -> {
@@ -342,7 +350,7 @@ class ClipWatcher(
     }
 }
 
-data class ClipRead(val text: String?, val sensitive: Boolean)
+data class ClipRead(val text: String?, val sensitive: Boolean, val image: String? = null)
 
 /** Reads the primary clip with its "sensitive" flag (password managers, OTP autofill). */
 fun readClip(c: Context): ClipRead? {
@@ -353,8 +361,12 @@ fun readClip(c: Context): ClipRead? {
         null
     } ?: return null
     if (clip.itemCount == 0) return null
-    val text = clip.getItemAt(0).coerceToText(c)?.toString()
-    return ClipRead(text, isSensitive(clip.description))
+    // 0.5.1: an image (with its file name as text) is sent as the image, never as the name.
+    return when (val content = classifyClip(c, clip)) {
+        is ClipContent.Image -> ClipRead(null, isSensitive(clip.description), image = content.uri)
+        is ClipContent.Text -> ClipRead(content.text, isSensitive(clip.description))
+        ClipContent.Empty -> ClipRead(null, isSensitive(clip.description))
+    }
 }
 
 /** ClipDescription.EXTRA_IS_SENSITIVE (Android 13 API; many apps set the same key earlier). */

@@ -89,6 +89,7 @@ extension AppModel {
         case .fsGetResult(let p): fsGetResult(p)
         case .thumb(let p): thumb(p)
         case .photos(let p): photos(p)
+        case .albums(let p): albums(p)
         case .continueCard(let c, let thumb): continueCard(c, thumb: thumb)
         case .openResult(let p): openResult(p)
         case .typeResult(let p): typeResult(p)
@@ -101,7 +102,7 @@ extension AppModel {
 
     // MARK: phone files
 
-    private func newRef() -> String { String(UUID().uuidString.prefix(8)).lowercased() }
+    func newRef() -> String { String(UUID().uuidString.prefix(8)).lowercased() }
 
     func openFolder(root: String, path: String = "") {
         guard supports(Caps5.fs) else {
@@ -157,8 +158,13 @@ extension AppModel {
 
     func thumb(_ p: ThumbPayload) {
         guard let key = v5.thumbRequests.removeValue(forKey: p.ref) else { return }
-        if p.ok, let img = NSImage(data: p.data) { v5.thumbs[key] = img }
-        if v5.thumbs.count > 600 { v5.thumbs.removeAll() }
+        guard p.ok else { return }
+        // Decode off the main thread; the cache notifies the one view showing this key.
+        let data = p.data
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let img = ThumbCache.decode(data) else { return }
+            DispatchQueue.main.async { ThumbCache.shared[key] = img }
+        }
     }
 
     /// Ask the phone for a file. `folder` nil = the download folder.
@@ -208,7 +214,10 @@ extension AppModel {
         if !more { v5.library = PhoneLibrary() }
         v5.library.ref = ref
         v5.library.loading = true
-        engine?.send(.photosReq(PhotosReq(ref: ref, limit: 60, before: more ? v5.library.before : nil))) { [weak self] in
+        let albums = supports(Caps5.albums)
+        let req = PhotosReq(ref: ref, limit: 90, before: more ? v5.library.before : nil,
+                            album: albums ? v5.album : nil, filter: albums ? v5.photoFilter : nil)
+        engine?.send(.photosReq(req)) { [weak self] in
             self?.v5.library.loading = false
             self?.v5.library.error = "Not connected"
         }
@@ -223,7 +232,7 @@ extension AppModel {
         v5.library.needs = p.needs
         v5.library.loading = false
         v5.library.error = nil
-        for i in p.items { requestThumb(root: FsRoots.photos, path: i.id) }
+        // 0.5.1: thumbnails are requested lazily by the tiles that appear on screen.
     }
 
     // MARK: one-time codes
@@ -310,38 +319,7 @@ extension AppModel {
         }
     }
 
-    // MARK: typing
-
-    func typeOps(_ ops: [TypeBatcher.Op]) {
-        guard !ops.isEmpty else { return }
-        guard supports(Caps5.type) else {
-            v5.typeStatus = isConnected ? "Update Tether on your phone" : "Not connected"
-            return
-        }
-        for op in ops {
-            v5.typeSeq += 1
-            let p: TypeTextPayload
-            switch op {
-            case .text(let s): p = TypeTextPayload(seq: v5.typeSeq, text: s)
-            case .key(let k): p = TypeTextPayload(seq: v5.typeSeq, key: k)
-            }
-            engine?.send(.typeText(p)) { [weak self] in self?.v5.typeStatus = "Not connected" }
-        }
-    }
-
-    func typeResult(_ r: TypeResultPayload) {
-        if r.ok {
-            v5.typeStatus = nil
-            v5.typeField = r.field
-        } else {
-            switch r.reason {
-            case "no_field": v5.typeStatus = "Tap a text field on your phone first"
-            case "accessibility": v5.typeStatus = "Turn on Tether's accessibility service on your phone"
-            case "disabled": v5.typeStatus = "Typing is off on your phone"
-            default: v5.typeStatus = "Couldn't type: \(r.reason ?? "unknown")"
-            }
-        }
-    }
+    // MARK: typing (0.5.1: see AppModel+V51 typeOps / typeResult)
 
     // MARK: Focus / Do Not Disturb
 
@@ -424,9 +402,9 @@ extension AppModel {
     }
 
     /// Mac copied an image: keep it and send it (kind "clip") when the phone supports it.
-    func macCopiedImage(_ png: Data) {
+    func macCopiedImage(_ png: Data, ext: String = "png") {
         guard png.count <= 25 * 1_048_576 else { return }
-        let name = "mac-\(Self.nowMs).png"
+        let name = "mac-\(Self.nowMs).\(ext)"
         let url = Self.clipsDir.appendingPathComponent(name)
         do { try png.write(to: url) } catch { return }
         addClip(image: name, fromPhone: false)

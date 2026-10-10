@@ -287,3 +287,19 @@ Same rules: `Hello.v` stays 1, features are announced in `Hello.caps`, and a sid
 - **DND echo guard**: each side ignores a state equal to the one it just applied for 4 s (DndSync), so Focus ↔ DND never ping-pongs.
 - **Continue cards** expire after `ttl` seconds (min 30); the Mac keeps at most 8 and remembers dismissed ones.
 - Updates are not part of the protocol: each app reads GitHub releases itself (README › Updates).
+
+## 16. Revision 5.1 (app 0.5.1)
+
+One new cap, `albums`, announced by 0.5.1 builds. Without it nothing below is sent; 0.5.0 peers decode the new optional fields as unknown keys and ignore them.
+
+| Type | Name | Direction | Header | Body |
+|---|---|---|---|---|
+| 0xCD | ALBUMS_REQ | Mac → phone | `{"ref"}` | |
+| 0xCE | ALBUMS | phone → Mac | `{"ref","albums":[{"id","name","count","cover"?,"kind"}],"needs"?}` | |
+
+- **Album ids / kinds**: `all`, `camera` (DCIM/Camera), `screenshots`, `whatsapp` (WhatsApp Images), `downloads`, `videos`, `favorites` (MediaStore `IS_FAVORITE`, Android 11+, listed only when it has items), then `b:<bucketId>` for every other MediaStore bucket, biggest first. `cover` is the newest item's MediaStore id (THUMB_REQ root `photos`).
+- **PHOTOS_REQ** gains `"album"?` (an album id, absent = all) and `"filter"?` (`photos` | `videos` | `screenshots`). Default page size from the Mac is 90.
+- **PhotoItem** gains `"dur"` (video duration, ms), `"bucket"?` and `"fav"`.
+- **TYPE_RESULT** `reason` adds `no_service` (Tether control is off in Accessibility) and `binding` (it is on but not bound yet). The Mac times out a batch with no answer after 4 s and says so.
+- **OPEN_ON_PHONE** with `url` = `tether://setup/<id>` opens the fix for that checklist row on the phone (its Settings screen, or a tap-to-open notification when Tether may not start activities from the background). The Mac's "Fix" buttons use it.
+- **Clipboard images**: both sides classify a copy before sending it. An image (including a Finder-copied image file, or a gallery clip that carries the image URI plus its file name as text) goes as a `clip` transfer; a copied non-image file sends nothing; only plain text goes as CLIP.

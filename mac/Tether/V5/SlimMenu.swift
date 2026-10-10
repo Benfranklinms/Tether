@@ -10,6 +10,7 @@ struct SlimMenuView: View {
     @Environment(\.accessibilityReduceMotion) private var reduce
     var panel: PanelControls?
     @State private var dropping = false
+    @State private var shown = false
 
     private var detached: Bool { panel?.detached == true }
 
@@ -19,14 +20,19 @@ struct SlimMenuView: View {
             if m.peer == nil {
                 MonoButton(title: "Pair a phone") { open(.pair) }
             } else {
-                if let c = m.call, m.settings.callAlerts, m.liveCall?.isOffhook != true { CallBanner(call: c) }
-                if let live = m.liveCall, live.isOffhook { LiveCallCard(call: live) }
+                if let c = m.call, m.settings.callAlerts, m.liveCall?.isOffhook != true {
+                    CallBanner(call: c).transition(.move(edge: .top).combined(with: .opacity))
+                }
+                if let live = m.liveCall, live.isOffhook {
+                    LiveCallCard(call: live).transition(.scale(scale: 0.96).combined(with: .opacity))
+                }
                 if let otp = m.v5.otp { OtpCard(otp: otp) }
                 if let np = m.nowPlaying, np.active { CompactNowPlaying(np: np) }
                 if let c = m.v5.continueCards.cards.first { SlimContinue(state: c) }
                 notifications
                 HStack(spacing: 8) {
-                    ActionTile(title: "Send clipboard", symbol: "doc.on.clipboard", enabled: m.isConnected) { m.sendClipboardNow() }
+                    ActionTile(title: "Send clipboard", symbol: "doc.on.clipboard", enabled: m.isConnected,
+                               done: m.v5.succeeded.contains("clipboard")) { m.sendClipboardNow() }
                     ActionTile(title: "Send file", symbol: "arrow.up.doc", enabled: m.isConnected) { m.chooseFiles() }
                 }
             }
@@ -47,6 +53,12 @@ struct SlimMenuView: View {
         .onDrop(of: [UTType.fileURL], isTargeted: $dropping, perform: drop)
         .animation(Motion.spring(reduce), value: m.notice)
         .animation(Motion.spring(reduce), value: dropping)
+        .animation(Motion.spring(reduce), value: m.call?.id)
+        .animation(Motion.spring(reduce), value: m.liveCall?.isOffhook)
+        // 0.5.1: the popover scales and un-blurs in on a spring.
+        .springIn(shown || m.demo, reduce: reduce)
+        .onAppear { withAnimation(reduce ? .easeOut(duration: 0.12) : .spring(response: 0.32, dampingFraction: 0.84)) { shown = true } }
+        .onDisappear { shown = false }
     }
 
     private var header: some View {

@@ -11,6 +11,7 @@ struct SettingsView: View {
 
     enum Section: String, CaseIterable, Identifiable {
         case general = "General"
+        case setup = "Setup"
         case appearance = "Appearance"
         case mac = "Mac"
         case notifications = "Notifications"
@@ -25,6 +26,7 @@ struct SettingsView: View {
         var symbol: String {
             switch self {
             case .general: return "gearshape"
+            case .setup: return "checklist"
             case .appearance: return "circle.lefthalf.filled"
             case .mac: return "laptopcomputer"
             case .updates: return "arrow.down.circle"
@@ -78,10 +80,14 @@ struct SettingsView: View {
                 } label: {
                     VStack(spacing: 5) {
                         Image(systemName: s.symbol).font(.system(size: 15, weight: section == s ? .medium : .light))
+                        // 0.5.1: one line, never "Notification/s".
                         Text(s.rawValue).font(Typo.sans(11, section == s ? .semibold : .regular))
+                            .lineLimit(1).minimumScaleFactor(0.8).allowsTightening(true)
                     }
                     .foregroundColor(section == s ? Mono.text : Mono.muted)
-                    .frame(width: 66, height: 54)
+                    .padding(.horizontal, 4)
+                    .frame(minWidth: 72, minHeight: 54)
+                    .fixedSize()
                     .background {
                         if section == s {
                             RoundedRectangle(cornerRadius: 10).fill(Mono.surfaceHigh).matchedGeometryEffect(id: "sel", in: ns)
@@ -110,9 +116,8 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 switch s {
-                case .general:
-                    GeneralPage()
-                    SetupChecklist()
+                case .general: GeneralPage()
+                case .setup: SetupChecklist()
                 case .appearance: AppearancePage5()
                 case .mac: MacPage5()
                 case .updates: UpdatesPage5()

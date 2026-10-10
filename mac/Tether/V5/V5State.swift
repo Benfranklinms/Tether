@@ -55,8 +55,25 @@ struct SetupItem: Identifiable, Equatable {
 final class V5State: ObservableObject {
     @Published var folder = PhoneFolder()
     @Published var library = PhoneLibrary()
-    /// Thumbnails by key ("root/path" for files, "photos/<id>" for photos).
-    @Published var thumbs: [String: NSImage] = [:]
+    /// Thumbnails by key ("root/path" for files, "photos/<id>" for photos). 0.5.1: an NSCache that
+    /// notifies only the views showing a key, instead of a published dictionary redrawing everything.
+    var thumbs: ThumbCache { ThumbCache.shared }
+    // 0.5.1 gallery
+    @Published var albums: [AlbumInfo] = []
+    @Published var album: String?
+    @Published var photoFilter: String?
+    @Published var photoZoom: PhotoSections.Zoom = .all
+    @Published var photoSelection = GridSelection()
+    @Published var viewer: PhotoItem?
+    @Published var gallerySize: Double = GallerySize.clamp(UserDefaults.standard.object(forKey: "gallerySize") as? Double
+                                                            ?? GallerySize.standard) {
+        didSet { UserDefaults.standard.set(gallerySize, forKey: "gallerySize") }
+    }
+    // 0.5.1 typing, setup, success morphs
+    @Published var typeTracker = TypeTracker()
+    @Published var typeEcho = ""
+    @Published var setupGate = SetupHomeGate.load()
+    @Published var succeeded: Set<String> = []
     @Published var otp: OtpPayload?
     @Published var continueCards = ContinueStore()
     @Published var clips = ClipHistory()
@@ -74,6 +91,7 @@ final class V5State: ObservableObject {
 
     /// THUMB request ref -> thumbnail key.
     var thumbRequests: [String: String] = [:]
+    var albumsRef = ""
     /// FS_GET ref -> what to do when the file arrives.
     var gets: [String: PhoneGet] = [:]
     var typeSeq: Int64 = 0

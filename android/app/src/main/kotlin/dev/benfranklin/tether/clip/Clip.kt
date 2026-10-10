@@ -2,6 +2,7 @@ package dev.benfranklin.tether.clip
 
 import android.app.Activity
 import android.app.PendingIntent
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -11,6 +12,8 @@ import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
 import dev.benfranklin.tether.core.LinkState
+import dev.benfranklin.tether.core.features.ClipContent
+import dev.benfranklin.tether.core.features.ClipItemInfo
 import dev.benfranklin.tether.runtime
 
 /**
@@ -32,13 +35,17 @@ class ClipSendActivity : Activity() {
         super.onWindowFocusChanged(hasFocus)
         if (!hasFocus || done) return
         done = true
-        val text = readClipboardText(this)
+        val content = readClipContent(this)
         val rt = runtime
         val msg = when {
-            text.isNullOrEmpty() -> "Clipboard is empty"
+            content is ClipContent.Empty -> "Clipboard is empty"
             rt.ui.value.link !is LinkState.Connected -> "Not connected to your Mac"
+            content is ClipContent.Image -> {
+                rt.clipboardImageSeen(android.net.Uri.parse(content.uri), force = true)
+                "Sending the image to your Mac"
+            }
             else -> {
-                rt.sendClip(text, fromUser = false)
+                rt.sendClip((content as ClipContent.Text).text, fromUser = false)
                 "Sent to your Mac"
             }
         }
@@ -49,6 +56,38 @@ class ClipSendActivity : Activity() {
     companion object {
         fun intent(c: Context) = Intent(c, ClipSendActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
+}
+
+/**
+ * What the clipboard holds, image first (0.5.1). Gallery apps put the image URI *and* its file
+ * name as text in one item; reading text first sent the name instead of the picture.
+ * Only works while Tether has focus (Android 10+).
+ */
+fun readClipContent(c: Context): ClipContent {
+    val cm = c.getSystemService(ClipboardManager::class.java) ?: return ClipContent.Empty
+    val clip: ClipData = try {
+        cm.primaryClip
+    } catch (_: SecurityException) {
+        null
+    } ?: return ClipContent.Empty
+    return classifyClip(c, clip)
+}
+
+fun classifyClip(c: Context, clip: ClipData): ClipContent {
+    val desc = clip.description
+    val mimes = (0 until desc.mimeTypeCount).map { desc.getMimeType(it) }
+    val items = (0 until clip.itemCount).map { i ->
+        val item = clip.getItemAt(i)
+        val uri = item.uri
+        val mime = uri?.let { u -> runCatching { c.contentResolver.getType(u) }.getOrNull() }
+        ClipItemInfo(item.text?.toString(), uri?.toString(), mime)
+    }
+    val content = ClipContent.classify(mimes, items, c.packageName + ".files")
+    if (content !is ClipContent.Empty || items.isEmpty()) return content
+    // A URI-only text clip (rare): fall back to the platform's text coercion, except for files.
+    val first = clip.getItemAt(0)
+    if (first.uri != null) return ClipContent.Empty
+    return first.coerceToText(c)?.toString()?.takeIf { it.isNotEmpty() }?.let { ClipContent.Text(it) } ?: ClipContent.Empty
 }
 
 fun readClipboardText(c: Context): String? {

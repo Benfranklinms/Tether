@@ -213,6 +213,8 @@ public enum Message: Equatable {
     case thumb(ThumbPayload)
     case photosReq(PhotosReq)
     case photos(PhotosPayload)
+    case albumsReq(AlbumsReq)
+    case albums(AlbumsPayload)
     case continueCard(ContinuePayload, thumb: Data)
     case openOnPhone(OpenOnPhonePayload)
     case openResult(OpenResultPayload)
@@ -292,6 +294,8 @@ public enum Message: Equatable {
         case .thumb: return 0xC5
         case .photosReq: return 0xC6
         case .photos: return 0xC7
+        case .albumsReq: return 0xCD
+        case .albums: return 0xCE
         case .continueCard: return 0xC8
         case .openOnPhone: return 0xC9
         case .openResult: return 0xCA
@@ -417,6 +421,8 @@ public enum MessageCodec {
         case .thumb(let p): return (try encoder.encode(ThumbHeader(ref: p.ref, ok: p.ok, reason: p.reason)), p.data)
         case .photosReq(let p): return (try encoder.encode(p), Data())
         case .photos(let p): return (try encoder.encode(p), Data())
+        case .albumsReq(let p): return (try encoder.encode(p), Data())
+        case .albums(let p): return (try encoder.encode(p), Data())
         case .continueCard(let p, let thumb): return (try encoder.encode(p), thumb)
         case .openOnPhone(let p): return (try encoder.encode(p), Data())
         case .openResult(let p): return (try encoder.encode(p), Data())
@@ -560,6 +566,8 @@ public enum MessageCodec {
             return .thumb(ThumbPayload(ref: x.ref, ok: x.ok, data: body, reason: x.reason))
         case 0xC6: return .photosReq(try d(PhotosReq.self))
         case 0xC7: return .photos(try d(PhotosPayload.self))
+        case 0xCD: return .albumsReq(try d(AlbumsReq.self))
+        case 0xCE: return .albums(try d(AlbumsPayload.self))
         case 0xC8:
             guard body.count <= maxThumbBytes else { throw ProtocolError("thumbnail too large") }
             return .continueCard(try d(ContinuePayload.self), thumb: body)

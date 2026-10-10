@@ -6,6 +6,7 @@ import dev.benfranklin.tether.core.link.FragmentException
 import dev.benfranklin.tether.core.link.Fragmentation
 import dev.benfranklin.tether.core.link.Fragmenter
 import dev.benfranklin.tether.core.link.Reassembler
+import dev.benfranklin.tether.core.proto.Albums
 import dev.benfranklin.tether.core.proto.CallLog
 import dev.benfranklin.tether.core.proto.Clip
 import dev.benfranklin.tether.core.proto.CloseReason
@@ -337,7 +338,7 @@ class TetherController(
     private fun prefersWifi(m: Message): Boolean =
         m is Clip || m is ScreenInput || m is VideoFeedback || m is ScreenStart || m is ScreenStop || m is ScreenState ||
             m is SmsThreads || m is SmsMessages || m is NowPlayingArt || m is CallLog || m is Contacts ||
-            m is FsList || m is Photos || m is Thumb || m is ContinueCard || m is PhoneStatus || m is TypeText
+            m is FsList || m is Photos || m is Thumb || m is ContinueCard || m is PhoneStatus || m is TypeText || m is Albums
 
     fun sendFile(record: TransferRecord) = engine.enqueue(record)
 

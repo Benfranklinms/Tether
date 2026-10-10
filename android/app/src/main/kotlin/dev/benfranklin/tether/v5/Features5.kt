@@ -26,6 +26,8 @@ import dev.benfranklin.tether.R
 import dev.benfranklin.tether.core.features.ContinueGate
 import dev.benfranklin.tether.core.features.DndSync
 import dev.benfranklin.tether.core.features.OtpDetector
+import dev.benfranklin.tether.core.proto.Albums
+import dev.benfranklin.tether.core.proto.AlbumsReq
 import dev.benfranklin.tether.core.proto.Caps5
 import dev.benfranklin.tether.core.proto.ContinueCard
 import dev.benfranklin.tether.core.proto.ContinueKinds
@@ -102,6 +104,7 @@ class Features5(
             is FsGet -> io.execute { onGet(m) }
             is ThumbReq -> io.execute { onThumb(m) }
             is PhotosReq -> io.execute { onPhotos(m) }
+            is AlbumsReq -> io.execute { onAlbums(m) }
             is OpenOnPhone -> main.post { onOpen(m) }
             is TypeText -> main.post { onType(m) }
             is DndState -> onRemoteDnd(m)
@@ -138,9 +141,13 @@ class Features5(
         val out = if (!settings().sharePhotoBrowser) {
             Photos(r.ref, emptyList(), needs = "disabled", before = r.before)
         } else {
-            phoneFiles.photos(r.ref, r.limit, r.before)
+            phoneFiles.photos(r.ref, r.limit, r.before, r.album, r.filter)
         }
         reply(out)
+    }
+
+    private fun onAlbums(r: AlbumsReq) {
+        reply(if (!settings().sharePhotoBrowser) Albums(r.ref, emptyList(), needs = "disabled") else phoneFiles.albums(r.ref))
     }
 
     private fun onThumb(r: ThumbReq) {
@@ -183,6 +190,7 @@ class Features5(
             Notifications.alert(app, "Copied from your Mac", text.take(PREVIEW))
             return reply(OpenResult(o.id, true, "clipboard"))
         }
+        dev.benfranklin.tether.core.features.PhoneSetupLink.itemId(url)?.let { return openSetupFix(o, it) }
         val uri = Uri.parse(url)
         if (uri.scheme?.lowercase() !in OPENABLE) return reply(OpenResult(o.id, false, reason = "invalid"))
         val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -214,12 +222,50 @@ class Features5(
         reply(OpenResult(o.id, true, "notification"))
     }
 
+    /** The Mac's "Fix" for one checklist row (tether://setup/<id>): open its Settings screen, or Tether's Setup. */
+    private fun openSetupFix(o: OpenOnPhone, id: String) {
+        val fix = Setup.items(app).firstOrNull { it.id == id }?.fix
+        val intent = ((fix as? Setup.Fix.Screen)?.intent ?: Intent(app, dev.benfranklin.tether.ui.MainActivity::class.java)
+            .putExtra(EXTRA_SETUP_ITEM, id)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        Log.i("open.setup_fix", "item" to id, "overlay" to Settings.canDrawOverlays(app))
+        if (Settings.canDrawOverlays(app)) {
+            try {
+                app.startActivity(intent)
+                return reply(OpenResult(o.id, true, "activity"))
+            } catch (e: ActivityNotFoundException) {
+                Log.w("open.setup_fix_failed", "reason" to e.message)
+            } catch (e: SecurityException) {
+                Log.w("open.blocked", "reason" to e.message)
+            }
+        }
+        val pi = PendingIntent.getActivity(app, id.hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val label = Setup.items(app).firstOrNull { it.id == id }?.label ?: "Setup"
+        val n = NotificationCompat.Builder(app, Notifications.CH_REQUESTS)
+            .setSmallIcon(R.drawable.ic_stat_tether)
+            .setContentTitle("Turn on $label")
+            .setContentText("Your Mac asked. Tap to open the setting.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            .build()
+        Notifications.postRaw(app, ID_OPEN_BASE + (id.hashCode() and ID_MASK), n)
+        reply(OpenResult(o.id, true, "notification"))
+    }
+
     // ===================== typing =====================
 
     private fun onType(t: TypeText) {
         if (!settings().allowTyping) return reply(TypeResult(t.seq, false, "disabled"))
-        val svc = ControlService.current ?: return reply(TypeResult(t.seq, false, "no_service"))
-        reply(svc.type(t))
+        val svc = ControlService.current
+        if (svc == null) {
+            // Enabled but not bound yet (just switched on, or the process restarted): say so.
+            val reason = if (ControlService.enabledInSettings(app)) "binding" else "no_service"
+            Log.i("type.no_service", "reason" to reason)
+            return reply(TypeResult(t.seq, false, reason))
+        }
+        val r = svc.type(t)
+        Log.i("type.result", "ok" to r.ok, "reason" to r.reason, "key" to t.key, "chars" to (t.text?.length ?: 0))
+        reply(r)
     }
 
     // ===================== DND =====================
@@ -557,7 +603,7 @@ class Features5(
     companion object {
         private const val OTP_DEDUPE_MS = 120_000L
         private const val MAX_MESSAGE = 120 * 1024
-        private const val THUMB_BYTES = 48 * 1024
+        private const val THUMB_BYTES = 92 * 1024
         private const val CARD_THUMB = 192
         private const val CARD_THUMB_BYTES = 24 * 1024
         private const val SHARE_SAMPLE = 8
@@ -572,6 +618,7 @@ class Features5(
         private const val MS = 1000L
         private const val ID_OPEN_BASE = 90_000
         private const val ID_MASK = 0xFFF
+        const val EXTRA_SETUP_ITEM = "tether.setup_item"
         private val OPENABLE = setOf("http", "https", "mailto", "tel", "geo", "sms", "smsto", "market", "spotify", "upi")
 
         fun human(bytes: Long): String = when {

@@ -89,10 +89,12 @@ struct Row<Trailing: View>: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(Typo.sans(13, .medium)).foregroundColor(Mono.text)
+                        .lineLimit(1).truncationMode(.tail).minimumScaleFactor(0.9)
                     if let detail {
                         Text(detail).font(Typo.sans(11)).foregroundColor(Mono.muted).fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .layoutPriority(1)
                 Spacer(minLength: 8)
                 trailing
             }
@@ -140,6 +142,8 @@ struct GhostButton: View {
             Text(title)
                 .font(Typo.sans(12, .medium))
                 .foregroundColor(Mono.text)
+                .lineLimit(1)
+                .fixedSize()
                 .padding(.horizontal, 12)
                 .frame(minHeight: 26)
                 .tetherControl(Capsule())

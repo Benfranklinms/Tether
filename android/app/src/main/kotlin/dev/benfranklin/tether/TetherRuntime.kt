@@ -209,6 +209,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     val clipWatcher = ClipWatcher(
         app, lastHash = { lastClipHash }, connected = { state.value.link is LinkState.Connected },
         send = { text -> sendClip(text, fromUser = false) },
+        sendImage = { uri -> clipboardImageSeen(Uri.parse(uri), force = true) },
     )
 
     // ---- 0.2.0 features ----
@@ -399,8 +400,8 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     }
 
     /** The app came to the foreground and the clipboard holds an image: send it if new (0.5). */
-    fun clipboardImageSeen(uri: Uri) {
-        if (!settings.current.sendClipboardOnOpen) return
+    fun clipboardImageSeen(uri: Uri, force: Boolean = false) {
+        if (!force && !settings.current.sendClipboardOnOpen) return
         val h = hash(uri.toString())
         engine.execute {
             if (h == lastClipHash || !controller.isConnected) return@execute

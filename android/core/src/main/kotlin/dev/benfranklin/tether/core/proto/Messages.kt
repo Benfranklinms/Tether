@@ -153,6 +153,8 @@ object MsgType {
     const val OPEN_RESULT = 0xCA
     const val TYPE_TEXT = 0xCB
     const val TYPE_RESULT = 0xCC
+    const val ALBUMS_REQ = 0xCD
+    const val ALBUMS = 0xCE
     const val DND_STATE = 0xE0
     const val PHONE_STATUS = 0xE1
     const val PHONE_STATUS_REQ = 0xE2
@@ -350,6 +352,8 @@ object MessageCodec {
             is Thumb -> enc(ThumbHeader.serializer(), ThumbHeader(m.ref, m.ok, m.reason)) to m.data
             is PhotosReq -> enc(PhotosReq.serializer(), m) to EMPTY
             is Photos -> enc(Photos.serializer(), m) to EMPTY
+            is AlbumsReq -> enc(AlbumsReq.serializer(), m) to EMPTY
+            is Albums -> enc(Albums.serializer(), m) to EMPTY
             is ContinueCard -> enc(ContinueHeader.serializer(), m.header()) to m.thumb
             is OpenOnPhone -> enc(OpenOnPhone.serializer(), m) to EMPTY
             is OpenResult -> enc(OpenResult.serializer(), m) to EMPTY
@@ -490,6 +494,8 @@ object MessageCodec {
         }
         MsgType.PHOTOS_REQ -> dec(PhotosReq.serializer(), header)
         MsgType.PHOTOS -> dec(Photos.serializer(), header)
+        MsgType.ALBUMS_REQ -> dec(AlbumsReq.serializer(), header)
+        MsgType.ALBUMS -> dec(Albums.serializer(), header)
         MsgType.CONTINUE -> {
             if (body.size > MAX_THUMB_BYTES) throw ProtocolException("thumbnail too large")
             ContinueCard.of(dec(ContinueHeader.serializer(), header), body)

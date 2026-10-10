@@ -257,17 +257,29 @@ extension AppModel {
         defer { callMediaChanged(busy: call != nil || liveCall != nil) }
         phoneClockSkew = p.ts - Self.nowMs
         if let r = p.reason {
-            callNote = CallsModel.describeAction(r)
+            if r == "unsupported" && lastCallControl == CallActions4.mute {
+                // One clear line instead of two conflicting ones (0.5.1): the card hides Mute and says why.
+                callMuteBlocked = true
+                liveCall?.muted = false
+                callNote = nil
+            } else {
+                callNote = CallsModel.describeAction(r)
+            }
             Log.info("calls.action_failed", ["reason": r])
         }
         let wanted = p.dir == CallDirs.incoming ? settings.callAlerts : settings.callsEnabled || settings.callAlerts
         guard wanted else { return }
         if p.isUp {
-            if liveCall?.id != p.id && p.reason == nil { callNote = nil }
+            if liveCall?.id != p.id && p.reason == nil {
+                callNote = nil
+                callMuteBlocked = false
+            }
             liveCall = p
+            if callMuteBlocked { liveCall?.muted = false }
         } else if liveCall?.id == p.id || liveCall == nil {
             liveCall = nil
             callNote = nil
+            callMuteBlocked = false
             // The phone writes the call log a moment after the call ends.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 guard let self, self.settings.callsEnabled, self.supports(Caps4.callLog) else { return }
@@ -300,6 +312,7 @@ extension AppModel {
         default: break
         }
         callNote = action == CallActions4.end ? "Ending…" : nil
+        lastCallControl = action
         engine?.send(.callAction(CallActionPayload(id: c.id, action: action, on: on))) { [weak self] in self?.callNote = "Not connected" }
         haptic()
     }

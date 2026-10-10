@@ -27,7 +27,7 @@ struct LiveCallCard: View {
                         m.callControl(CallActions4.speaker, on: !call.speaker)
                     }
                 }
-                if call.canMute {
+                if call.canMute && !m.callMuteBlocked {
                     CallToggle(symbol: "mic.slash.fill", title: "Mute", on: call.muted) {
                         m.callControl(CallActions4.mute, on: !call.muted)
                     }
@@ -40,9 +40,11 @@ struct LiveCallCard: View {
                         .accessibilityLabel("End call")
                 }
             }
-            Text("Call audio is on your phone or its earbuds.").font(Typo.sans(10)).foregroundColor(Mono.muted)
-            if let note = m.callNote {
-                Text(note).font(Typo.sans(11)).foregroundColor(Mono.muted).fixedSize(horizontal: false, vertical: true)
+            // 0.5.1: one clear line, and only when it matters (Mute unavailable, or the last action's result).
+            if let line = CallCaption.line(canMute: call.canMute, muteBlocked: m.callMuteBlocked, note: m.callNote,
+                                           unsupportedNote: CallsModel.describeAction("unsupported")) {
+                Text(line).font(Typo.sans(11)).foregroundColor(Mono.muted).fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
             }
         }
         .padding(14)
@@ -70,7 +72,7 @@ private struct CallToggle: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: symbol).font(.system(size: 13))
-                Text(title).font(Typo.sans(10, .medium))
+                Text(title).font(Typo.sans(10, .medium)).lineLimit(1).minimumScaleFactor(0.8)
             }
             .foregroundColor(on ? Mono.bg : Mono.text)
             .frame(width: 58, height: 44)

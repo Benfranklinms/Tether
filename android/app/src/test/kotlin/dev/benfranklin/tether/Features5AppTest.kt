@@ -19,8 +19,8 @@ class Features5AppTest {
             SetupRow("b", "B", "", ok = false, required = true),
             SetupRow("c", "C", "", ok = false, required = false),
         )
-        assertEquals("1 of 3 ready · 1 required missing", setupSummary(rows))
-        assertEquals("1 of 1 ready", setupSummary(rows.take(1)))
+        assertEquals("1/3 · 1 required", setupSummary(rows))
+        assertEquals("1/1", setupSummary(rows.take(1)))
     }
 
     @Test fun browserAddressBarsBecomeUrls() {

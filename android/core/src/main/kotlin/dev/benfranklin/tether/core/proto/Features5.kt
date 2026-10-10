@@ -28,8 +28,10 @@ object Caps5 {
     const val STATUS = "status"
     /** Clipboard images travel as file transfers with FILE_OFFER.kind = "clip". */
     const val CLIP_IMAGE = "clipimg"
+    /** 0.5.1: ALBUMS_REQ / ALBUMS and PHOTOS_REQ album/filter, PhotoItem duration/bucket/favorite. */
+    const val ALBUMS = "albums"
 
-    val ALL: List<String> = listOf(FS, PHOTOS, OTP, CONTINUE, OPEN_URL, TYPE, DND, STATUS, CLIP_IMAGE)
+    val ALL: List<String> = listOf(FS, PHOTOS, OTP, CONTINUE, OPEN_URL, TYPE, DND, STATUS, CLIP_IMAGE, ALBUMS)
 }
 
 /** FILE_OFFER kinds added in revision 5. */
@@ -120,7 +122,17 @@ class Thumb(val ref: String, val ok: Boolean, val data: ByteArray, val reason: S
 // ---------------- Photos ----------------
 
 /** Mac -> phone: newest [limit] photos/videos taken before [before] (ms) when paging. */
-@Serializable data class PhotosReq(val ref: String, val limit: Int = 60, val before: Long? = null) : Message {
+/**
+ * Mac -> phone: a page of the camera roll. 0.5.1 (cap "albums"): [album] = an [AlbumInfo.id]
+ * (null = all), [filter] = [PhotoFilters] value (null = everything). Older phones ignore both.
+ */
+@Serializable data class PhotosReq(
+    val ref: String,
+    val limit: Int = 60,
+    val before: Long? = null,
+    val album: String? = null,
+    val filter: String? = null,
+) : Message {
     override val type get() = MsgType.PHOTOS_REQ
 }
 
@@ -133,7 +145,51 @@ class Thumb(val ref: String, val ok: Boolean, val data: ByteArray, val reason: S
     val h: Int = 0,
     val mime: String = "image/jpeg",
     val video: Boolean = false,
+    /** 0.5.1: video duration in ms (0 = unknown or a photo). */
+    val dur: Long = 0,
+    /** 0.5.1: MediaStore bucket id. */
+    val bucket: String? = null,
+    /** 0.5.1: MediaStore IS_FAVORITE (Android 11+). */
+    val fav: Boolean = false,
 )
+
+/** PhotosReq.filter values (0.5.1). */
+object PhotoFilters {
+    const val PHOTOS = "photos"
+    const val VIDEOS = "videos"
+    const val SCREENSHOTS = "screenshots"
+}
+
+/** Album kinds (0.5.1). Built-in albums first, then other MediaStore buckets. */
+object AlbumKinds {
+    const val ALL = "all"
+    const val CAMERA = "camera"
+    const val SCREENSHOTS = "screenshots"
+    const val WHATSAPP = "whatsapp"
+    const val DOWNLOADS = "downloads"
+    const val VIDEOS = "videos"
+    const val FAVORITES = "favorites"
+    const val BUCKET = "bucket"
+}
+
+/** One album: [id] goes back in PhotosReq.album; [cover] is a photo id for THUMB_REQ root "photos". */
+@Serializable data class AlbumInfo(
+    val id: String,
+    val name: String,
+    val count: Int,
+    val cover: String? = null,
+    val kind: String = AlbumKinds.BUCKET,
+)
+
+/** Mac -> phone: list the albums (0.5.1). */
+@Serializable data class AlbumsReq(val ref: String) : Message {
+    override val type get() = MsgType.ALBUMS_REQ
+}
+
+/** Phone -> Mac: albums with counts and covers. [needs] as in [Photos]. */
+@Serializable data class Albums(val ref: String, val albums: List<AlbumInfo>, val needs: String? = null) : Message {
+    override val type get() = MsgType.ALBUMS
+}
 
 /** Phone -> Mac: newest first. [needs] = "photos" (permission), "disabled" or "error:<reason>". */
 @Serializable data class Photos(

@@ -8,10 +8,12 @@ import UniformTypeIdentifiers
 struct HomePage: View {
     @EnvironmentObject var m: AppModel
     @ObservedObject var v5: V5State
+    @Environment(\.accessibilityReduceMotion) private var reduce
 
     var body: some View {
         PageScroll {
             PageTitle(title: m.peer?.name ?? "Tether", detail: homeLine)
+            SetupHomeRow(v5: v5)
             if m.peer == nil {
                 Card {
                     Row(title: "Pair your phone", detail: "Install Tether on Android, then scan the code.", divider: false) {
@@ -19,7 +21,7 @@ struct HomePage: View {
                     }
                 }
             }
-            if let otp = v5.otp { OtpCard(otp: otp) }
+            if let otp = v5.otp { OtpCard(otp: otp).transition(Motion.row(reduce)) }
             if !v5.continueCards.cards.isEmpty {
                 SectionLabel(text: "Continue on Mac")
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -31,7 +33,8 @@ struct HomePage: View {
             if let np = m.nowPlaying, np.active { NowPlayingCard(np: np) }
             SectionLabel(text: "Quick actions")
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                ActionTile(title: "Send clipboard", symbol: "doc.on.clipboard", enabled: m.isConnected) { m.sendClipboardNow() }
+                ActionTile(title: "Send clipboard", symbol: "doc.on.clipboard", enabled: m.isConnected,
+                           done: v5.succeeded.contains("clipboard")) { m.sendClipboardNow() }
                 ActionTile(title: "Send file", symbol: "arrow.up.doc", enabled: m.isConnected) { m.chooseFiles() }
                 ActionTile(title: m.ringRequested ? "Stop ringing" : "Ring phone", symbol: "bell.and.waves.left.and.right",
                            enabled: m.isConnected) { m.ringRequested ? m.stopRing() : m.ring() }
@@ -45,7 +48,6 @@ struct HomePage: View {
                               isOn: Binding(get: { v5.phoneDnd?.on ?? false }, set: { m.setPhoneDnd($0) }), divider: false)
                 }
             }
-            SetupChecklist(compact: true)
             if !m.history.items.isEmpty {
                 HStack {
                     SectionLabel(text: "Latest notifications")
@@ -56,9 +58,11 @@ struct HomePage: View {
                 VStack(spacing: 0) {
                     ForEach(m.history.items.prefix(4)) { n in
                         NotificationRow(n: n, privacy: m.settings.notifications.privacyMode, onDismiss: { m.dismiss(n.key) })
+                            .transition(Motion.row(reduce))
                     }
                 }
                 .tetherCard()
+                .animation(Motion.spring(reduce), value: m.history.items.prefix(4).map(\.key))
             }
         }
     }
@@ -83,7 +87,10 @@ struct OtpCard: View {
                     Text(otp.code).font(Typo.mono(26, .semibold)).foregroundColor(Mono.text).textSelection(.enabled)
                 }
                 Spacer()
-                GhostButton(title: m.settings.otpAutoCopy ? "Copy again" : "Copy") { m.copyOtp() }
+                GhostButton(title: m.v5.succeeded.contains("otp") ? "Copied ✓" : (m.settings.otpAutoCopy ? "Copy again" : "Copy")) {
+                    m.copyOtp()
+                    m.flashSuccess("otp")
+                }
             }
             .padding(14)
         }
@@ -167,9 +174,34 @@ struct FilesPage: View {
     @EnvironmentObject var m: AppModel
     @ObservedObject var v5: V5State
 
+    @State private var mode: FilesViewMode = .list
+    @Environment(\.accessibilityReduceMotion) private var reduce
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            PageTitle(title: "Files", detail: "Browse your phone. Drag a file to Finder, or download it.")
+            HStack(alignment: .firstTextBaseline) {
+                PageTitle(title: "Files", detail: "Browse your phone. Drag a file to Finder, or download it.")
+                Spacer()
+                ViewModeToggle(mode: Binding(get: { mode }, set: { new in
+                    mode = new
+                    UserDefaults.standard.set(new.rawValue, forKey: FilesViewMode.key(root: v5.folder.root))
+                }))
+            }
+            ScrollView(.horizontal, showsIndicators: false) { roots }
+            breadcrumb
+            content
+        }
+        .padding(20)
+        .onAppear {
+            mode = FilesViewMode.load(root: v5.folder.root) { UserDefaults.standard.string(forKey: $0) }
+            if v5.folder.entries.isEmpty && !v5.folder.loading { m.openFolder(root: v5.folder.root, path: v5.folder.path) }
+        }
+        .onChange(of: v5.folder.root) { r in
+            withAnimation(Motion.spring(reduce)) { mode = FilesViewMode.load(root: r) { UserDefaults.standard.string(forKey: $0) } }
+        }
+    }
+
+    private var roots: some View {
             HStack(spacing: 6) {
                 ForEach(FsRoots.browsable, id: \.self) { r in
                     Button { m.openFolder(root: r) } label: {
@@ -182,11 +214,6 @@ struct FilesPage: View {
                     .buttonStyle(PressStyle())
                 }
             }
-            breadcrumb
-            content
-        }
-        .padding(20)
-        .onAppear { if v5.folder.entries.isEmpty && !v5.folder.loading { m.openFolder(root: v5.folder.root, path: v5.folder.path) } }
     }
 
     private var breadcrumb: some View {
@@ -227,6 +254,17 @@ struct FilesPage: View {
                 path: v5.folder.path) } } }
         } else if v5.folder.entries.isEmpty && !v5.folder.loading {
             Text("This folder is empty").font(Typo.sans(12)).foregroundColor(Mono.muted).padding(.top, 20)
+        } else if mode == .grid {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104, maximum: 132), spacing: 8)], spacing: 8) {
+                    ForEach(v5.folder.entries, id: \.self) { e in
+                        PhoneFileCell(entry: e, root: v5.folder.root, base: v5.folder.path)
+                            .transition(.scale(scale: 0.92).combined(with: .opacity))
+                    }
+                }
+                if v5.folder.more { GhostButton(title: "Load more") { m.loadMoreFiles() }.padding(10) }
+            }
+            .transition(.opacity)
         } else {
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -237,6 +275,7 @@ struct FilesPage: View {
                 }
                 .tetherCard()
             }
+            .transition(.opacity)
         }
     }
 }
@@ -270,7 +309,7 @@ struct PhoneFileRow: View {
         .onHover { hover = $0 }
         .onTapGesture(count: 2) { entry.dir ? m.openFolder(root: root, path: path) : preview() }
         .onTapGesture { if entry.dir { m.openFolder(root: root, path: path) } }
-        .onDrag { dragProvider() }
+        .onDrag { m.phoneFileDragProvider(entry: entry, root: root, path: path) }
         .contextMenu {
             if !entry.dir {
                 Button("Preview") { preview() }
@@ -288,11 +327,10 @@ struct PhoneFileRow: View {
     @ViewBuilder private var thumb: some View {
         let key = m.thumbKey(root: root, path: path)
         Group {
-            if let img = m.v5.thumbs[key] {
-                Image(nsImage: img).resizable().scaledToFill()
+            if !entry.dir && (entry.isImage || entry.isVideo) {
+                ThumbImage(key: key, symbol: entry.isImage ? "photo" : "film") { m.requestThumb(root: root, path: path) }
             } else {
-                Image(systemName: entry.dir ? "folder" : (entry.isImage ? "photo" : (entry.isVideo ? "film" : "doc")))
-                    .font(.system(size: 14, weight: .light)).foregroundColor(Mono.muted)
+                Image(systemName: entry.dir ? "folder" : "doc").font(.system(size: 14, weight: .light)).foregroundColor(Mono.muted)
             }
         }
         .frame(width: 30, height: 30)
@@ -312,37 +350,6 @@ struct PhoneFileRow: View {
         p.canCreateDirectories = true
         p.prompt = "Save here"
         if p.runModal() == .OK, let u = p.url { m.fetchPhoneFile(root: root, path: path, name: entry.name, folder: u) }
-    }
-
-    /// Dragging to Finder: Finder gets a promise; the file is fetched from the phone and handed
-    /// over when it lands (up to two minutes).
-    private func dragProvider() -> NSItemProvider {
-        guard !entry.dir else { return NSItemProvider() }
-        let provider = NSItemProvider()
-        provider.suggestedName = entry.name
-        let type = UTType(filenameExtension: (entry.name as NSString).pathExtension) ?? .data
-        let (root, path, name, model) = (root, path, entry.name, m)
-        provider.registerFileRepresentation(forTypeIdentifier: type.identifier, fileOptions: [], visibility: .all) { done in
-            let folder = Paths.sub("drag").appendingPathComponent(UUID().uuidString)
-            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            DispatchQueue.main.async { model.fetchPhoneFile(root: root, path: path, name: name, folder: folder) }
-            let progress = Progress(totalUnitCount: 1)
-            DispatchQueue.global().async {
-                let deadline = Date().addingTimeInterval(120)
-                while Date() < deadline {
-                    if let f = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first {
-                        progress.completedUnitCount = 1
-                        done(f, false, nil)
-                        return
-                    }
-                    Thread.sleep(forTimeInterval: 0.25)
-                }
-                done(nil, false, NSError(domain: "Tether", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "The phone didn't send the file"]))
-            }
-            return progress
-        }
-        return provider
     }
 }
 
@@ -373,10 +380,10 @@ struct PreviewSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12).fill(Mono.surfaceHigh)
-                if let img = m.v5.thumbs[key] ?? m.v5.thumbs[m.thumbKey(root: item.root, path: item.path)] {
-                    Image(nsImage: img).resizable().scaledToFit()
-                } else if item.mime?.hasPrefix("image/") == true || item.mime?.hasPrefix("video/") == true {
-                    ProgressView()
+                if item.mime?.hasPrefix("image/") == true || item.mime?.hasPrefix("video/") == true {
+                    ThumbImage(key: key, fallbacks: [m.thumbKey(root: item.root, path: item.path)], fit: true) {
+                        m.requestThumb(root: item.root, path: item.path, size: 1024)
+                    }
                 } else {
                     Image(systemName: "doc").font(.system(size: 40, weight: .ultraLight)).foregroundColor(Mono.muted)
                 }
@@ -400,78 +407,6 @@ struct PreviewSheet: View {
         .padding(20)
         .frame(width: 500)
         .background(Mono.bg)
-        .onAppear {
-            if item.mime?.hasPrefix("image/") == true || item.mime?.hasPrefix("video/") == true {
-                m.requestThumb(root: item.root, path: item.path, size: 1024)
-            }
-        }
-    }
-}
-
-// MARK: - Photos
-
-struct PhotosPage: View {
-    @EnvironmentObject var m: AppModel
-    @ObservedObject var v5: V5State
-    private let columns = [GridItem(.adaptive(minimum: 120, maximum: 160), spacing: 6)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                PageTitle(title: "Photos", detail: "Your phone's camera roll, newest first.")
-                Spacer()
-                if v5.library.loading { ProgressView().controlSize(.small) }
-                GhostButton(title: "Refresh") { m.loadPhotos() }
-            }
-            if let needs = v5.library.needs {
-                Card {
-                    Row(title: needs == "photos" ? "Allow photo access on your phone" : "Photos are off on your phone",
-                        detail: "Open Tether on your phone › Setup.",
-                            divider: false) { GhostButton(title: "Check again") { m.loadPhotos() } }
-                }
-            } else if let e = v5.library.error {
-                Card { Row(title: e, divider: false) { GhostButton(title: "Retry") { m.loadPhotos() } } }
-            }
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(v5.library.items) { p in PhotoTile(item: p) }
-                }
-                if v5.library.more { GhostButton(title: "Load more") { m.loadPhotos(more: true) }.padding(10) }
-            }
-        }
-        .padding(20)
-        .onAppear { if v5.library.items.isEmpty && !v5.library.loading { m.loadPhotos() } }
-    }
-}
-
-struct PhotoTile: View {
-    @EnvironmentObject var m: AppModel
-    let item: PhotoItem
-    @State private var hover = false
-
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            Rectangle().fill(Mono.surfaceHigh)
-            if let img = m.v5.thumbs[m.thumbKey(root: FsRoots.photos, path: item.id)] {
-                Image(nsImage: img).resizable().scaledToFill()
-            }
-            if item.video {
-                Image(systemName: "play.fill").font(.system(size: 10)).foregroundColor(.white).padding(6).shadow(radius: 2)
-            }
-        }
-        .aspectRatio(1, contentMode: .fill)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(hover ? Mono.text : Color.clear, lineWidth: 1))
-        .onHover { hover = $0 }
-        .onTapGesture {
-            m.v5.preview = PreviewItem(id: item.id, root: FsRoots.photos, path: item.id, name: item.name, size: item.size,
-                                       date: item.date, mime: item.mime)
-        }
-        .contextMenu {
-            Button("Download") { m.fetchPhoneFile(root: FsRoots.photos, path: item.id, name: item.name) }
-            Button("Download and open") { m.fetchPhoneFile(root: FsRoots.photos, path: item.id, name: item.name, open: true) }
-        }
-        .accessibilityLabel(item.name)
     }
 }
 
@@ -515,8 +450,10 @@ struct ClipRow: View {
         HStack(spacing: 10) {
             Image(systemName: item.direction == .fromPhone ? "iphone.gen2" : "laptopcomputer")
                 .font(.system(size: 12, weight: .light)).foregroundColor(Mono.muted).frame(width: 18)
-            if let f = item.image, let img = NSImage(contentsOf: AppModel.clipsDir.appendingPathComponent(f)) {
-                Image(nsImage: img).resizable().scaledToFill().frame(width: 64, height: 40)
+            if let f = item.image {
+                // 0.5.1: read and decoded off the main thread, then cached (no disk read per redraw).
+                ThumbImage(key: "clip/\(f)") { m.loadLocalThumb(key: "clip/\(f)", url: AppModel.clipsDir.appendingPathComponent(f)) }
+                    .frame(width: 64, height: 40)
                     .clipShape(RoundedRectangle(cornerRadius: 5))
                 Text("Image").font(Typo.sans(12)).foregroundColor(Mono.muted)
             } else {

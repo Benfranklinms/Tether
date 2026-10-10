@@ -19,6 +19,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -114,8 +115,11 @@ class MainActivity : ComponentActivity() {
         super.onWindowFocusChanged(hasFocus)
         // Android 10+: the clipboard is readable only while we have focus.
         if (hasFocus && runtime.ui.value.link is LinkState.Connected) {
-            val image = readClipboardImage(this)
-            if (image != null) runtime.clipboardImageSeen(image) else runtime.clipboardSeen(readClipboardText(this))
+            when (val c = dev.benfranklin.tether.clip.readClipContent(this)) {
+                is dev.benfranklin.tether.core.features.ClipContent.Image -> runtime.clipboardImageSeen(Uri.parse(c.uri))
+                is dev.benfranklin.tether.core.features.ClipContent.Text -> runtime.clipboardSeen(c.text)
+                dev.benfranklin.tether.core.features.ClipContent.Empty -> Unit
+            }
         }
     }
 }
@@ -277,10 +281,23 @@ private fun TetherApp(rt: TetherRuntime) {
     val sharedScope = this
     NavHost(
         nav, startDestination = "home",
-        enterTransition = { slideInHorizontally(slide) { it } },
-        exitTransition = { slideOutHorizontally(slide) { -it / 3 } + fadeOut(fade, targetAlpha = 0.6f) },
-        popEnterTransition = { slideInHorizontally(slide) { -it / 3 } + fadeIn(fade, initialAlpha = 0.6f) },
-        popExitTransition = { slideOutHorizontally(slide) { it } },
+        // Reduce motion / animator scale 0: a short crossfade instead of the slide (0.5.1).
+        enterTransition = { if (reduce) fadeIn(tween(REDUCED_FADE_MS)) else slideInHorizontally(slide) { it } },
+        exitTransition = {
+            if (reduce) {
+                fadeOut(tween(REDUCED_FADE_MS))
+            } else {
+                slideOutHorizontally(slide) { -it / 3 } + fadeOut(fade, targetAlpha = 0.6f)
+            }
+        },
+        popEnterTransition = {
+            if (reduce) {
+                fadeIn(tween(REDUCED_FADE_MS))
+            } else {
+                slideInHorizontally(slide) { -it / 3 } + fadeIn(fade, initialAlpha = 0.6f)
+            }
+        },
+        popExitTransition = { if (reduce) fadeOut(tween(REDUCED_FADE_MS)) else slideOutHorizontally(slide) { it } },
     ) {
         composable("home") {
           CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
@@ -603,6 +620,7 @@ fun readClipboardImage(c: android.content.Context): android.net.Uri? = runCatchi
     clip.getItemAt(0).uri?.takeIf { it.authority != c.packageName + ".files" }
 }.getOrNull()
 
+private const val REDUCED_FADE_MS = 150
 private const val UPDATE_EVERY_MS = 24L * 60 * 60 * 1000
 
 /** Checklist rows for the UI (pure mapping of [dev.benfranklin.tether.v5.Setup.items]). */

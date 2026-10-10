@@ -63,11 +63,23 @@ data class SetupRow(
     val note: String? = null,
 )
 
-/** Pure: "12 of 16 ready · 1 required missing". Unit-tested. */
+/** Pure: "12/16 · 1 required" (0.5.1: short, so the row title never wraps). Unit-tested. */
 fun setupSummary(rows: List<SetupRow>): String {
-    val ok = rows.count { it.ok }
     val missingRequired = rows.count { it.required && !it.ok }
-    return "$ok of ${rows.size} ready" + if (missingRequired > 0) " · $missingRequired required missing" else ""
+    return dev.benfranklin.tether.core.features.SetupSummary.value(rows.count { it.ok }, rows.size, missingRequired)
+}
+
+/** The summary with its "n required" part in the mono face. */
+fun setupValueText(summary: String): androidx.compose.ui.text.AnnotatedString = androidx.compose.ui.text.buildAnnotatedString {
+    val i = summary.indexOf(" · ")
+    if (i < 0) {
+        append(summary)
+    } else {
+        append(summary.substring(0, i + 3))
+        pushStyle(androidx.compose.ui.text.SpanStyle(fontFamily = dev.benfranklin.tether.ui.theme.MonoCode, color = Mono.Text))
+        append(summary.substring(i + 3))
+        pop()
+    }
 }
 
 /** Setup checklist: every permission Tether can use, its status, and a Fix button or adb steps. */
@@ -81,7 +93,10 @@ fun SetupScreen(rows: List<SetupRow>, onFix: (String) -> Unit, onCopy: (String) 
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                 )
             }
-            val groups = listOf("Required" to rows.filter { it.required }, "Optional" to rows.filter { !it.required })
+            // 0.5.1: optional rows (adb, Accessibility, feature grants) under the feature they unlock.
+            val optional = dev.benfranklin.tether.core.features.SetupFeatures.group(rows.filter { !it.required }) { it.id }
+                .map { (f, l) -> "Optional · $f" to l }
+            val groups = listOf("Required" to rows.filter { it.required }) + optional
             for ((title, list) in groups) {
                 if (list.isEmpty()) continue
                 item { SectionHeader(title) }
@@ -115,7 +130,10 @@ private fun SetupItem(r: SetupRow, onFix: (String) -> Unit, onCopy: (String) -> 
             Status(r.ok)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(r.label, style = MaterialTheme.typography.bodyLarge, color = Mono.Text)
+                Text(
+                    r.label, style = MaterialTheme.typography.bodyLarge, color = Mono.Text, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
                 Text(r.why, style = MaterialTheme.typography.bodySmall, color = Mono.Muted)
             }
             if (!r.ok && r.commands.isEmpty()) {
@@ -184,7 +202,7 @@ fun More5Screen(
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Continue, files & updates", onBack) }) { pad ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding(), bottom = 40.dp)) {
             item { SectionHeader("Setup") }
-            item { Card { NavRow("Setup checklist", setup, onClick = a::openSetup) } }
+            item { Card { NavRow("Setup checklist", null, valueText = setupValueText(setup), onClick = a::openSetup) } }
             item { SectionHeader("Continue on Mac") }
             item {
                 Card {

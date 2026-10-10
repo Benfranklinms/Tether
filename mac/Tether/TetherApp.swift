@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel?
     private var status: StatusController?
     private var router: WindowRouter?
+    private var callPanel: FloatingCallController?
     /// Links that arrived before launch finished.
     private var pendingURLs: [URL] = []
 
@@ -50,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = m
         router = r
         status = StatusController(model: m)
+        callPanel = FloatingCallController(model: m)
         let early = pendingURLs
         pendingURLs.removeAll()
         handle(early)
@@ -177,10 +179,21 @@ enum Screenshots {
         Shot(name: "settings-mac", scene: .connected) { AnyView(SettingsView(initialSection: .mac)) },
         Shot(name: "settings-updates", scene: .connected) { AnyView(SettingsView(initialSection: .updates)) },
         Shot(name: "keyboard", scene: .connected) { AnyView(KeyboardView(v5: V5State())) },
+        // 0.5.1
+        Shot(name: "main-photos-viewer", scene: .connected) {
+            AnyView(MainShot(page: .photos) { m in m.v5.viewer = m.v5.library.items.first })
+        },
+        Shot(name: "main-files-grid", scene: .connected) {
+            AnyView(MainShot(page: .files) { _ in UserDefaults.standard.set("grid", forKey: FilesViewMode.key(root: FsRoots.downloads)) })
+        },
+        Shot(name: "settings-setup", scene: .connected) { AnyView(SettingsView(initialSection: .setup)) },
+        Shot(name: "call-banner", scene: .call) { AnyView(FloatingCallView(onClose: { _ in }).padding(20)) },
     ]
 
     /// The main window on one page (the model's V5State is swapped in by `next`).
-    private static func main(_ page: MainPage) -> some View { MainShot(page: page) }
+    private static func main(_ page: MainPage) -> some View {
+        MainShot(page: page) { _ in UserDefaults.standard.removeObject(forKey: FilesViewMode.key(root: FsRoots.downloads)) }
+    }
 
     /// Dark first, then Light ("-light" suffix).
     static var appearance: NSAppearance? = NSAppearance(named: .darkAqua)
