@@ -70,7 +70,6 @@ struct PairView: View {
         .frame(width: 420, height: 540)
         .tetherBackground()
         .tetherWindowChrome()
-        .preferredColorScheme(.dark)
         .animation(Motion.spring(reduce), value: s.key)
         .onAppear {
             if m.pairingURI == nil && !m.demo { m.startPairing() }

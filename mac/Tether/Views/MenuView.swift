@@ -44,7 +44,6 @@ struct MenuView: View {
         .overlay(alignment: .topTrailing) { panelButtons }
         .tetherBackground()
         .tetherWindowChrome()
-        .preferredColorScheme(.dark)
         .overlay(dropOverlay)
         .overlay(alignment: .bottom) { noticeView }
         .onDrop(of: [UTType.fileURL], isTargeted: $dropping, perform: drop)
@@ -231,17 +230,17 @@ struct MenuView: View {
                     CallsTab()
                 case .transfers:
                     if !m.recentMedia.isEmpty { RecentMediaStrip(items: m.recentMedia) }
-                    if m.transfers.isEmpty {
+                    if m.visibleTransfers.isEmpty {
                         empty("arrow.up.arrow.down", "Drop files here to send them.\nFiles from your phone land in Downloads/Tether.")
                     }
-                    ForEach(m.transfers, id: \.id) { t in
+                    ForEach(m.visibleTransfers, id: \.id) { t in
                         TransferRow(t: t)
                             .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
                     }
                 }
             }
             .animation(Motion.spring(reduce), value: m.history.items.map(\.key))
-            .animation(Motion.spring(reduce), value: m.transfers.map(\.id))
+            .animation(Motion.spring(reduce), value: m.visibleTransfers.map(\.id))
         }
         .id(tab) // a fresh ScrollView per tab, so every tab opens at the top (0.4.2)
         .onAppear { m.refreshReceivedFiles() }

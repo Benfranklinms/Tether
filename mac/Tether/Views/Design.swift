@@ -2,18 +2,38 @@ import AppKit
 import CoreText
 import SwiftUI
 
-/// Pure Mono palette: black, greys and white. State is shown with weight and fill, never hue.
+/// Pure Mono palette: black, greys and white (light: near-white, greys and near-black). State
+/// is shown with weight and fill, never hue. Every colour resolves against the view's
+/// effective appearance, so Dark / Light / System switch live.
 enum Mono {
-    static let bg = Color(red: 0x09 / 255, green: 0x09 / 255, blue: 0x0A / 255)
-    static let surface = Color(red: 0x14 / 255, green: 0x14 / 255, blue: 0x16 / 255)
-    static let surfaceHigh = Color(red: 0x1C / 255, green: 0x1C / 255, blue: 0x1F / 255)
-    static let line = Color(red: 0x2A / 255, green: 0x2A / 255, blue: 0x2E / 255)
-    static let text = Color(red: 0xF2 / 255, green: 0xF2 / 255, blue: 0xF2 / 255)
-    static let muted = Color(red: 0x8A / 255, green: 0x8A / 255, blue: 0x8E / 255)
-    static let accent = Color(red: 0xE8 / 255, green: 0xE8 / 255, blue: 0xE8 / 255)
+    static let bg = dynamic(dark: 0x09090A, light: 0xFAFAFA)
+    static let surface = dynamic(dark: 0x141416, light: 0xF0F0F1)
+    static let surfaceHigh = dynamic(dark: 0x1C1C1F, light: 0xE6E6E8)
+    static let line = dynamic(dark: 0x2A2A2E, light: 0xD9D9DC)
+    static let text = dynamic(dark: 0xF2F2F2, light: 0x0A0A0B)
+    static let muted = dynamic(dark: 0x8A8A8E, light: 0x5F5F64)
+    static let accent = dynamic(dark: 0xE8E8E8, light: 0x111113)
+
+    /// The window background as an NSColor (for AppKit windows and panels).
+    static let nsBg = dynamicNS(dark: 0x09090A, light: 0xFAFAFA)
+
+    static func isDark(_ a: NSAppearance) -> Bool {
+        a.bestMatch(from: [.darkAqua, .vibrantDark, .aqua, .vibrantLight]).map { $0 == .darkAqua || $0 == .vibrantDark } ?? true
+    }
+
+    private static func rgb(_ hex: Int) -> NSColor {
+        NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+    }
+
+    static func dynamicNS(dark: Int, light: Int) -> NSColor {
+        NSColor(name: nil) { a in isDark(a) ? rgb(dark) : rgb(light) }
+    }
+
+    private static func dynamic(dark: Int, light: Int) -> Color { Color(nsColor: dynamicNS(dark: dark, light: light)) }
 }
 
-/// Manrope (bundled, SIL OFL) for text, SF Mono for numbers and codes.
+/// Manrope (bundled, SIL OFL) for text, JetBrains Mono (bundled, SIL OFL) for numbers and codes.
 enum Typo {
     /// Registers the bundled Manrope weights for this process. Call once at launch.
     static func registerFonts() {
@@ -34,7 +54,13 @@ enum Typo {
     }
 
     static func mono(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
+        let face: String
+        switch weight {
+        case .semibold, .bold, .heavy, .black: face = "JetBrainsMono-SemiBold"
+        case .medium: face = "JetBrainsMono-Medium"
+        default: face = "JetBrainsMono-Regular"
+        }
+        return .custom(face, size: size)
     }
 }
 

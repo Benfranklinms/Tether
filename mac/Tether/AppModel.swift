@@ -61,6 +61,12 @@ final class AppModel: ObservableObject {
     /// Owns the pair / settings / screen windows (set by the app delegate).
     var windows: WindowRouter?
     var lowBattery = LowBatteryMonitor()
+    // 0.5.0
+    let v5 = V5State()
+    let services = ServiceProvider()
+    var v5Subs: Set<AnyCancellable> = []
+    /// Shows/hides the menu-bar item (set by the status controller).
+    var statusItemVisible: ((Bool) -> Void)?
 
     /// How long the pair window waits for the secure link once the phone has connected.
     static let linkingLimit: TimeInterval = 45
@@ -69,7 +75,7 @@ final class AppModel: ObservableObject {
 
     let demo: Bool
     var engine: Engine?
-    private let clipboard = ClipboardWatcher()
+    let clipboard = ClipboardWatcher()
     let notifier = Notifier()
     private let settingsFile = JSONFile<MacSettings>("settings.json")
     private let historyFile = JSONFile<NotificationHistory>("history.json")
@@ -80,7 +86,10 @@ final class AppModel: ObservableObject {
     init(demo: Bool = false) {
         self.demo = demo
         settings = demo ? MacSettings() : (JSONFile<MacSettings>("settings.json").read() ?? MacSettings())
-        guard !demo else { return }
+        guard !demo else {
+            setUp5()
+            return
+        }
         history = historyFile.read() ?? NotificationHistory()
         let e = Engine(model: self, settings: settings)
         engine = e
@@ -115,9 +124,16 @@ final class AppModel: ObservableObject {
             guard let self, self.settings.sendClipboard, self.isConnected else { return }
             self.engine?.sendClip(text, manual: false)
         }
+        clipboard.onCopyAny = { [weak self] text in self?.addClip(text: text, fromPhone: false) }
+        clipboard.onImage = { [weak self] png in self?.macCopiedImage(png) }
         clipboard.start()
         e.start()
         setUp3()
+        setUp5()
+        registerHotkeys()
+        scheduleUpdateChecks()
+        NSApp.servicesProvider = services
+        services.model = self
     }
 
     var isConnected: Bool {
@@ -147,6 +163,8 @@ final class AppModel: ObservableObject {
         }
         linkChanged3(wasConnected: wasConnected)
         linkChanged4(wasConnected: wasConnected)
+        linkChanged5(wasConnected: wasConnected)
+        WidgetBridge.publish(self)
         if screen.phase == .live || screen.phase == .consent || screen.phase == .requesting {
             if case .connected(_, let w) = link, w {} else {
                 screen.phase = .ended("The Wi-Fi link to your phone dropped")
@@ -231,6 +249,12 @@ final class AppModel: ObservableObject {
         clipboard.set(text)
     }
 
+    /// Text from the phone's clipboard (CLIP message): copy it and keep it in history.
+    func receiveClipFromPhone(_ text: String) {
+        clipboard.set(text)
+        addClip(text: text, fromPhone: true)
+    }
+
     func receiveNotification(_ n: NotifPayload) {
         let p = MacNotificationPolicy.present(n, settings: settings.notifications)
         history.noteApp(n)
@@ -297,6 +321,13 @@ final class AppModel: ObservableObject {
     func rejectPairing() { engine?.rejectPairing() }
 
     func sendClipboardNow() {
+        if clipboard.currentText?.isEmpty != false, let png = clipboard.currentImagePNG {
+            guard supports(Caps5.clipImage) else { return toast(isConnected ? "Update Tether on your phone" : "Not connected") }
+            let url = Self.clipsDir.appendingPathComponent("mac-\(Self.nowMs).png")
+            guard (try? png.write(to: url)) != nil else { return }
+            engine?.sendClipImage(url)
+            return toast("Sending the image to your phone")
+        }
         guard let text = clipboard.currentText, !text.isEmpty else { return toast("The clipboard is empty") }
         engine?.sendClip(text, manual: true)
     }
@@ -431,6 +462,7 @@ final class AppModel: ObservableObject {
         engine?.apply(settings)
         settingsChanged3(old)
         settingsChanged4(old)
+        settingsChanged5(old)
         if settings.notifications.historyLimit != old.notifications.historyLimit {
             history.trim(settings.notifications.historyLimit)
             scheduleHistoryWrite()

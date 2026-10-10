@@ -342,7 +342,6 @@ struct ScreenWindow: View {
         .frame(minWidth: 300, minHeight: 480)
         .tetherBackground()
         .tetherWindowChrome()
-        .preferredColorScheme(.dark)
         .animation(Motion.spring(reduce), value: screen.phase)
         .animation(Motion.spring(reduce), value: screen.hasVideo)
         .onDisappear { m.stopScreen() }

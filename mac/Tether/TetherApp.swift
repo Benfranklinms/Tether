@@ -50,8 +50,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = m
         router = r
         status = StatusController(model: m)
-        pendingURLs.forEach(m.openPhoneLink)
+        let early = pendingURLs
         pendingURLs.removeAll()
+        handle(early)
+        if Launch.demo || UserDefaults.standard.object(forKey: "mainWindowOpen") == nil
+            || UserDefaults.standard.bool(forKey: "mainWindowOpen") || !m.settings.presence.showsMenuBar {
+            r.show(.main)
+        }
         // First launch with no phone paired: open the pairing window.
         let d = UserDefaults.standard
         if m.peer == nil, !d.bool(forKey: "didOfferPairing") {
@@ -62,22 +67,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Opening the app again from Finder/Spotlight shows the panel or settings.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { router?.show(.settings) }
+        if !flag { router?.show(.main) }
         return true
     }
+
+    /// Dock menu: the slim actions.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Send Clipboard to Phone", action: #selector(dockSendClipboard), keyEquivalent: "")
+        menu.addItem(withTitle: "Send File to Phone…", action: #selector(dockSendFile), keyEquivalent: "")
+        menu.addItem(withTitle: "Keyboard", action: #selector(dockKeyboard), keyEquivalent: "")
+        menu.items.forEach { $0.target = self }
+        return menu
+    }
+
+    @objc private func dockSendClipboard() { model?.sendClipboardNow() }
+    @objc private func dockSendFile() { model?.chooseFiles() }
+    @objc private func dockKeyboard() { router?.show(.keyboard) }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     /// tel: / callto: links (Tether registered as their handler) and anything else opened with Tether.
+    /// tel:/callto: links, tether:// links (share extension inbox, Focus automation) and files
+    /// dropped on the Dock icon (sent to the phone).
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where TelURL.schemes.contains(url.scheme?.lowercased() ?? "") {
-            if let m = model { m.openPhoneLink(url) } else { pendingURLs.append(url) }
+        guard model != nil else { return pendingURLs.append(contentsOf: urls) }
+        handle(urls)
+    }
+
+    private func handle(_ urls: [URL]) {
+        guard let m = model else { return }
+        var files: [URL] = []
+        for url in urls {
+            let scheme = url.scheme?.lowercased() ?? ""
+            if TelURL.schemes.contains(scheme) {
+                m.openPhoneLink(url)
+            } else if scheme == "tether" {
+                TetherLinks.handle(url, model: m)
+            } else if url.isFileURL {
+                files.append(url)
+            }
         }
+        if !files.isEmpty { m.sendFiles(files) }
     }
 }
 
 /// Renders real views with demo data in an on-screen borderless window and writes PNGs
 /// (CI uses this for the README images).
+/// tether://inbox (Finder Share extension), tether://dnd?on=1|0 (Focus automations),
+/// tether://open (bring up the window).
+enum TetherLinks {
+    static func handle(_ url: URL, model m: AppModel) {
+        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        switch url.host?.lowercased() {
+        case "inbox": ShareInbox.drain(into: m)
+        case "dnd":
+            let on = q.first { $0.name == "on" }?.value
+            m.macFocusChanged(on == "1" || on == "true")
+        case "open": m.windows?.show(.main)
+        case "send":
+            if let t = q.first(where: { $0.name == "text" })?.value { m.openOnPhone(text: t) }
+        default: Log.info("link.unknown", ["host": url.host ?? "-"])
+        }
+    }
+}
+
 enum Screenshots {
     struct Shot {
         let name: String
@@ -110,13 +164,38 @@ enum Screenshots {
         Shot(name: "menu-live-call", scene: .liveCall) { AnyView(MenuView()) },
         Shot(name: "menu-calls", scene: .calls) { AnyView(MenuView(initialTab: .calls)) },
         Shot(name: "menu-codes", scene: .codes) { AnyView(MenuView()) },
+        // 0.5.0
+        Shot(name: "slim-menu", scene: .connected) { AnyView(SlimMenuView()) },
+        Shot(name: "main-home", scene: .connected) { AnyView(main(.home)) },
+        Shot(name: "main-files", scene: .connected) { AnyView(main(.files)) },
+        Shot(name: "main-photos", scene: .connected) { AnyView(main(.photos)) },
+        Shot(name: "main-clipboard", scene: .connected) { AnyView(main(.clipboard)) },
+        Shot(name: "main-notifications", scene: .connected) { AnyView(main(.notifications)) },
+        Shot(name: "main-messages", scene: .connected) { AnyView(main(.messages)) },
+        Shot(name: "main-calls", scene: .calls) { AnyView(main(.calls)) },
+        Shot(name: "settings-appearance", scene: .connected) { AnyView(SettingsView(initialSection: .appearance)) },
+        Shot(name: "settings-mac", scene: .connected) { AnyView(SettingsView(initialSection: .mac)) },
+        Shot(name: "settings-updates", scene: .connected) { AnyView(SettingsView(initialSection: .updates)) },
+        Shot(name: "keyboard", scene: .connected) { AnyView(KeyboardView(v5: V5State())) },
     ]
+
+    /// The main window on one page (the model's V5State is swapped in by `next`).
+    private static func main(_ page: MainPage) -> some View { MainShot(page: page) }
+
+    /// Dark first, then Light ("-light" suffix).
+    static var appearance: NSAppearance? = NSAppearance(named: .darkAqua)
+    private static var lightPass = false
 
     private static var window: NSWindow?
 
     static func run(into dir: URL, done: @escaping () -> Void) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        next(shots[...], dir, done)
+        next(shots[...], dir) {
+            lightPass = true
+            appearance = NSAppearance(named: .aqua)
+            NSApp.appearance = appearance
+            next(shots[...], dir, done)
+        }
     }
 
     private static func next(_ rest: ArraySlice<Shot>, _ dir: URL, _ done: @escaping () -> Void) {
@@ -127,21 +206,22 @@ enum Screenshots {
         }
         let model = AppModel(demo: true)
         Demo.load(model, shot.scene)
+        Demo5.load(model)
         let host = NSHostingView(rootView: shot.view().environmentObject(model).environment(\.tetherStyle, model.settings.appearance))
         let size = host.fittingSize
         host.frame = NSRect(origin: .zero, size: size)
         let w = window ?? NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window = w
         w.isReleasedWhenClosed = false
-        w.appearance = NSAppearance(named: .darkAqua)
-        w.backgroundColor = NSColor(calibratedRed: 0x09 / 255, green: 0x09 / 255, blue: 0x0A / 255, alpha: 1)
+        w.appearance = Screenshots.appearance
+        w.backgroundColor = Mono.nsBg
         w.contentView = host
         w.setContentSize(size)
         w.setFrameOrigin(NSPoint(x: 40, y: 40))
         w.orderFrontRegardless()
         // Let springs, the code reveal and the QR pop settle before capturing.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            capture(host, to: dir.appendingPathComponent("\(shot.name).png"))
+            capture(host, to: dir.appendingPathComponent("\(shot.name)\(lightPass ? "-light" : "").png"))
             next(rest.dropFirst(), dir, done)
         }
     }

@@ -11,10 +11,13 @@ struct SettingsView: View {
 
     enum Section: String, CaseIterable, Identifiable {
         case general = "General"
+        case appearance = "Appearance"
+        case mac = "Mac"
         case notifications = "Notifications"
         case features = "Features"
         case phone = "Phone"
         case diagnostics = "Diagnostics"
+        case updates = "Updates"
         case about = "About"
 
         var id: String { rawValue }
@@ -22,6 +25,9 @@ struct SettingsView: View {
         var symbol: String {
             switch self {
             case .general: return "gearshape"
+            case .appearance: return "circle.lefthalf.filled"
+            case .mac: return "laptopcomputer"
+            case .updates: return "arrow.down.circle"
             case .notifications: return "bell"
             case .features: return "square.grid.2x2"
             case .phone: return "iphone.gen2"
@@ -47,15 +53,21 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .clipped()
         }
-        .frame(width: 560, height: 600)
+        .frame(minWidth: 560, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
         .tetherBackground()
         .tetherWindowChrome()
-        .preferredColorScheme(.dark)
         .overlay(alignment: .bottom) { toast }
         .animation(Motion.spring(reduce), value: m.notice)
+        .onReceive(NotificationCenter.default.publisher(for: .tetherOpenSettingsSection)) { n in
+            if let raw = n.object as? String, let s = Section(rawValue: raw) { withAnimation(Motion.spring(reduce)) { section = s } }
+        }
     }
 
     private var bar: some View {
+        ScrollView(.horizontal, showsIndicators: false) { barContent }
+    }
+
+    private var barContent: some View {
         HStack(spacing: 4) {
             ForEach(Section.allCases) { s in
                 Button {
@@ -69,7 +81,7 @@ struct SettingsView: View {
                         Text(s.rawValue).font(Typo.sans(11, section == s ? .semibold : .regular))
                     }
                     .foregroundColor(section == s ? Mono.text : Mono.muted)
-                    .frame(width: 84, height: 54)
+                    .frame(width: 66, height: 54)
                     .background {
                         if section == s {
                             RoundedRectangle(cornerRadius: 10).fill(Mono.surfaceHigh).matchedGeometryEffect(id: "sel", in: ns)
@@ -98,7 +110,12 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 switch s {
-                case .general: GeneralPage()
+                case .general:
+                    GeneralPage()
+                    SetupChecklist()
+                case .appearance: AppearancePage5()
+                case .mac: MacPage5()
+                case .updates: UpdatesPage5()
                 case .notifications: NotificationsPage()
                 case .features: FeaturesPage()
                 case .phone: PhonePage()
@@ -127,18 +144,8 @@ private struct GeneralPage: View {
     @EnvironmentObject var m: AppModel
 
     var body: some View {
-        SectionLabel(text: "Appearance")
+        SectionLabel(text: "Connection")
         Card {
-            Row(title: "Look", detail: m.settings.appearance == .glass ? GlassSupport.support : "Solid black, greys and white.",
-                divider: false) {
-                MonoSegmented(options: AppearanceStyle.allCases, selection: $m.settings.appearance, label: { $0.title })
-                    .fixedSize()
-            }
-        }
-        PanelSettings()
-        SectionLabel(text: "Mac")
-        Card {
-            ToggleRow(title: "Open at login", isOn: Binding(get: { m.launchAtLogin }, set: { m.setLaunchAtLogin($0) }))
             ToggleRow(title: "Wi-Fi fast path", detail: "Large files go over your local network when both are on it.",
                       isOn: $m.settings.wifiFastPath, divider: false)
         }

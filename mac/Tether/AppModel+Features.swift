@@ -42,6 +42,7 @@ extension AppModel {
 
     func batteryUpdate(_ b: BatteryPayload) {
         battery = b
+        batteryUpdate5(b)
         if settings.lowBatteryAlert && lowBattery.update(level: b.level, charging: b.charging) {
             notifier.postLocal(id: "low-battery", title: "\(peer?.name ?? "Phone") battery is low",
                                body: "\(b.level)% left. Plug it in soon.", sound: true)
@@ -82,7 +83,7 @@ extension AppModel {
 
     /// Received screenshots/photos, newest first (for the menu's recent strip).
     var recentMedia: [TransferRecord] {
-        transfers.filter { $0.direction == .IN && $0.kind != nil && $0.status == .DONE && $0.ref != nil }.prefix(12).map { $0 }
+        transfers.filter { $0.direction == .IN && PhoneKinds.isMedia($0.kind) && $0.status == .DONE && $0.ref != nil }.prefix(12).map { $0 }
     }
 
     func startScreen() {

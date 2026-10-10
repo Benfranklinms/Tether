@@ -17,7 +17,6 @@ struct MessagesView: View {
         .padding(.top, 28) // under the transparent title bar
         .tetherBackground()
         .tetherWindowChrome()
-        .preferredColorScheme(.dark)
         .onAppear { if m.sms.threads.isEmpty { m.refreshThreads() } }
         .animation(Motion.spring(reduce), value: m.sms.selected)
     }

@@ -273,4 +273,44 @@ final class Mac5LogicTests: XCTestCase {
         XCTAssertEqual(WidgetSnapshot.decode(s.encoded()), s)
         XCTAssertNil(WidgetSnapshot.decode(Data("x".utf8)))
     }
+
+    // MARK: 0.5 private GitHub releases
+
+    func testPrivateReleaseAssetsAndAuthPolicy() throws {
+        let gh = Data(#"""
+        {"tag_name":"v0.5.0","html_url":"https://github.com/Benfranklinms/Tether/releases/tag/v0.5.0","body":"n",
+         "assets":[{"name":"Tether-0.5.0.zip","url":"https://api.github.com/repos/Benfranklinms/Tether/releases/assets/11",
+         "browser_download_url":"https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.zip","size":5,
+         "digest":"sha256:ABCD"},
+         {"name":"Tether-0.5.0.dmg","url":"https://evil.example/repos/Benfranklinms/Tether/releases/assets/12",
+         "browser_download_url":"https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.dmg","size":6}]}
+        """#.utf8)
+        let u = try XCTUnwrap(UpdateFeed.parse(gh))
+        XCTAssertEqual(u.version, "0.5.0")
+        XCTAssertEqual(u.macZip?.apiURL, "https://api.github.com/repos/Benfranklinms/Tether/releases/assets/11")
+        XCTAssertEqual(u.macZip?.sha256, "abcd")
+        XCTAssertNil(u.macDmg?.apiURL, "asset API URL on another host is refused")
+        let api = URL(string: "https://api.github.com/repos/Benfranklinms/Tether/releases/latest")!
+        let cdn = URL(string: "https://objects.githubusercontent.com/x")!
+        XCTAssertEqual(GitHubReleases.headers(for: api, token: "github_pat_x", binary: false)["Authorization"], "Bearer github_pat_x")
+        XCTAssertNil(GitHubReleases.headers(for: cdn, token: "github_pat_x", binary: true)["Authorization"])
+        XCTAssertEqual(GitHubReleases.headers(for: cdn, token: nil, binary: true)["Accept"], "application/octet-stream")
+        XCTAssertNil(GitHubReleases.headers(for: URL(string: "http://api.github.com/x")!, token: "t", binary: false)["Authorization"])
+        XCTAssertFalse(GitHubReleases.redirectKeepsAuth(to: cdn))
+        XCTAssertTrue(GitHubReleases.redirectKeepsAuth(to: api))
+        XCTAssertTrue(GitHubReleases.looksLikeToken("github_pat_11ABCDEFG0123456789_abcdefghijklmnop"))
+        XCTAssertTrue(GitHubReleases.looksLikeToken("  ghp_0123456789abcdefghijABCDEFGHIJ0123  "))
+        XCTAssertFalse(GitHubReleases.looksLikeToken("hello world token value 123"))
+        XCTAssertFalse(GitHubReleases.looksLikeToken("ghp_short"))
+        XCTAssertFalse(GitHubReleases.redact("github_pat_secret").contains("secret"))
+        XCTAssertTrue(GitHubReleases.explain(status: 401).contains("rejected"))
+    }
+
+    func testPhoneKindsOnlyScreenshotsAndPhotosAreMedia() {
+        XCTAssertTrue(PhoneKinds.isMedia("screenshot"))
+        XCTAssertTrue(PhoneKinds.isMedia("photo"))
+        XCTAssertFalse(PhoneKinds.isMedia(FileKinds5.fs))
+        XCTAssertFalse(PhoneKinds.isMedia(FileKinds5.clip))
+        XCTAssertFalse(PhoneKinds.isMedia(nil))
+    }
 }

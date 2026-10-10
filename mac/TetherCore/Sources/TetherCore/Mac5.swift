@@ -41,10 +41,16 @@ public struct UpdateAsset: Codable, Equatable {
     public var url: String
     public var sha256: String?
     public var size: Int64
-    public init(url: String, sha256: String? = nil, size: Int64 = 0) {
+    /// GitHub asset API URL (…/releases/assets/<id>); downloaded with a token and
+    /// `Accept: application/octet-stream` for a private repo.
+    public var apiURL: String?
+    public var name: String?
+    public init(url: String, sha256: String? = nil, size: Int64 = 0, apiURL: String? = nil, name: String? = nil) {
         self.url = url
         self.sha256 = sha256?.lowercased()
         self.size = size
+        self.apiURL = apiURL
+        self.name = name
     }
 }
 
@@ -96,11 +102,76 @@ public enum UpdateFeed {
                   let url = https(a["browser_download_url"] as? String) else { return nil }
             var sha: String?
             if let d = a["digest"] as? String, d.hasPrefix("sha256:") { sha = String(d.dropFirst(7)) }
-            return UpdateAsset(url: url, sha256: sha, size: (a["size"] as? NSNumber)?.int64Value ?? 0)
+            return UpdateAsset(url: url, sha256: sha, size: (a["size"] as? NSNumber)?.int64Value ?? 0,
+                               apiURL: GitHubReleases.apiAsset(a["url"] as? String), name: a["name"] as? String)
         }
         return UpdateInfo(version: tag, notes: o["body"] as? String ?? "", page: o["html_url"] as? String,
                           macZip: asset(".zip"), macDmg: asset(".dmg"), published: o["published_at"] as? String)
     }
+}
+
+// MARK: - Private GitHub Releases (0.5.0)
+
+/// Updates from the private Tether repo: a fine-grained, read-only token (Contents + Metadata,
+/// this repo only) pasted once per device. The token goes only to api.github.com; a redirect to
+/// the asset CDN is followed WITHOUT the Authorization header.
+public enum GitHubReleases {
+    public static let owner = "Benfranklinms"
+    public static let repo = "Tether"
+    public static let latestURL = "https://api.github.com/repos/\(owner)/\(repo)/releases/latest"
+    public static let apiHost = "api.github.com"
+    /// Where the user creates the token (fine-grained, prefilled name and description).
+    public static let newTokenURL = "https://github.com/settings/personal-access-tokens/new"
+        + "?name=Tether%20updates&description=Read-only%20updates%20for%20Tether&target_name=\(owner)"
+    public static let noTokenMessage = "Add a GitHub token to check for updates"
+
+    /// Only asset URLs on api.github.com for this repo are accepted.
+    public static func apiAsset(_ s: String?) -> String? {
+        guard let s, let u = URL(string: s), u.scheme == "https", u.host == apiHost,
+              u.path.hasPrefix("/repos/\(owner)/\(repo)/releases/assets/") else { return nil }
+        return s
+    }
+
+    /// Headers for a request to `url`: the token only for api.github.com over https.
+    public static func headers(for url: URL, token: String?, binary: Bool) -> [String: String] {
+        var h = ["X-GitHub-Api-Version": "2022-11-28", "User-Agent": "Tether-updater",
+                 "Accept": binary ? "application/octet-stream" : "application/vnd.github+json"]
+        if let t = token, !t.isEmpty, mayAuthorize(url) { h["Authorization"] = "Bearer \(t)" }
+        return h
+    }
+
+    public static func mayAuthorize(_ url: URL?) -> Bool { url?.scheme == "https" && url?.host == apiHost }
+
+    /// Redirect policy: keep Authorization only when the redirect stays on api.github.com.
+    public static func redirectKeepsAuth(to url: URL?) -> Bool { mayAuthorize(url) }
+
+    /// Rough token sanity check (fine-grained `github_pat_…` or classic `ghp_…`).
+    public static func looksLikeToken(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.count >= 20, t.count <= 255, !t.contains(where: { $0.isWhitespace }) else { return false }
+        return t.hasPrefix("github_pat_") || t.hasPrefix("ghp_")
+    }
+
+    /// For logs and UI: never the token itself.
+    public static func redact(_ s: String) -> String { s.isEmpty ? "none" : "set (\(s.count) chars)" }
+
+    /// Human message for an HTTP status from the releases API.
+    public static func explain(status: Int) -> String {
+        switch status {
+        case 200: return "OK"
+        case 401: return "The GitHub token was rejected. Paste a new one."
+        case 403: return "The GitHub token can't read Tether (needs Contents: Read-only on Benfranklinms/Tether), or rate limited."
+        case 404: return "No release found, or the token can't see the Tether repo."
+        default: return "GitHub answered \(status)."
+        }
+    }
+}
+
+/// Phone-originated automatic media (0.2) vs the 0.5 kinds (fs, clip) that are not media.
+public enum PhoneKinds {
+    public static let screenshot = "screenshot"
+    public static let photo = "photo"
+    public static func isMedia(_ kind: String?) -> Bool { kind == screenshot || kind == photo }
 }
 
 // MARK: - Clipboard history

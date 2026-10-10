@@ -13,6 +13,8 @@ final class MacFiles: OutgoingFiles, IncomingFiles {
     var downloadFolder: () -> URL
     /// Where automatic screenshots/photos go (0.2.0); defaults to the download folder.
     var mediaFolder: (() -> URL)?
+    /// Phone files the user dragged to a Finder folder (or chose a folder for): file name -> folder.
+    var fsDestinations: [String: URL] = [:]
 
     struct IOError: Error, CustomStringConvertible {
         let description: String
@@ -25,7 +27,7 @@ final class MacFiles: OutgoingFiles, IncomingFiles {
     // MARK: outgoing
 
     /// Copy `url` into staging, hashing as we go, and build a QUEUED outgoing record.
-    static func stage(_ url: URL, now: Int64) throws -> TransferRecord {
+    static func stage(_ url: URL, now: Int64, kind: String? = nil) throws -> TransferRecord {
         let id = UUID().uuidString.lowercased()
         let target = Paths.sub("outgoing").appendingPathComponent(id)
         let access = url.startAccessingSecurityScopedResource()
@@ -47,7 +49,7 @@ final class MacFiles: OutgoingFiles, IncomingFiles {
         let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
         return TransferRecord(
             id: id, direction: .OUT, name: TransferEngine.safeFileName(url.lastPathComponent), size: size,
-            sha256: sha.finalizeHex(), mime: mime, status: .QUEUED, createdAt: now, ref: target.path
+            sha256: sha.finalizeHex(), mime: mime, status: .QUEUED, createdAt: now, ref: target.path, kind: kind
         )
     }
 
@@ -120,7 +122,13 @@ final class MacFiles: OutgoingFiles, IncomingFiles {
         }
         try? input.close()
         guard sha.finalizeHex() == record.sha256 else { throw IntegrityError(message: "checksum mismatch") }
-        let folder = record.kind != nil ? (mediaFolder?() ?? downloadFolder()) : downloadFolder()
+        let folder: URL
+        switch record.kind {
+        case let k where PhoneKinds.isMedia(k): folder = mediaFolder?() ?? downloadFolder()
+        case FileKinds5.clip: folder = Paths.sub("clips")
+        case FileKinds5.fs: folder = fsDestinations.removeValue(forKey: record.name) ?? downloadFolder()
+        default: folder = downloadFolder()
+        }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let dest = Self.unique(folder.appendingPathComponent(record.name))
         try FileManager.default.moveItem(at: src, to: dest)

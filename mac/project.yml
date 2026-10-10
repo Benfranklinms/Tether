@@ -11,8 +11,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
-    MARKETING_VERSION: "0.4.3"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.5.0"
+    CURRENT_PROJECT_VERSION: "50"
 targets:
   Tether:
     type: application
@@ -21,6 +21,10 @@ targets:
       - path: Tether
     dependencies:
       - package: TetherCore
+      - target: TetherWidgets
+        embed: true
+      - target: TetherShare
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: in.benfranklin.tether.mac
@@ -35,11 +39,49 @@ targets:
         COMBINE_HIDPI_IMAGES: YES
         ENABLE_PREVIEWS: NO
         SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+        CODE_SIGN_ENTITLEMENTS: Tether/Tether.entitlements
+  TetherWidgets:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: TetherWidgets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: in.benfranklin.tether.mac.widgets
+        PRODUCT_NAME: TetherWidgets
+        INFOPLIST_FILE: TetherWidgets/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_ENTITLEMENTS: TetherWidgets/TetherWidgets.entitlements
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SKIP_INSTALL: YES
+        ENABLE_PREVIEWS: NO
+  TetherShare:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: TetherShare
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: in.benfranklin.tether.mac.share
+        PRODUCT_NAME: TetherShare
+        INFOPLIST_FILE: TetherShare/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_ENTITLEMENTS: TetherShare/TetherShare.entitlements
+        SKIP_INSTALL: YES
 schemes:
   Tether:
     build:
       targets:
         Tether: all
+        TetherWidgets: all
+        TetherShare: all
     run:
       config: Debug
     archive:

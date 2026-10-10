@@ -111,10 +111,11 @@ extension AppModel {
     }
 
     func settingsChanged3(_ old: MacSettings) {
-        if old.proximityLock != settings.proximityLock || old.proximityDistance != settings.proximityDistance
+        if old.proximityLock != settings.proximityLock || old.proximityUnlock != settings.proximityUnlock
+            || old.proximityDistance != settings.proximityDistance
             || old.proximityAwaySeconds != settings.proximityAwaySeconds {
             proximityMonitor.config = proximityConfig
-            if !settings.proximityLock { proximityMonitor.reset() }
+            if !proximityWanted { proximityMonitor.reset() }
             configureProximity()
         }
         if old.mediaKeys != settings.mediaKeys || old.nowPlayingEnabled != settings.nowPlayingEnabled { updateMediaKeys() }
@@ -346,6 +347,7 @@ extension AppModel {
     // MARK: - Calls
 
     func callUpdate(_ c: CallStatePayload) {
+        defer { callMediaChanged(busy: call != nil || liveCall != nil) }
         guard settings.callAlerts else { return }
         if let reason = c.reason {
             switch reason {
@@ -385,6 +387,7 @@ extension AppModel {
     // MARK: - Now playing
 
     func nowPlayingUpdate(_ np: NowPlayingPayload) {
+        defer { WidgetBridge.publish(self) }
         guard settings.nowPlayingEnabled else { return }
         phoneClockSkew = np.ts - Int64(Date().timeIntervalSince1970 * 1000)
         nowPlaying = np.active ? np : nil
@@ -446,23 +449,23 @@ extension AppModel {
 
     /// Ask the phone for signal readings while the feature is on (and stop when it's off).
     func configureProximity() {
-        let on = settings.proximityLock && supports(Caps3.proximity) && !demo
+        let on = proximityWanted && supports(Caps3.proximity) && !demo
         if isConnected && supports(Caps3.proximity) {
             engine?.send(.proximityCfg(ProximityCfgPayload(on: on, intervalMs: 2000)))
         }
-        if on || (settings.proximityLock && proximityMonitor.state != .unknown) {
+        if on || (proximityWanted && proximityMonitor.state != .unknown) {
             if proximityTimer == nil {
                 proximityTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.proximityTick() }
             }
         } else {
             proximityTimer?.invalidate()
             proximityTimer = nil
-            if !settings.proximityLock { proximity = ProximityStatus() }
+            if !proximityWanted { proximity = ProximityStatus() }
         }
     }
 
     func rssiReading(_ rssi: Int) {
-        guard settings.proximityLock else { return }
+        guard proximityWanted else { return }
         proximityMonitor.reading(rssi, now: Self.nowMs)
         proximity.lastReading = Date()
         publishProximity()
@@ -470,14 +473,14 @@ extension AppModel {
 
     private func proximityLinkLost() {
         // Only an absence after we knew the phone was near counts; never lock on a cold start.
-        guard settings.proximityLock, proximityMonitor.state != .unknown else { return }
+        guard proximityWanted, proximityMonitor.state != .unknown else { return }
         proximityMonitor.linkLost(now: Self.nowMs)
         publishProximity()
         configureProximity()
     }
 
     private func proximityTick() {
-        guard settings.proximityLock else { return configureProximity() }
+        guard proximityWanted else { return configureProximity() }
         // Readings stopped although the link is up (phone asleep?): treat as unknown, never as away.
         if isConnected, let last = proximity.lastReading, Date().timeIntervalSince(last) > 20 {
             proximityMonitor.reset()
@@ -488,6 +491,7 @@ extension AppModel {
     }
 
     private func publishProximity() {
+        checkProximityUnlock()
         proximity.state = proximityMonitor.state
         proximity.smoothed = proximityMonitor.smoothed
         // Checked only when about to lock (pgrep is a process launch).

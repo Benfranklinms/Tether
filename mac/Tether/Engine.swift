@@ -9,8 +9,8 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
     let queue = DispatchQueue(label: "tether.engine", qos: .userInitiated)
     private weak var model: AppModel?
     private let identity: FileIdentityStore
-    private let files: MacFiles
-    private var controller: TetherController!
+    let files: MacFiles
+    var controller: TetherController!
     private var peripheral: Peripheral!
     private var wifi: WifiClient!
     private var ticker: DispatchSourceTimer?
@@ -293,7 +293,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         DispatchQueue.main.async {
             guard let m = self.model else { return }
             switch message {
-            case .clip(_, _, let text): if s.receiveClipboard { m.receiveClip(text) }
+            case .clip(_, _, let text): if s.receiveClipboard { m.receiveClipFromPhone(text) }
             case .notif(let n): m.receiveNotification(n)
             case .notifRemoved(let key): m.notificationRemoved(key)
             case .notifActionResult(let r): m.actionResult(key: r.key, ok: r.ok, reason: r.reason)
@@ -315,7 +315,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             case .callLog(let p): m.callLogUpdate(p)
             case .contacts(let p): m.contactsUpdate(p)
             case .notifAccess(let p): m.notifAccessUpdate(p)
-            default: Log.info("msg.ignored", ["type": "\(message.type)"])
+            default: if !m.receive5(message) { Log.info("msg.ignored", ["type": "\(message.type)"]) }
             }
         }
     }
@@ -334,12 +334,16 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         }
         let snapshot = transfers
         let done = important && record.direction == .IN && record.status == .DONE
-        let isMedia = record.kind != nil
-        let notify = done && (isMedia ? settings.mediaNotify : settings.notifyOnReceive)
+        let isMedia = PhoneKinds.isMedia(record.kind)
+        let isClip = record.kind == FileKinds5.clip
+        let isFs = record.kind == FileKinds5.fs
+        let notify = done && !isClip && (isMedia ? settings.mediaNotify : settings.notifyOnReceive)
         if done && isMedia { Log.info("media.received", ["kind": record.kind ?? "-", "size": "\(record.size)"]) }
         DispatchQueue.main.async {
             guard let m = self.model else { return }
             m.transfers = snapshot
+            if done && isClip && record.direction == .IN { m.clipImageReceived(record) }
+            if done && isFs { m.phoneFileArrived(record) }
             if notify { if isMedia { m.mediaReceived(record) } else { m.fileReceived(record) } }
         }
     }

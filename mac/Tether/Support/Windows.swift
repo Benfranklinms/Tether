@@ -6,7 +6,7 @@ import TetherCore
 /// The app's windows, owned by AppKit (not SwiftUI scenes) so the menu-bar panel can be
 /// detached into a floating window and every view can open the others the same way.
 enum WindowID: String {
-    case pair, settings, screen, messages
+    case pair, settings, screen, messages, main, keyboard
 }
 
 /// Applies the live appearance (Pure Mono / Liquid Glass) and the model to any root view.
@@ -31,6 +31,11 @@ final class WindowRouter: NSObject, NSWindowDelegate {
     }
 
     func show(_ id: WindowID) {
+        // 0.5.0: Messages and Settings are pages of the main window.
+        if id == .messages || id == .settings {
+            model?.v5.page = id == .messages ? .messages : .settings
+            return show(.main)
+        }
         NSApp.activate(ignoringOtherApps: true)
         if let w = windows[id] {
             w.makeKeyAndOrderFront(nil)
@@ -57,6 +62,13 @@ final class WindowRouter: NSObject, NSWindowDelegate {
             style.insert(.resizable)
             style.insert(.miniaturizable)
             size = NSSize(width: 820, height: 580)
+        case .main:
+            root = AnyView(MainWindowView(v5: model.v5))
+            style.formUnion([.resizable, .miniaturizable])
+            size = NSSize(width: 1040, height: 700)
+        case .keyboard:
+            root = AnyView(KeyboardView(v5: model.v5))
+            size = NSSize(width: 440, height: 330)
         }
         let host = NSHostingController(rootView: Themed(model: model, content: root))
         let w = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: style, backing: .buffered, defer: false)
@@ -64,14 +76,17 @@ final class WindowRouter: NSObject, NSWindowDelegate {
         w.setContentSize(size)
         w.titleVisibility = .hidden
         w.titlebarAppearsTransparent = true
-        w.isMovableByWindowBackground = id != .screen
+        w.isMovableByWindowBackground = id != .screen && id != .main
         w.isReleasedWhenClosed = false
-        w.appearance = NSAppearance(named: .darkAqua)
+        // nil: follows NSApp.appearance (Settings › Appearance: Dark / Light / System).
+        w.appearance = nil
         switch id {
         case .pair: w.title = "Pair a phone"
         case .settings: w.title = "Tether Settings"
         case .screen: w.title = "Phone screen"
         case .messages: w.title = "Messages"
+        case .main: w.title = "Tether"
+        case .keyboard: w.title = "Keyboard"
         }
         w.identifier = NSUserInterfaceItemIdentifier(id.rawValue)
         w.delegate = self
@@ -83,8 +98,15 @@ final class WindowRouter: NSObject, NSWindowDelegate {
             w.contentMinSize = NSSize(width: 640, height: 420)
             w.setFrameAutosaveName("TetherMessagesWindow")
         }
+        if id == .main {
+            w.contentMinSize = NSSize(width: 860, height: 560)
+            w.setFrameAutosaveName("TetherMainWindow")
+            w.tabbingMode = .disallowed
+            w.collectionBehavior.insert(.fullScreenPrimary)
+        }
         if w.frameAutosaveName.isEmpty || !w.setFrameUsingName(w.frameAutosaveName) { w.center() }
         windows[id] = w
+        if id == .main { UserDefaults.standard.set(true, forKey: "mainWindowOpen") }
         w.makeKeyAndOrderFront(nil)
     }
 
@@ -97,6 +119,7 @@ final class WindowRouter: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let w = notification.object as? NSWindow, let raw = w.identifier?.rawValue, let id = WindowID(rawValue: raw) else { return }
         if id == .screen { model?.stopScreen() }
+        if id == .main { UserDefaults.standard.set(false, forKey: "mainWindowOpen") }
         // A fresh window (and SwiftUI view) next time, so onAppear/onDisappear run as expected.
         DispatchQueue.main.async { self.windows[id] = nil }
     }
@@ -129,6 +152,11 @@ final class StatusController: NSObject, NSWindowDelegate {
         refresh()
         if model.settings.panelDetached { DispatchQueue.main.async { self.showDetached() } }
         model.showPanel = { [weak self] in self?.reveal() }
+        item.isVisible = model.settings.presence.showsMenuBar
+        model.statusItemVisible = { [weak self] on in
+            self?.item.isVisible = on
+            if !on { self?.panel?.orderOut(nil) }
+        }
     }
 
     /// Shows the panel (attached under the menu-bar item, or the detached window).
@@ -319,7 +347,6 @@ final class TetherPanel: NSPanel {
         isFloatingPanel = true
         becomesKeyOnlyIfNeeded = false
         isReleasedWhenClosed = false
-        appearance = NSAppearance(named: .darkAqua)
         collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
         animationBehavior = .utilityWindow
     }
@@ -339,7 +366,7 @@ struct PanelRoot: View {
 
     var body: some View {
         Themed(model: model, content:
-            MenuView(panel: PanelControls(
+            SlimMenuView(panel: PanelControls(
                 detached: model.settings.panelDetached,
                 onTop: model.settings.panelOnTop,
                 detach: { controller?.detach() },

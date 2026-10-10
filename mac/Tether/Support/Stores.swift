@@ -104,6 +104,34 @@ struct MacSettings: Codable, Equatable {
     var panel = PanelLayout()
     /// The one-time-codes guide was dismissed in the panel.
     var codesGuideDismissed = false
+    // 0.5.0
+    /// Dock icon, menu-bar item, or both.
+    var presence = AppPresence.both
+    /// Dark / Light / System.
+    var colorMode = ColorMode.system
+    var hotkeys = HotkeySettings()
+    /// One-time codes from the phone go straight to the clipboard (with a toast).
+    var otpAutoCopy = true
+    /// Continue on Mac cards also post a notification (respects Panel only).
+    var continueNotify = true
+    /// Pause Mac media and lower the volume while the phone rings or a call is up.
+    var callMediaPause = true
+    var callDuck = true
+    /// Mac Focus → phone Do Not Disturb, and show the phone's DND here.
+    var focusSync = true
+    /// Shortcut names run when the phone's DND changes (empty = don't change Focus).
+    var focusOnShortcut = "Tether Focus On"
+    var focusOffShortcut = "Tether Focus Off"
+    /// Wake and unlock this Mac when the phone comes near (opt-in; password in the Keychain).
+    var proximityUnlock = false
+    /// Phone fully charged alert (the low-battery alert is lowBatteryAlert).
+    var chargedAlert = true
+    /// Clipboard history (last 20, both directions) and images both ways.
+    var clipHistory = true
+    var clipImages = true
+    /// Update source: Tether's public feed, falling back to the GitHub API; or a custom https URL.
+    var updateFeed: String?
+    var autoUpdateCheck = true
 
     init() {}
 
@@ -138,6 +166,22 @@ struct MacSettings: Codable, Equatable {
         telLinks = (try? c.decodeIfPresent(TelLinkMode.self, forKey: .telLinks)) ?? .ask
         panel = (try? c.decodeIfPresent(PanelLayout.self, forKey: .panel)) ?? PanelLayout()
         codesGuideDismissed = try c.decodeIfPresent(Bool.self, forKey: .codesGuideDismissed) ?? false
+        presence = (try? c.decodeIfPresent(AppPresence.self, forKey: .presence)) ?? .both
+        colorMode = (try? c.decodeIfPresent(ColorMode.self, forKey: .colorMode)) ?? .system
+        hotkeys = (try? c.decodeIfPresent(HotkeySettings.self, forKey: .hotkeys)) ?? HotkeySettings()
+        otpAutoCopy = try c.decodeIfPresent(Bool.self, forKey: .otpAutoCopy) ?? true
+        continueNotify = try c.decodeIfPresent(Bool.self, forKey: .continueNotify) ?? true
+        callMediaPause = try c.decodeIfPresent(Bool.self, forKey: .callMediaPause) ?? true
+        callDuck = try c.decodeIfPresent(Bool.self, forKey: .callDuck) ?? true
+        focusSync = try c.decodeIfPresent(Bool.self, forKey: .focusSync) ?? true
+        focusOnShortcut = try c.decodeIfPresent(String.self, forKey: .focusOnShortcut) ?? "Tether Focus On"
+        focusOffShortcut = try c.decodeIfPresent(String.self, forKey: .focusOffShortcut) ?? "Tether Focus Off"
+        proximityUnlock = try c.decodeIfPresent(Bool.self, forKey: .proximityUnlock) ?? false
+        chargedAlert = try c.decodeIfPresent(Bool.self, forKey: .chargedAlert) ?? true
+        clipHistory = try c.decodeIfPresent(Bool.self, forKey: .clipHistory) ?? true
+        clipImages = try c.decodeIfPresent(Bool.self, forKey: .clipImages) ?? true
+        updateFeed = try c.decodeIfPresent(String.self, forKey: .updateFeed)
+        autoUpdateCheck = try c.decodeIfPresent(Bool.self, forKey: .autoUpdateCheck) ?? true
     }
 
     var mediaURL: URL { mediaFolder.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? downloadURL }

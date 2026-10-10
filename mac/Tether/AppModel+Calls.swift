@@ -254,6 +254,7 @@ extension AppModel {
     // MARK: - Live call
 
     func callLiveUpdate(_ p: CallLivePayload) {
+        defer { callMediaChanged(busy: call != nil || liveCall != nil) }
         phoneClockSkew = p.ts - Self.nowMs
         if let r = p.reason {
             callNote = CallsModel.describeAction(r)

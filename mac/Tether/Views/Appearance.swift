@@ -136,20 +136,28 @@ private enum Glass26 {
 }
 #endif
 
-/// Window/panel backdrop for glass mode: dark Liquid Glass on macOS 26, behind-window vibrancy
-/// (the desktop blurred through the window) before. A dark scrim keeps light text readable.
+/// Window/panel backdrop for glass mode: Liquid Glass on macOS 26, behind-window vibrancy
+/// (the desktop blurred through the window) before. A scrim keeps text readable in Dark and Light.
 private struct GlassBackdrop: View {
     var body: some View {
         ZStack {
             VibrancyView()
             #if compiler(>=6.2)
             if #available(macOS 26.0, *) {
-                Rectangle().fill(Color.clear).glassEffect(.regular.tint(Color.black.opacity(0.35)), in: Rectangle())
+                Rectangle().fill(Color.clear).glassEffect(.regular.tint(Mono.bg.opacity(0.35)), in: Rectangle())
             }
             #endif
-            Rectangle().fill(Color.black.opacity(0.28))
+            Scrim()
         }
         .ignoresSafeArea()
+    }
+}
+
+/// Keeps text readable over the desktop: a dark scrim in Dark, a light one in Light.
+private struct Scrim: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        Rectangle().fill(scheme == .dark ? Color.black.opacity(0.28) : Color.white.opacity(0.45))
     }
 }
 
@@ -160,7 +168,6 @@ private struct VibrancyView: NSViewRepresentable {
         v.material = .hudWindow
         v.blendingMode = .behindWindow
         v.state = .active
-        v.appearance = NSAppearance(named: .darkAqua)
         return v
     }
 
@@ -184,7 +191,7 @@ private struct WindowConfigurator: NSViewRepresentable {
     private func apply(_ w: NSWindow?) {
         guard let w else { return }
         w.isOpaque = !clear
-        w.backgroundColor = clear ? .clear : NSColor(calibratedRed: 0x09 / 255, green: 0x09 / 255, blue: 0x0A / 255, alpha: 1)
+        w.backgroundColor = clear ? .clear : Mono.nsBg
         w.titlebarAppearsTransparent = true
     }
 }

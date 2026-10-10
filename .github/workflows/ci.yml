@@ -231,10 +231,24 @@ jobs:
           else
             echo "SDK $sdk predates macOS 26: Liquid Glass is compiled out (material fallback only)"
           fi
+      - name: WidgetKit + Share extensions built and embedded
+        run: |
+          for x in TetherWidgets:com.apple.widgetkit-extension TetherShare:com.apple.share-services; do
+            name=${x%%:*}; point=${x#*:}
+            ext="$APP/Contents/PlugIns/$name.appex"
+            test -x "$ext/Contents/MacOS/$name" || { echo "$name.appex missing"; grep -E "error:" -A3 xcodebuild.log | head -80; exit 1; }
+            got=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$ext/Contents/Info.plist")
+            [ "$got" = "$point" ] || { echo "$name: extension point $got != $point"; exit 1; }
+            lipo -archs "$ext/Contents/MacOS/$name"
+            echo "$name.appex OK ($point)"
+          done
       - name: Ad-hoc sign
         run: |
-          codesign --force --deep --sign - --timestamp=none "$APP"
+          codesign --force --sign - --timestamp=none --entitlements TetherWidgets/TetherWidgets.entitlements "$APP/Contents/PlugIns/TetherWidgets.appex"
+          codesign --force --sign - --timestamp=none --entitlements TetherShare/TetherShare.entitlements "$APP/Contents/PlugIns/TetherShare.appex"
+          codesign --force --sign - --timestamp=none --entitlements Tether/Tether.entitlements "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -d --entitlements - "$APP/Contents/PlugIns/TetherWidgets.appex" | grep -q app-sandbox
           lipo -archs "$APP/Contents/MacOS/Tether"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
       - name: Package zip + dmg
@@ -251,7 +265,7 @@ jobs:
           mkdir -p ../docs/screenshots/mac
           "$APP/Contents/MacOS/Tether" --screenshots "$PWD/../docs/screenshots/mac" &
           pid=$!
-          for i in $(seq 1 120); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+          for i in $(seq 1 300); do kill -0 $pid 2>/dev/null || break; sleep 1; done
           kill $pid 2>/dev/null || true
           ls -la ../docs/screenshots/mac
       - uses: actions/upload-artifact@v4
