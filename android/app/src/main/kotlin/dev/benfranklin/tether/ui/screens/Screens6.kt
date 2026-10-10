@@ -425,7 +425,7 @@ fun HotspotScreen(
                             modifier = Modifier.fillMaxWidth(), colors = monoFieldColors(), shape = RoundedCornerShape(14.dp),
                         )
                         Spacer(Modifier.height(10.dp))
-                        SecretField(pass, { pass = it }, if (hasPassword) "Password (saved — type to replace)" else "Password")
+                        SecretField(pass, { pass = it }, if (hasPassword) "New password (one is saved)" else "Password")
                         Spacer(Modifier.height(14.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             AnimatedVisibility(savedSsid != null, enter = Motion.enter(reduce), exit = Motion.exit(reduce)) {
