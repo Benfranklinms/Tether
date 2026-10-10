@@ -23,6 +23,7 @@ object TokenStore {
     private const val KEY = "github_token"
     private const val IV_LEN = 12
     private const val TAG_BITS = 128
+    private const val KEY_BITS = 256
 
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -32,7 +33,7 @@ object TokenStore {
             KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
+                .setKeySize(KEY_BITS)
                 .build(),
         )
         return gen.generateKey()

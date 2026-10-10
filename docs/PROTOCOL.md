@@ -242,3 +242,48 @@ Same rules again: `Hello.v` stays 1, every feature is announced in `Hello.caps`,
 - **Call audio** always stays on the phone or the earbuds connected to it: Android has no API for an app to route cellular call audio to another device.
 - CALL_LOG and CONTACTS prefer the Wi-Fi session (like SMS lists); lists are trimmed to stay under ~48 KiB (`more` is then true).
 - A Call's `number` is display-formatted by the phone (grouped the way contacts show numbers, e.g. `+91 98470 12345`); match and dial on its digits only.
+
+## 15. Revision 5 (app 0.5.0)
+
+Same rules: `Hello.v` stays 1, features are announced in `Hello.caps`, and a side sends a revision-5 message only when the peer announced the matching cap. 0.4.x builds decode the new types as unknown and ignore them (CI checks the Kotlin core against the released 0.4.3 Swift peer: `released043MacIgnoresRevision5`, and a "v04" peer mode that announces no rev-5 caps: `v04MacDoesNotGetRevision5`).
+
+| Cap | Feature |
+|---|---|
+| `fs` | phone file browser (FS_LIST_REQ / FS_LIST, FS_GET / FS_GET_RESULT, THUMB_REQ / THUMB) |
+| `photos` | camera-roll browser (PHOTOS_REQ / PHOTOS; files and thumbnails through root `photos`) |
+| `otp` | one-time codes (OTP) |
+| `continue` | Continue on Mac cards (CONTINUE) |
+| `openurl` | open a link or text on the phone (OPEN_ON_PHONE / OPEN_RESULT) |
+| `type` | type into the phone's focused field (TYPE_TEXT / TYPE_RESULT) |
+| `dnd` | Do Not Disturb ↔ Focus (DND_STATE, both ways) |
+| `status` | phone setup status for the Mac checklist (PHONE_STATUS / PHONE_STATUS_REQ) |
+| `clipimg` | clipboard images as file transfers with `kind:"clip"` |
+
+### New messages
+
+| Type | Name | Direction | Header | Body |
+|---|---|---|---|---|
+| 0x32 | OTP | phone → Mac | `{"code","app","src" (sms\|notif),"ts"}` | |
+| 0xC0 | FS_LIST_REQ | Mac → phone | `{"ref","root","path","offset":0,"limit":200}` | |
+| 0xC1 | FS_LIST | phone → Mac | `{"ref","root","path","entries":[{"name","dir","size","mtime","mime"?}],"total","more","needs"?}` (`needs` = `storage`, `disabled`, `error:<reason>`) | |
+| 0xC2 | FS_GET | Mac → phone | `{"ref","root","path"}` | |
+| 0xC3 | FS_GET_RESULT | phone → Mac | `{"ref","ok","transferId"?,"name"?,"size","reason"?}`; on `ok` the file follows as a normal FILE_OFFER with `kind:"fs"` | |
+| 0xC4 | THUMB_REQ | Mac → phone | `{"ref","root","path","size":256}` (`size` ≤ 1024) | |
+| 0xC5 | THUMB | phone → Mac | `{"ref","ok","reason"?}` | JPEG ≤ 96 KiB |
+| 0xC6 | PHOTOS_REQ | Mac → phone | `{"ref","limit":60,"before"?:ms}` | |
+| 0xC7 | PHOTOS | phone → Mac | `{"ref","items":[{"id","name","size","date","w","h","mime","video"}],"more","needs"?,"before"?}` | |
+| 0xC8 | CONTINUE | phone → Mac | `{"id","kind" (photo\|download\|link\|share\|song\|tab),"title","subtitle"?,"url"?,"root"?,"path"?,"app"?,"size","ts","ttl":900}` | optional JPEG thumbnail |
+| 0xC9 | OPEN_ON_PHONE | Mac → phone | `{"id","url"?,"text"?}` (url schemes the phone opens: http, https, mailto, tel, geo, sms, smsto, market, spotify, upi; others → `reason:"invalid"`) | |
+| 0xCA | OPEN_RESULT | phone → Mac | `{"id","ok","via"? (activity\|notification),"reason"?}` | |
+| 0xCB | TYPE_TEXT | Mac → phone | `{"seq","text"?,"key"? (backspace\|enter\|tab\|clear)}` | |
+| 0xCC | TYPE_RESULT | phone → Mac | `{"seq","ok","reason"? (no_field\|accessibility\|disabled\|…),"field"?}` | |
+| 0xE0 | DND_STATE | both | `{"on","src" (phone\|mac),"ts","canSet"?}` | |
+| 0xE1 | PHONE_STATUS | phone → Mac | `{"perms":[{"id","label","ok","required"}],"sdk","ts"}` | |
+| 0xE2 | PHONE_STATUS_REQ | Mac → phone | `{"ts"?}` | |
+
+- **Roots**: `downloads`, `documents`, `whatsapp`, `dcim`, `pictures` (paths relative to the root; the phone canonicalises every path and refuses anything that leaves the root) and `photos` (MediaStore id as the path). Listings and thumbnails prefer the Wi-Fi session; lists are trimmed to stay under ~48 KiB (`more` true).
+- **Transfer kinds**: `screenshot` / `photo` (rev 2) are automatic media and go to the media folder; `fs` (a file the Mac asked for) goes to the download folder or the folder the user dragged it to; `clip` is a clipboard image: the receiver puts it on its clipboard and hides it from the transfer list. Receivers of rev ≤ 4 treat unknown kinds as ordinary files.
+- **OTP** is extracted on the phone (OtpDetector, unit-tested against real bank/app message formats; amounts, dates and reference numbers are excluded) from incoming SMS and mirrored notifications; the same code is sent once (deduplicated on the phone).
+- **DND echo guard**: each side ignores a state equal to the one it just applied for 4 s (DndSync), so Focus ↔ DND never ping-pongs.
+- **Continue cards** expire after `ttl` seconds (min 30); the Mac keeps at most 8 and remembers dismissed ones.
+- Updates are not part of the protocol: each app reads GitHub releases itself (README › Updates).

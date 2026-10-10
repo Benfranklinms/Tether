@@ -1,39 +1,54 @@
 # Tether
 
-**Your Android phone and your Mac, linked directly.** Make and answer calls from the Mac, texts, notifications you can answer, media controls, clipboard, files, screenshots, battery, find-my-phone, screen control and lock-when-you-walk-away, over Bluetooth LE with a Wi-Fi fast path. End-to-end encrypted. No server, no account, no cloud.
+**Your Android phone and your Mac, linked directly.** A real Mac app for your phone: messages, calls, notifications you can answer, your phone's files and photos, one-time codes on the clipboard, *Continue on Mac* for what you were just doing, typing into the phone, clipboard history with images, media controls, battery, find-my-phone, screen control and lock-when-you-walk-away. Over Bluetooth LE with a Wi-Fi fast path. End-to-end encrypted. No server, no account, no cloud.
 
 <p>
-  <img src="docs/screenshots/mac/menu.png" width="300" alt="Tether in the Mac menu bar: phone battery, quick actions and mirrored notifications with Reply">
-  <img src="docs/screenshots/mac/menu-calls.png" width="300" alt="The Calls tab: search contacts or type a number, dial pad, SIM choice and recent calls with call back">
-  <img src="docs/screenshots/android/home.png" width="230" alt="Tether on Android">
-  <img src="docs/screenshots/mac/messages.png" width="440" alt="Messages on the Mac: the phone's SMS conversations with dual-SIM reply">
+  <img src="docs/screenshots/mac/main-home.png" width="620" alt="The Tether window on the Mac: sidebar with Home, Messages, Calls, Notifications, Files, Photos, Phone screen, Clipboard and Settings; Home shows a one-time code, Continue on Mac cards and quick actions">
+  <img src="docs/screenshots/mac/slim-menu.png" width="260" alt="The slim menu-bar popover: phone and battery, now playing, latest notifications, Send clipboard and Send file">
+</p>
+<p>
+  <img src="docs/screenshots/mac/main-files-light.png" width="440" alt="Browsing the phone's Downloads from the Mac in Light mode">
+  <img src="docs/screenshots/mac/main-photos.png" width="440" alt="The phone's camera roll on the Mac">
+  <img src="docs/screenshots/android/home.png" width="200" alt="Tether on Android">
 </p>
 
-**Download v0.4.3:** [Mac (.dmg)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.3/Tether-0.4.3.dmg) · [Mac (.zip)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.3/Tether-0.4.3.zip) · [Android (.apk)](https://github.com/Benfranklinms/Tether/releases/download/v0.4.3/Tether-0.4.3.apk) · [all releases](https://github.com/Benfranklinms/Tether/releases)
+**Download v0.5.0:** [Mac (.dmg)](https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.dmg) · [Mac (.zip)](https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.zip) · [Android (.apk)](https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.apk) · [all releases](https://github.com/Benfranklinms/Tether/releases)
 
-macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
+macOS 13+ (Apple silicon and Intel; widgets need macOS 14) · Android 8.0+ · MIT licensed
 
-**New in 0.4.3 (Android):** **phone → Mac clipboard without opening Tether.** Select text in any app and tap **Send to Mac** in the selection menu (works straight away, no setup). Or turn on **auto mode** (Settings › On your Mac › Clipboard › *Send copies automatically*): after a one-time setup from your Mac over wireless adb, everything you copy on the phone lands on the Mac's clipboard by itself, the way KDE Connect does it. Text that just came from the Mac isn't sent back, and passwords and codes stay on the phone unless you allow them. See [Clipboard auto mode](#clipboard-auto-mode-one-time-setup).
+### New in 0.5.0 (update both devices)
 
-**New in 0.4.2 (Mac fixes):** photos you delete or move in Finder now leave **From your phone** and Transfers instead of staying as empty tiles, and switching tabs in the panel always starts at the top (no more blank tab after scrolling down in Calls).
-
-**New in 0.4.1 (Mac):** **Panel only** — keep phone alerts, texts and calls in the panel with no Mac banners (tap **Panel only** on the notifications-off message, or Settings › Notifications).
-
-**New in 0.4.0 (update both devices):** **calling from the Mac** — a dial pad and contact search in the panel, recent calls with call back and a missed-call badge, a **Call** button in Messages, phone-number links anywhere on the Mac (tel:), a SIM picker on dual-SIM phones, **Answer** (optionally straight onto the phone's speaker), Decline and Silence for incoming calls, and a live call card with a timer, **End**, **Speaker** and **Mute** where your phone allows them. Call audio stays on the phone or its earbuds (Android can't send phone-call audio to a computer). A **tidier panel**: collapse the player to one compact row, and keep three pinned actions with the rest under **More** (choose and order them in Settings). On **Android 15+**, Tether now notices when Android hides one-time codes ("Sensitive notification content hidden") and walks you through the one-time fix.
+- **A real Mac app.** Tether now opens as a normal window with a Dock icon and a sidebar: **Home, Messages, Calls, Notifications, Files, Photos, Phone screen, Clipboard, Settings**. It remembers its size, position and page. **⌘F** searches messages, calls and notifications at once. The menu-bar icon keeps a **slim popover** (phone and battery, now playing, the latest notifications, *Send clipboard*, *Send file*, *Open Tether*). Choose Dock, menu bar or both, and open at login (Settings › Appearance / Mac).
+- **Dark, Light or System**, in Pure Mono or Liquid Glass. Pure black, greys and white, now also as near-white, greys and near-black. Numbers and codes in JetBrains Mono.
+- **Your phone's files and photos on the Mac.** Browse Downloads, Documents, WhatsApp media, DCIM and Pictures with thumbnails, preview, download, open, or **drag straight into Finder**. A Photos page shows the camera roll, newest first.
+- **One-time codes go to the Mac clipboard** by themselves (from texts and notifications), with a toast. Paste and you're in.
+- **Continue on Mac.** A new photo, a finished download, a link you copied, something you shared to Tether, the song you're playing or (optional) your browser tab shows up as a card on the Mac with one click to open it there.
+- **Open on phone**: send any link or text from the Mac (Services menu › *Open on Phone*, the Share menu, or `tether://send`). **Type on your phone** from the Mac keyboard (Keyboard window).
+- **Clipboard history** (last 20, both directions) and **images both ways**.
+- **Focus ↔ Do Not Disturb**, **pause and lower Mac audio during calls** (restored afterwards), **fully-charged** and low-battery alerts, global shortcuts **⌥⌘V** (send clipboard), **⌥⌘F** (send a file), **⌥⌘T** (open Tether), drop files on the **Dock icon**, a **Finder Share extension**, and **widgets** (phone battery, now playing).
+- **Proximity unlock** (opt-in, off by default): with your password in the Keychain behind Touch ID, the Mac can type it into the lock screen when your paired phone is near. Read the warnings in Settings › Mac first.
+- **Setup checklists** on both devices with a Fix button per row, and **in-app updates** on both (see [Updates](#updates)).
 
 ---
 
 ## Contents
 
-[Features](#features) · [Install](#install) · [Pair](#pair) · [Feature setup and permissions](#feature-setup-and-permissions) · [Bluetooth vs Wi-Fi](#bluetooth-vs-wi-fi) · [Security](#security) · [Troubleshooting](#troubleshooting) · [Architecture](#architecture) · [Build from source](#build-from-source) · [Limitations](#limitations) · [Credits](#credits-and-license)
+[Features](#features) · [Install](#install) · [Updates](#updates) · [Pair](#pair) · [Feature setup and permissions](#feature-setup-and-permissions) · [Bluetooth vs Wi-Fi](#bluetooth-vs-wi-fi) · [Security](#security) · [Troubleshooting](#troubleshooting) · [Architecture](#architecture) · [Build from source](#build-from-source) · [Limitations](#limitations) · [Credits](#credits-and-license)
 
 ## Features
 
 | | What it does |
 |---|---|
+| **Mac window** *(0.5)* | Sidebar app with Home, Messages, Calls, Notifications, Files, Photos, Phone screen, Clipboard and Settings; ⌘F universal search; remembered window; slim menu-bar popover; Dock and/or menu bar; Dark / Light / System. |
+| **Phone files and photos** *(0.5)* | Browse the phone's Downloads, Documents, WhatsApp media, DCIM and Pictures and the camera roll with thumbnails; preview, download, open, or drag into Finder. Needs *All files access* / *Photos* on the phone. |
+| **One-time codes** *(0.5)* | Codes from texts and notifications are copied to the Mac clipboard automatically (toggle in both apps). |
+| **Continue on Mac** *(0.5)* | Cards for a new photo or download, a copied or shared link, the song playing, or the current browser tab (optional, accessibility), with one click to continue on the Mac. |
+| **Open on phone, typing** *(0.5)* | Send a link or text from any Mac app (Services, Share menu) to open on the phone; type into the phone's focused field from the Mac keyboard. |
+| **Clipboard history and images** *(0.5)* | The last 20 copies from both devices, text and images; click to copy again. |
+| **Mac extras** *(0.5)* | Global shortcuts ⌥⌘V / ⌥⌘F / ⌥⌘T, Dock-icon drop, Finder Share extension, widgets (battery, now playing), Focus ↔ DND sync, pause/duck Mac audio during calls, fully-charged alert, opt-in proximity unlock. |
+| **Updates** *(0.5)* | In-app updates on both devices from the private GitHub releases (one read-only token per device), checked against SHA-256, package, version and signing key. |
 | **Messages** *(0.3)* | Your phone's SMS conversations in a Mac window: thread list with unread counts, full conversations (MMS text too), search across all messages, reply or start a new text, choose the SIM on dual-SIM phones, live updates as texts arrive and as yours go from *Sending…* to sent (or *Retry*). Nothing is stored on the Mac. |
 | **Calls** *(0.4)* | **Make calls from the Mac**: type a number or search your phone's contacts in the panel's **Calls** tab (dial pad included), call back from recent calls, press **Call** in a Messages conversation, or click any phone number link on the Mac. Pick the SIM on dual-SIM phones. Incoming calls show the caller with **Answer** (the phone's speaker turns on, optional), **Decline** and **Silence**, in the panel and as a notification. While a call is up the panel shows who, a timer, **End**, **Speaker** and **Mute** (only the controls your phone allows). Recent calls with a missed-call badge. The phone does the call and keeps the audio. |
-| **Tidy panel** *(0.4)* | Collapse now playing to a one-line mini player; three pinned quick actions (default *Send clipboard*, *Send file*, *Messages*) with **More** for the rest. Both remembered; choose and order the pinned three in Settings › General › Panel. |
 | **One-time codes on Android 15+** *(0.4)* | Android 15 hides codes in notifications from apps like Tether ("Sensitive notification content hidden"). Tether detects it and shows a one-time guide on the phone and the Mac (a single adb command), then confirms when codes come through. |
 | **Now playing** *(0.3)* | Whatever plays on the phone (Spotify, YouTube Music, podcasts…) with artwork, a live progress bar, play/pause, next/previous, seek and phone volume. Optionally the Mac's media keys and Control Center drive it. |
 | **Lock when you walk away** *(0.3)* | Off by default. The Mac watches the Bluetooth signal of your phone (smoothed, with hysteresis and a delay you choose) and locks itself when you leave. Never while Screen Sharing or the phone-screen window is open. It never unlocks anything. |
@@ -45,26 +60,26 @@ macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 | **Phone battery** *(0.2)* | Level, charging and network in the menu (optionally the % in the menu bar), with a Mac alert at 20 %. |
 | **Find my phone** *(0.2)* | The phone rings at full alarm volume, even on silent, with a full-screen Stop. Stops after 60 s or from the Mac. |
 | **Phone screen** *(0.2)* | See the phone's screen in a resizable Mac window (hardware H.264, adaptive bitrate) and control it: click, long-press, drag, scroll, type, Back/Home/Recents. Needs Wi-Fi. |
-| **Movable panel** *(0.2)* | Drag the menu panel's header (or press its detach button) to tear it off into a floating window: move and resize it, keep it on top (pin), and it remembers where it was. Its × docks it back under the menu-bar icon; clicking the icon while it's detached brings it to the front. |
+| **Movable popover** *(0.2, slim in 0.5)* | Drag the menu-bar popover's header (or press its pin) to tear it off into a floating window that remembers where it was; × docks it back. |
 | **Appearance** *(0.2)* | Pure Mono (solid black and greys) or Liquid Glass (real macOS 26 glass, monochrome; translucent vibrancy on macOS 13–15). Follows Reduce Motion and Reduce Transparency. |
 
 ## Install
 
 ### Mac
 
-1. Download `Tether-0.4.3.dmg` (or the `.zip`), open it and drag **Tether** to **Applications**.
+1. Download `Tether-0.5.0.dmg` (or the `.zip`), open it and drag **Tether** to **Applications**.
 2. Tether is **ad-hoc signed and not notarized** (no paid Apple Developer account), so the first open is blocked:
    - **Right-click** Tether in Applications → **Open** → **Open**.
    - macOS 15 Sequoia and later: open it once, then **System Settings › Privacy & Security** → **Open Anyway**.
    - Or in Terminal: `xattr -dr com.apple.quarantine /Applications/Tether.app`
 3. Allow **Bluetooth** when asked (required) and **Notifications** (to show your phone's notifications). On macOS 15+, allow **Local Network** for the Wi-Fi fast path.
-4. Tether lives in the menu bar (two rings); no Dock icon. Click it for the panel; drag the panel's header to detach it as a floating window. **Updating** from any earlier version: replace the app; you stay paired.
+4. Tether opens as a window with a Dock icon, plus a menu-bar icon (two rings) with a slim popover; Settings › Appearance › *Show in* picks Dock, menu bar or both. Drag the popover's header to detach it. **Updating** from any earlier version: replace the app (or use Settings › Updates); you stay paired. 0.5 adds two app extensions (widgets, Share); macOS may ask once to allow Tether to access data from its widgets.
 
 Liquid Glass needs **macOS 26 Tahoe**. On older macOS the Liquid Glass option uses translucent vibrancy instead.
 
 ### Android
 
-1. Download `Tether-0.4.3.apk` on the phone and open it. Allow *Install unknown apps* for your browser or file manager.
+1. Download `Tether-0.5.0.apk` on the phone and open it. Allow *Install unknown apps* for your browser or file manager.
 2. **Play Protect** may warn about an app from an unknown developer: tap **More details → Install anyway**. Tether has no internet servers; the APK is built in public CI from this repository.
 3. Open Tether and follow the setup. Updating from any earlier version installs over it (same signing key) and keeps the pairing.
 4. **Allow restricted settings** (Android 13+, sideloaded apps): before Android lets you turn on **Notification access** or **Accessibility**, or grant **SMS** and **Call logs / Phone** permissions to Tether (they appear greyed out or the request is silently refused), go to **Settings › Apps › Tether › ⋮ (top right) › Allow restricted settings**, confirm, then grant them. You only do this once. On Android 15 some phones ask again per permission group.
@@ -101,6 +116,18 @@ Everything new is on the phone in **Tether › Settings › On your Mac**, and o
 | Screen control | **Accessibility › Tether screen control** (*restricted setting*) | — | Without it the Mac can view but not control |
 | Files, clipboard | Notifications (progress); Camera only for QR pairing | Local Network (macOS 15+) for Wi-Fi | |
 | **Clipboard auto mode** *(0.4.3, optional)* | `READ_LOGS` (granted once over adb), **Display over other apps** (`SYSTEM_ALERT_WINDOW`, adb or the settings button); Android 13+ also asks *Allow Tether to access all device logs?* each time Tether starts | — | Phone: Settings › On your Mac › Clipboard. *Send to Mac* in the selection menu needs nothing |
+
+| **Files browser** *(0.5)* | **All files access** (Settings › Apps › Special access › All files access) | — | Phone: Settings › Continue, files & updates › *Browse files* |
+| **Photos browser** *(0.5)* | **Photos and videos** (`READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`; *Allow all*) | — | |
+| **One-time codes** *(0.5)* | SMS and/or Notification access (already used above) | — | Mac Settings › Mac › *Copy one-time codes automatically* |
+| **Continue on Mac** *(0.5)* | Photos; All files access (downloads); Notification access (song); **Accessibility** for the browser tab (optional) | Notifications (optional banner) | |
+| **Open on phone** *(0.5)* | **Display over other apps** (opens directly; otherwise a tap-to-open notification) | — | Mac: Services › *Open on Phone* (enable in System Settings › Keyboard › Shortcuts › Services if hidden) |
+| **Typing from the Mac** *(0.5)* | **Accessibility › Tether screen control** | — | Mac: Phone screen › Keyboard, or the Dock menu |
+| **Focus ↔ DND** *(0.5)* | **Do Not Disturb access** | Shortcuts named *Tether Focus On/Off* (phone → Mac); a Focus automation opening `tether://dnd?on=1` / `?on=0` (Mac → phone) | macOS has no public Focus API, so Shortcuts does the switching |
+| **Pause/duck Mac audio on calls** *(0.5)* | Phone permission (already used for call alerts) | — | Volume is restored unless you changed it meanwhile |
+| **Proximity unlock** *(0.5, off by default)* | — | **Accessibility**; Mac password stored in the Keychain after Touch ID / password confirmation | Only types when the Mac is locked, the phone is near and the encrypted link is up; at most twice per 5 minutes |
+| **Widgets / Share** *(0.5)* | — | Add widgets from the desktop's *Edit Widgets*; Share › Tether in Finder | |
+| **Updates** *(0.5)* | **Install unknown apps** for Tether; a GitHub token | A GitHub token | See [Updates](#updates) |
 
 *Restricted* = on a sideloaded APK, Android 13+ blocks it until you **Allow restricted settings** (Install, step 4).
 
@@ -148,6 +175,16 @@ The grants survive reboots and updates; you can turn Wireless debugging off afte
 **Lock when you walk away:** Mac → Settings › Features → turn on *Lock this Mac when the phone is away*, choose **Near / Medium / Far** (≈1–2 m, 3–5 m, 8–10 m) and **Away for** (10 s – 2 min). *Signal now* shows the live reading so you can check it at your desk. Bluetooth signal varies a lot with pockets, bodies and walls: start with Medium and 30 s.
 
 **Screen sharing, step by step:** Mac menu → **Phone screen** → on the phone tap the *Your Mac wants to see this screen* notification (or it opens directly if Tether is on screen) → **Start now**. A *Sharing your screen* notification with **Stop** stays while it runs. In the Mac window: click = tap, hold = long-press, drag = swipe, two-finger scroll = scroll, type into the focused field, ⌘V pastes, Return = enter, Esc or right-click = Back.
+
+## Updates
+
+The repository is private, so each device needs a **read-only GitHub token** once:
+
+1. Open [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new) (Settings › Updates › *Create a token on GitHub* opens it with the name filled in).
+2. **Repository access › Only select repositories › Benfranklinms/Tether**. **Permissions › Repository › Contents: Read-only** (Metadata: Read-only is added automatically). Pick an expiry you like.
+3. Paste it in **Mac: Settings › Updates** and **Phone: Settings › Continue, files & updates › Updates**. Until then both show *Add a GitHub token to check for updates*.
+
+The token is stored only on that device (Mac Keychain; Android Keystore-encrypted storage), never logged, and sent only to `api.github.com`. Tether reads `releases/latest`, downloads the asset through the GitHub API (`Accept: application/octet-stream`) and follows GitHub's redirect to its file CDN **without** the token. Before installing it checks the release's SHA-256, and on Android the package name, a newer version code and the same signing certificate; on the Mac the bundle id, version and code signature. Android asks you to confirm the install; the Mac replaces the app and relaunches. A custom public feed URL (Tether's `tether-update.json` format) can be used instead of GitHub in the same screens.
 
 ## Bluetooth vs Wi-Fi
 

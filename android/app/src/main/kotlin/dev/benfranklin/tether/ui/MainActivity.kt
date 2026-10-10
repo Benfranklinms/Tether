@@ -347,7 +347,6 @@ private fun TetherApp(rt: TetherRuntime) {
                 apps = rows,
                 onSet = { pkg, rule -> rt.settings.update { it.copy(notifications = it.notifications.withRule(pkg, rule)) } },
                 onBack = { nav.popBackStack() },
-                hasToken = remember(permsTick) { dev.benfranklin.tether.v5.TokenStore.has(ctx) },
             )
         }
         composable("keywords") {
@@ -413,6 +412,7 @@ private fun TetherApp(rt: TetherRuntime) {
                     }
                 },
                 onBack = { nav.popBackStack() },
+                hasToken = remember(permsTick) { dev.benfranklin.tether.v5.TokenStore.has(ctx) },
             )
         }
         composable("features") {
