@@ -3,8 +3,8 @@ import CryptoKit
 import Foundation
 import TetherCore
 
-/// In-app updates for the Mac. Default source: the private Benfranklinms/Tether GitHub releases,
-/// read with a fine-grained read-only token kept in the Keychain. Optional alternative: a custom
+/// In-app updates for the Mac. Default source: the public Tether GitHub releases (an optional
+/// fine-grained read-only token in the Keychain raises the API rate limit). Optional alternative: a custom
 /// public https feed (tether-update.json format). The ZIP is preferred, the DMG is the fallback;
 /// both are checked against the release's SHA-256 before the app is replaced.
 final class MacUpdater: NSObject, URLSessionTaskDelegate {
@@ -41,10 +41,6 @@ final class MacUpdater: NSObject, URLSessionTaskDelegate {
 
     func check(manual: Bool) {
         let custom = model?.settings.updateFeed?.isEmpty == false
-        guard custom || Keychain.githubToken != nil else {
-            set { $0.phase = .failed(GitHubReleases.noTokenMessage) }
-            return
-        }
         guard let url = source else {
             set { $0.phase = .failed("The update feed must be an https:// URL") }
             return
@@ -53,7 +49,7 @@ final class MacUpdater: NSObject, URLSessionTaskDelegate {
         session.dataTask(with: request(url, binary: false)) { [weak self] data, resp, err in
             guard let self else { return }
             let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            Log.info("update.check", ["status": "\(status)", "custom": "\(custom)", "token": custom ? "-" : "set"])
+            Log.info("update.check", ["status": "\(status)", "custom": "\(custom)", "token": custom ? "-" : (Keychain.githubToken == nil ? "none" : "set")])
             guard err == nil, status == 200, let data, let info = UpdateFeed.parse(data) else {
                 let msg = err != nil ? "Couldn't reach GitHub"
                     : (status == 200 ? "No usable release" : GitHubReleases.explain(status: status))
@@ -232,7 +228,7 @@ extension AppModel {
     }
 
     private func dailyUpdateCheck() {
-        guard settings.autoUpdateCheck, v5.update.tokenSet || settings.updateFeed?.isEmpty == false else { return }
+        guard settings.autoUpdateCheck else { return }
         if let last = v5.update.lastCheck, Date().timeIntervalSince(last) < 20 * 3600 { return }
         MacUpdater.shared.check(manual: false)
     }

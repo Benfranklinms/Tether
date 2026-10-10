@@ -158,9 +158,8 @@ object Setup {
             canInstall(c), false, Fix.Screen(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, pkgUri(c))),
         )
         list += Item(
-            "updates", "Update token", dev.benfranklin.tether.core.features.GitHubReleases.NO_TOKEN_MESSAGE +
-                " (Settings › Continue, files & updates)",
-            TokenStore.has(c), false,
+            "updates", "Updates", "Checks Tether's GitHub releases (Settings › Continue, files & updates)",
+            true, false,
             Fix.Screen(Intent(Intent.ACTION_VIEW, Uri.parse(dev.benfranklin.tether.core.features.GitHubReleases.NEW_TOKEN_URL))),
         )
         list += Item(

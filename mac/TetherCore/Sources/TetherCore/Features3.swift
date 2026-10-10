@@ -150,7 +150,7 @@ public struct SmsThread: Codable, Equatable, Hashable, Identifiable {
         outLast = try c.value(.outLast, false)
     }
 
-    /// "Asha", "Asha, Ben +2" or the number(s) when there is no contact.
+    /// "Asha", "Asha, Sam +2" or the number(s) when there is no contact.
     public var title: String {
         let parts = addrs.enumerated().map { i, a in (i < names.count ? names[i] : nil) ?? a }
         if parts.isEmpty { return "Unknown" }

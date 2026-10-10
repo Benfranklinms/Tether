@@ -27,8 +27,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * In-app updates. Default source: the private Benfranklinms/Tether GitHub releases, read with a
- * fine-grained read-only token kept in [TokenStore] (Keystore-encrypted). Optional alternative: a
+ * In-app updates. Default source: the public Tether GitHub releases (an optional
+ * fine-grained read-only token kept in [TokenStore], Keystore-encrypted, raises the API rate limit). Optional alternative: a
  * custom public https feed (tether-update.json). Downloads the APK over HTTPS, verifies its SHA-256 (when the
  * source provides one), its package name, that it is newer, and that it is signed with the
  * same certificate as the installed app, then hands it to Android's package installer
@@ -70,9 +70,7 @@ class Updater(private val context: Context) {
     }
 
     private fun runCheck(custom: String?): State {
-        val customFeed = custom?.trim()?.startsWith("https://") == true
         val token = token(custom)
-        if (!customFeed && token == null) return State.NeedsToken
         val errors = ArrayList<String>()
         for (src in sources(custom)) {
             try {

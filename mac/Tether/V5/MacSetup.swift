@@ -13,9 +13,8 @@ extension AppModel {
                       ok: notificationsAllowed || PanelOnlyAlerts.isOn(), fix: "notifications"),
             SetupItem(id: "login", title: "Open at login", detail: "Stay connected after a restart.", ok: launchAtLogin,
                 optional: true, fix: "login"),
-            SetupItem(id: "updates", title: "Updates", detail: v5.update.tokenSet || settings.updateFeed?.isEmpty == false
-                ? "Checking \(settings.updateFeed?.isEmpty == false ? "your feed" : "GitHub releases")" : GitHubReleases.noTokenMessage,
-                      ok: v5.update.tokenSet || settings.updateFeed?.isEmpty == false, optional: true, fix: "updates"),
+            SetupItem(id: "updates", title: "Updates", detail: "Checking \(settings.updateFeed?.isEmpty == false ? "your feed" : "GitHub releases")",
+                      ok: true, optional: true, fix: "updates"),
         ]
         if settings.proximityUnlock {
             items.append(SetupItem(id: "accessibility", title: "Accessibility",

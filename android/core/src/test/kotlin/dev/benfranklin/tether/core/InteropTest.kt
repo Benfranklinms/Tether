@@ -190,7 +190,7 @@ class InteropTest {
 
     private fun run(phoneFragment: Int, macFragment: Int, qr: Boolean) = session(phoneFragment, macFragment, qr) { loop, phone, peer ->
         clipBothWays(loop, phone, peer)
-        assertEquals("Ben’s MacBook Air", (phone.state as LinkState.Connected).peerName)
+        assertEquals("Alex’s MacBook Air", (phone.state as LinkState.Connected).peerName)
     }
 
     @Test fun codePairingSmallMtu() = run(phoneFragment = 20, macFragment = 20, qr = false)

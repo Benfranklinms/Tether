@@ -67,7 +67,7 @@ class CodecTest {
 
     @Test
     fun helloRoundTrip() {
-        val h = Hello(name = "Ben’s Pixel \"8\"", platform = "android", app = "0.1.0")
+        val h = Hello(name = "Alex’s Pixel \"8\"", platform = "android", app = "0.1.0")
         assertEquals(h, MessageCodec.decodeHello(MessageCodec.encodeHello(h)))
     }
 

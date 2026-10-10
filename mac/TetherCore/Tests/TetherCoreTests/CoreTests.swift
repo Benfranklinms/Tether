@@ -157,7 +157,7 @@ final class MiscTests: XCTestCase {
     func testPairingURI() {
         let k = KeyPair.generate().publicKey
         let t = Data((0..<16).map { UInt8($0 * 3) })
-        let u = PairingURI(key: k, token: t, name: "Ben’s MacBook Air & co")
+        let u = PairingURI(key: k, token: t, name: "Alex’s MacBook Air & co")
         let s = u.encode()
         XCTAssertTrue(s.hasPrefix("tether://pair?v=1&k="))
         XCTAssertFalse(s.contains(" "))

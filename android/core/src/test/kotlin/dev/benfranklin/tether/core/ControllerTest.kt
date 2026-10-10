@@ -48,8 +48,8 @@ class ControllerTest {
     fun qrPairingIsOneTap() {
         val (phone, mac) = fresh()
         val token = ByteArray(16) { it.toByte() }
-        val qr = PairingUri.parse(PairingUri(mac.identity.localKey.publicKey, token, "Ben’s MacBook Air").encode())!!
-        assertEquals("Ben’s MacBook Air", qr.name)
+        val qr = PairingUri.parse(PairingUri(mac.identity.localKey.publicKey, token, "Alex’s MacBook Air").encode())!!
+        assertEquals("Alex’s MacBook Air", qr.name)
         LoopbackBle(loop, phone, mac).connect(
             PairingContext(acceptNew = true, expectedRemoteKey = qr.key, token = qr.token),
             PairingContext(acceptNew = true, token = token),

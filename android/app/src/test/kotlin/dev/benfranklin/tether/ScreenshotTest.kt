@@ -67,7 +67,7 @@ class ScreenshotTest {
     fun home() = shot("home") {
         HomeScreen(
             HomeModel(
-                title = "Ben's MacBook Air", subtitle = "Connected · Wi-Fi fast path", connected = true, searching = false,
+                title = "MacBook Air", subtitle = "Connected · Wi-Fi fast path", connected = true, searching = false,
                 wifi = true, error = null, notice = null, mirroringOff = false,
                 transfers = listOf(
                     rec("IMG_2041.HEIC", Direction.OUT, 4_800_000, 3_100_000, TransferStatus.ACTIVE, Transport.WIFI),
@@ -84,7 +84,7 @@ class ScreenshotTest {
     fun homeSearching() = shot("home-searching") {
         HomeScreen(
             HomeModel(
-                title = "Ben's MacBook Air", subtitle = "Looking nearby…", connected = false, searching = true, wifi = false,
+                title = "MacBook Air", subtitle = "Looking nearby…", connected = false, searching = true, wifi = false,
                 error = null, notice = null, transfers = emptyList(), mirroringOff = true,
             ),
             {}, {}, {}, {}, {}, {}, {}, {},
@@ -129,7 +129,7 @@ class ScreenshotTest {
 
     @Test
     fun pairingCode() = shot("pairing-code") {
-        OnboardingScreen(OnboardingStep.PAIR, emptyList(), PairView.Confirm("482913", "Ben's MacBook Air"), {}, {}, {}, {}, {}, {}, {})
+        OnboardingScreen(OnboardingStep.PAIR, emptyList(), PairView.Confirm("482913", "MacBook Air"), {}, {}, {}, {}, {}, {}, {})
     }
 
     @Test
@@ -141,7 +141,7 @@ class ScreenshotTest {
                     mutedKeywords = listOf("OTP"), quietHours = QuietHours(enabled = true),
                 ),
             ),
-            DeviceInfo("Ben's MacBook Air", "3F9A·0C21·77B4", "8B12·E4D0·19AF", true, true, "0.1.0", false),
+            DeviceInfo("MacBook Air", "3F9A·0C21·77B4", "8B12·E4D0·19AF", true, true, "0.1.0", false),
             NoActions, onBack = {},
         )
     }

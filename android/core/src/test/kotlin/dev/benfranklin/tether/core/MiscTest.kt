@@ -87,7 +87,7 @@ class MiscTest {
     fun pairingUriRoundTripAndRejectsJunk() {
         val k = KeyPair.generate().publicKey
         val t = ByteArray(16) { (it * 3).toByte() }
-        val u = PairingUri(k, t, "Ben's Mac & co")
+        val u = PairingUri(k, t, "Alex's Mac & co")
         val s = u.encode()
         assertTrue(s.startsWith("tether://pair?v=1&k="))
         assertFalse(s.contains("+"))

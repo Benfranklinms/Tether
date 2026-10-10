@@ -271,8 +271,8 @@ fun More5Screen(
                             }) { Text("Remove token", color = Mono.Text) }
                         } else {
                             Text(
-                                "Add a GitHub token to check for updates. Create a fine-grained token with access to only the " +
-                                    "Tether repository and Contents: Read-only, then paste it here once.",
+                                "Updates come from Tether's public GitHub releases. Optional: paste a fine-grained, read-only GitHub " +
+                                    "token (Contents: Read-only) to raise GitHub's rate limit.",
                                 style = MaterialTheme.typography.bodySmall, color = Mono.Muted,
                             )
                             OutlinedTextField(

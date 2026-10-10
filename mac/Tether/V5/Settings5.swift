@@ -175,15 +175,14 @@ struct UpdatesPage5: View {
         SectionLabel(text: "GitHub token")
         Card {
             if u.tokenSet {
-                Row(title: "Token saved in your Keychain", detail: "Read-only access to Benfranklinms/Tether releases.", divider: false) {
+                Row(title: "Token saved in your Keychain", detail: "Read-only access to Tether releases.", divider: false) {
                     GhostButton(title: "Remove") { m.removeGithubToken() }
                 }
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(GitHubReleases.noTokenMessage).font(Typo.sans(13, .medium)).foregroundColor(Mono.text)
-                    Text("Create a fine-grained token: Repository access › Only select repositories "
-                            + "› Tether; Permissions › Contents: Read-only (Metadata is added automatically). "
-                            + "Paste it once on this Mac.")
+                    Text("Optional: a GitHub token").font(Typo.sans(13, .medium)).foregroundColor(Mono.text)
+                    Text("Updates come from Tether's public GitHub releases without one. A fine-grained, "
+                            + "read-only token (Contents: Read-only) only raises GitHub's rate limit.")
                         .font(Typo.sans(12)).foregroundColor(Mono.muted).fixedSize(horizontal: false, vertical: true)
                     HStack {
                         SecureField("github_pat_…", text: $token).textFieldStyle(.roundedBorder)

@@ -459,7 +459,7 @@ fun LicensesScreen(onBack: () -> Unit) {
 }
 
 val LICENSES = listOf(
-    "Tether" to "MIT License. Copyright (c) 2026 Benfranklin M S.",
+    "Tether" to "MIT License. Copyright (c) 2026 Tether contributors.",
     "bitchat" to "The Bluetooth framing and Noise XX structure are adapted from permissionlesstech/bitchat (Swift), " +
         "released into the public domain (Unlicense). Thank you.",
     "Bouncy Castle" to "X25519 and ChaCha20-Poly1305. MIT-style Bouncy Castle License.",

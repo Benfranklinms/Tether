@@ -20,12 +20,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UiLogicTest {
-    private val peer = PeerRecord.paired("Ben's Mac", "macos", ByteArray(32), 0)
+    private val peer = PeerRecord.paired("Alex's Mac", "macos", ByteArray(32), 0)
 
     @Test
     fun homeModelStates() {
-        val connected = homeModel(UiState(link = LinkState.Connected("Ben's Mac", wifi = true), peer = peer), emptyList(), false)
-        assertEquals("Ben's Mac", connected.title)
+        val connected = homeModel(UiState(link = LinkState.Connected("Alex's Mac", wifi = true), peer = peer), emptyList(), false)
+        assertEquals("Alex's Mac", connected.title)
         assertTrue(connected.connected && connected.wifi && !connected.searching)
         val off = homeModel(UiState(radio = BleCentral.RadioState.OFF, peer = peer), emptyList(), false)
         assertEquals("Bluetooth is off", off.subtitle)
