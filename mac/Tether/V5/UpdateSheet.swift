@@ -90,6 +90,7 @@ struct UpdateSheet: View {
                 }
                 MarkdownNotes(text: UpdatePrompt.changelog(info?.notes ?? ""))
                     .frame(maxHeight: 240)
+                    .fixedSize(horizontal: false, vertical: true)
                 progress
                 HStack(spacing: 8) {
                     GhostButton(title: "Skip this version") { m.skipUpdate() }
@@ -138,7 +139,7 @@ struct WhatsNewSheet: View {
         SheetChrome(shown: shown, reduce: reduce, dismiss: { v5.whatsNew = false }, content: {
             VStack(alignment: .leading, spacing: 14) {
                 Text("What's new in \(WhatsNew.version)").font(Typo.sans(22, .medium)).foregroundColor(Mono.text)
-                MarkdownNotes(text: WhatsNew.notes).frame(maxHeight: 440)
+                MarkdownNotes(text: WhatsNew.notes).frame(maxHeight: 440).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Spacer()
                     MonoButton(title: "Continue") { v5.whatsNew = false }.frame(width: 140)

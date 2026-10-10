@@ -79,6 +79,22 @@ Every release's changes, including what's coming in 0.5.2, are in [CHANGELOG.md]
     <td align="center"><sub>The phone's files, in Light mode</sub></td>
     <td align="center"><sub>Call controls</sub></td>
   </tr>
+  <tr>
+    <td><img src="docs/screenshots/mac/main-shelf.png" alt="Shelf: pinned cards for a Wi-Fi network with its password hidden, a link, an address and a code snippet"></td>
+    <td><img src="docs/screenshots/mac/capture-card.png" alt="Insert from Phone: the Mac waiting for a document scan from the phone"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Shelf, shared by both devices</sub></td>
+    <td align="center"><sub>Insert from Phone</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/mac/main-update-light.png" alt="The in-app update popup with release notes, Skip this version, Later and Update now"></td>
+    <td><img src="docs/screenshots/mac/find-my-mac.png" alt="Find my Mac: a full-screen This Mac is ringing overlay with a Found it button"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Update popup, in Light mode</sub></td>
+    <td align="center"><sub>Find my Mac</sub></td>
+  </tr>
 </table>
 
 <p align="center">
