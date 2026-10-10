@@ -5,8 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.expandVertically
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -47,6 +45,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Inventory2
+import dev.benfranklin.tether.core.proto.FindActions
 import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
@@ -116,6 +116,7 @@ fun HomeScreen(
     onFixMirroring: () -> Unit,
     onStopScreen: () -> Unit = {},
     onReconnect: () -> Unit = {},
+    extras: HomeExtras = HomeExtras(),
 ) {
     val snack = remember { SnackbarHostState() }
     val reduce = LocalReduceMotion.current
@@ -133,6 +134,11 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("Tether", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    AnimatedVisibility(
+                        extras.updateVersion != null, enter = Motion.enter(reduce, from = 0.7f), exit = Motion.exit(reduce, to = 0.7f),
+                    ) {
+                        UpdatePill(extras.updateVersion.orEmpty(), extras.onUpdate)
+                    }
                     IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, contentDescription = "Settings") }
                 }
             }
@@ -162,6 +168,15 @@ fun HomeScreen(
                 ) {
                     ActionTile("Send clipboard", Icons.Outlined.ContentPaste, m.connected, onSendClipboard, Modifier.weight(1f))
                     ActionTile("Send file", Icons.Outlined.UploadFile, true, onSendFile, Modifier.weight(1f))
+                }
+            }
+            item { ShelfTile(extras.shelfCount, extras.onShelf) }
+            extras.find?.let { f ->
+                item(key = "find") {
+                    FindMacCard(
+                        f, onRing = { extras.onFind(FindActions.RING) }, onStop = { extras.onFind(FindActions.STOP) },
+                        onLock = { extras.onFind(FindActions.LOCK) },
+                    )
                 }
             }
             if (m.screenLive) {
@@ -248,12 +263,7 @@ private fun StatusCard(m: HomeModel) {
             exit = fadeOut(Motion.spring(reduce)) + shrinkVertically(Motion.spring(reduce)),
         ) {
             Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("Bluetooth", highlighted = !m.wifi)
-                AnimatedVisibility(
-                    m.wifi, enter = fadeIn(Motion.spring(reduce)) + scaleIn(Motion.bouncy(reduce)), exit = fadeOut() + scaleOut(),
-                ) {
-                    Chip("Wi-Fi", highlighted = true)
-                }
+                LinkBadge(m.wifi)
             }
         }
         AnimatedVisibility(
@@ -264,6 +274,59 @@ private fun StatusCard(m: HomeModel) {
                 m.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = Mono.Text,
                 modifier = Modifier.padding(top = 14.dp).border(1.dp, Mono.Line, RoundedCornerShape(10.dp))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+/** Home extras added in 0.5.2 (Shelf, Find my Mac, update pill); defaults keep older call sites working. */
+data class HomeExtras(
+    val shelfCount: Int = 0,
+    val onShelf: () -> Unit = {},
+    /** Null hides the Find my Mac card (Mac too old / not paired). */
+    val find: FindModel? = null,
+    val onFind: (String) -> Unit = {},
+    /** Newer version to offer, or null. */
+    val updateVersion: String? = null,
+    val onUpdate: () -> Unit = {},
+)
+
+@Composable
+private fun ShelfTile(count: Int, onClick: () -> Unit) {
+    val reduce = LocalReduceMotion.current
+    val source = remember { MutableInteractionSource() }
+    val view = LocalView.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).pressScale(source).clip(RoundedCornerShape(16.dp))
+            .background(Mono.Surface).border(1.dp, Mono.Line, RoundedCornerShape(16.dp))
+            .clickable(source, ripple(), role = Role.Button) {
+                Haptics.tick(view)
+                onClick()
+            }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Inventory2, contentDescription = null, tint = Mono.Text)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Shelf", style = MaterialTheme.typography.labelLarge)
+            Text("Links, Wi-Fi, addresses and notes on both devices", style = MaterialTheme.typography.bodySmall, color = Mono.Muted)
+        }
+        AnimatedContent(
+            count, label = "shelfCount",
+            transitionSpec = {
+                if (reduce) {
+                    fadeIn(Motion.fade(true)) togetherWith fadeOut(Motion.fade(true))
+                } else {
+                    val up = targetState > initialState
+                    (slideInVertically(Motion.spring(false)) { if (up) it else -it } + fadeIn()) togetherWith
+                        (slideOutVertically(Motion.spring(false)) { if (up) -it else it } + fadeOut())
+                }
+            },
+        ) { n ->
+            Text(
+                "$n", style = MaterialTheme.typography.titleMedium, fontFamily = dev.benfranklin.tether.ui.theme.MonoCode,
+                color = if (n > 0) Mono.Text else Mono.Muted,
             )
         }
     }

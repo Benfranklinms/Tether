@@ -33,3 +33,19 @@ fun Modifier.sharedHero(key: String, reduce: Boolean): Modifier {
         )
     }
 }
+
+/**
+ * Container transform between screens (0.5.2): a list card grows into its detail page and
+ * shrinks back, on a spring. Crossfade-only (no-op) with reduce motion or outside a NavHost.
+ */
+@Composable
+fun Modifier.sharedContainer(key: String, reduce: Boolean): Modifier {
+    val s = LocalSharedScopes.current ?: return this
+    if (reduce) return this
+    return with(s.shared) {
+        this@sharedContainer.sharedBounds(
+            rememberSharedContentState(key), s.visibility,
+            boundsTransform = { _: Rect, _: Rect -> spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow) },
+        )
+    }
+}

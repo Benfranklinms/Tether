@@ -105,6 +105,8 @@ interface SettingsActions {
     fun openFeatures() = Unit
     fun openSetup() = Unit
     fun openMore5() = Unit
+    fun openShelf() = Unit
+    fun openHotspot() = Unit
     /** "12 of 16 ready" for the setup row. */
     fun setupSummary(): String = ""
 }
@@ -132,6 +134,17 @@ fun SettingsScreen(s: AppSettings, d: DeviceInfo, a: SettingsActions, onBack: ()
                         NavRow(
                             "Continue, files & updates", null, subtitle = "Continue on Mac, phone files, updates", onClick = a::openMore5,
                         )
+                        Divider()
+                        NavRow("Shelf", null, subtitle = "Links, Wi-Fi, addresses and notes, synced with your Mac", onClick = a::openShelf)
+                        Divider()
+                        NavRow(
+                            "Instant Hotspot", if (s.allowHotspot) "On" else "Off",
+                            subtitle = "Your Mac joins this phone's hotspot", onClick = a::openHotspot,
+                        )
+                        Divider()
+                        ToggleRow(
+                            "Insert from Phone", "Your Mac can open this phone's camera or document scanner", s.allowCapture,
+                        ) { v -> a.update { it.copy(allowCapture = v) } }
                     }
                 }
             }

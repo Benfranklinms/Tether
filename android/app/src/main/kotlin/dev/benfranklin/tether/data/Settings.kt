@@ -93,6 +93,11 @@ data class AppSettings(
     val updateSnoozedUntil: Long = 0,
     /** The version whose "What's new" sheet was shown. */
     val whatsNewSeen: String? = null,
+    /** Release notes of the version being installed, shown once by "What's new" after the update. */
+    val whatsNewVersion: String? = null,
+    val whatsNewNotes: String? = null,
+    /** Instant Hotspot: let Tether control (accessibility) open hotspot settings and tap the switch. */
+    val hotspotAutomation: Boolean = true,
 )
 
 /** App settings as a hot flow, persisted atomically on every change. */

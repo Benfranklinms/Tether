@@ -109,6 +109,29 @@ object Motion {
     fun <T> bouncy(reduce: Boolean): FiniteAnimationSpec<T> =
         if (reduce) snap() else springSpec(dampingRatio = BOUNCY_DAMPING, stiffness = Spring.StiffnessMedium)
 
+    /** Appear: spring scale + fade; with reduce motion just a short crossfade (no movement). */
+    fun enter(reduce: Boolean, from: Float = ENTER_SCALE): androidx.compose.animation.EnterTransition =
+        if (reduce) {
+            androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(REDUCED_FADE_MS))
+        } else {
+            androidx.compose.animation.fadeIn(springSpec(stiffness = Spring.StiffnessMediumLow)) +
+                androidx.compose.animation.scaleIn(springSpec(dampingRatio = BOUNCY_DAMPING, stiffness = Spring.StiffnessMediumLow), from)
+        }
+
+    fun exit(reduce: Boolean, to: Float = ENTER_SCALE): androidx.compose.animation.ExitTransition =
+        if (reduce) {
+            androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(REDUCED_FADE_MS))
+        } else {
+            androidx.compose.animation.fadeOut(springSpec(stiffness = Spring.StiffnessMedium)) +
+                androidx.compose.animation.scaleOut(springSpec(stiffness = Spring.StiffnessMedium), to)
+        }
+
+    /** Fade-only spec for alpha when reduce motion is on (a snap would make things pop). */
+    fun <T> fade(reduce: Boolean): FiniteAnimationSpec<T> =
+        if (reduce) androidx.compose.animation.core.tween(REDUCED_FADE_MS) else springSpec(stiffness = Spring.StiffnessMediumLow)
+
+    const val REDUCED_FADE_MS = 150
+    private const val ENTER_SCALE = 0.92f
     private const val DAMPING = 0.82f
     private const val BOUNCY_DAMPING = 0.62f
 }

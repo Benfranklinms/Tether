@@ -231,7 +231,7 @@ class Features6(
         reply(HotspotState(r.ref, HotspotStates.STARTING))
         watchAp()
         val svc = ControlService.current
-        if (svc == null) {
+        if (svc == null || !settings().hotspotAutomation) {
             manualHotspot(HotspotReasons.NO_SERVICE)
             return
         }
