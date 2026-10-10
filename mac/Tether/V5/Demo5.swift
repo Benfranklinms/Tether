@@ -93,6 +93,30 @@ enum Demo5 {
         return img
     }
 
+    /// A release as the GitHub API returns it, for the update-sheet screenshot (body shaped like
+    /// CI's release notes: "What's new in" from CHANGELOG.md, then Downloads).
+    static func updateInfo() -> UpdateInfo? {
+        let body = """
+        ## What's new in 0.5.2
+
+        - **Animations** across the Mac and Android apps.
+        - **Videos play** in Photos.
+        - **Wi-Fi fast path comes back by itself** when the network or hotspot changes.
+        - **Shelf**, **Insert from Phone**, **Find my Mac** and **Instant Hotspot**.
+
+        ## Downloads
+
+        - macOS: Tether-0.5.2.dmg or Tether-0.5.2.zip
+        """
+        let obj: [String: Any] = [
+            "tag_name": "v0.5.2", "body": body, "html_url": "https://github.com/Benfranklinms/Tether/releases/tag/v0.5.2",
+            "assets": [["name": "Tether-0.5.2.zip", "size": 5_900_000,
+                        "browser_download_url": "https://github.com/Benfranklinms/Tether/releases/download/v0.5.2/Tether-0.5.2.zip"]],
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return nil }
+        return UpdateFeed.parse(data)
+    }
+
     static func png(_ grey: Double) -> Data {
         guard let tiff = image(grey).tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
               let data = rep.representation(using: .png, properties: [:]) else { return Data() }

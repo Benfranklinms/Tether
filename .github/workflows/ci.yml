@@ -334,17 +334,30 @@ jobs:
           find dist -type f | sort
           files=$(find dist -type f \( -name "Tether-$v.apk" -o -name "Tether-$v.dmg" -o -name "Tether-$v.zip" \))
           test "$(echo "$files" | wc -l)" -eq 3 || { echo "expected 3 assets, got: $files"; exit 1; }
-          cat > notes.md <<NOTES
-          Tether $v: your Android phone and your Mac linked directly — texts, calls, notifications with reply, media controls, clipboard, files, screen and more over Bluetooth LE (+ Wi-Fi fast path), end-to-end encrypted with Noise XX. See the README for setup and permissions.
-
-          - **Android**: \`Tether-$v.apk\` (Android 8.0+). Signed with Tether's release key (new in 0.5.0: uninstall 0.4.x once before installing).
-          - **macOS**: \`Tether-$v.dmg\` or \`Tether-$v.zip\` (macOS 13+, universal). Ad-hoc signed, not notarized: right-click → Open the first time, or run \`xattr -dr com.apple.quarantine /Applications/Tether.app\`.
-
-          Built by CI and not yet tested on real devices. See README → Limitations.
-          NOTES
-          sed -i 's/^          //' notes.md
+          # Human changelog: the "## <version>" section of CHANGELOG.md, required for a release.
+          awk -v v="$v" '
+            /^## / { if (on) exit; if ($2 == v) { on = 1; next } }
+            on { print }
+          ' CHANGELOG.md | sed -e '/./,$!d' > changes.md
+          if ! grep -q '[^[:space:]]' changes.md; then
+            echo "::error file=CHANGELOG.md::No '## $v' section in CHANGELOG.md; write the release's changelog before tagging"; exit 1
+          fi
+          {
+            echo "## What's new in $v"
+            echo
+            cat changes.md
+            echo
+            echo "## Downloads"
+            echo
+            echo "- **Android**: \`Tether-$v.apk\` (Android 8.0+). Signed with Tether's release key (new in 0.5.0: uninstall 0.4.x once before installing)."
+            echo "- **macOS**: \`Tether-$v.dmg\` or \`Tether-$v.zip\` (macOS 13+, universal). Ad-hoc signed, not notarized: right-click → Open the first time, or run \`xattr -dr com.apple.quarantine /Applications/Tether.app\`."
+            echo
+            echo "Your Android phone and your Mac linked directly over Bluetooth LE (+ Wi-Fi fast path), end-to-end encrypted with Noise XX. See the README for setup and permissions. Built by CI and not yet tested on real devices; see README → Limitations."
+          } > notes.md
+          cat notes.md
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" $files --clobber
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
           else
             gh release create "$GITHUB_REF_NAME" $files --title "Tether $v" --notes-file notes.md
           fi

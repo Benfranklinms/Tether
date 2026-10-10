@@ -1,4 +1,4 @@
-# Tether protocol v1 (revision 3.1)
+# Tether protocol v1 (revision 6)
 
 Tether links one Android phone and one Mac directly: no server, no account, no cloud.
 Everything below is implemented twice, independently, and cross-checked with shared test vectors:
@@ -303,3 +303,34 @@ One new cap, `albums`, announced by 0.5.1 builds. Without it nothing below is se
 - **TYPE_RESULT** `reason` adds `no_service` (Tether control is off in Accessibility) and `binding` (it is on but not bound yet). The Mac times out a batch with no answer after 4 s and says so.
 - **OPEN_ON_PHONE** with `url` = `tether://setup/<id>` opens the fix for that checklist row on the phone (its Settings screen, or a tap-to-open notification when Tether may not start activities from the background). The Mac's "Fix" buttons use it.
 - **Clipboard images**: both sides classify a copy before sending it. An image (including a Finder-copied image file, or a gallery clip that carries the image URI plus its file name as text) goes as a `clip` transfer; a copied non-image file sends nothing; only plain text goes as CLIP.
+
+## 17. Revision 6 (app 0.5.2)
+
+Same rules as before: `Hello.v` stays 1, the four new caps are announced in `Hello.caps`, and a side sends a revision-6 message only when the peer announced the matching cap. 0.5.1 and older builds decode the new types as unknown and ignore them; the new file kinds reach them as ordinary files (they never ask for one). Every message below travels only inside the paired, Noise-encrypted session, so only the paired phone or Mac can send it.
+
+| Cap | Feature |
+|---|---|
+| `capture` | Insert from Phone (CAPTURE_REQ / CAPTURE_RESULT, file kind `capture`) |
+| `findmac` | Find my Mac (FIND_MAC / FIND_MAC_STATE) |
+| `hotspot` | Instant Hotspot (HOTSPOT_REQ / HOTSPOT_STATE) |
+| `shelf` | Shelf (SHELF_SYNC / SHELF_FILE_REQ, file kind `shelf`) |
+
+### New messages
+
+| Type | Name | Direction | Header | Body |
+|---|---|---|---|---|
+| 0xE3 | CAPTURE_REQ | Mac → phone | `{"ref","kind" (photo\|scan)}` | |
+| 0xE4 | CAPTURE_RESULT | phone → Mac | `{"ref","state" (open\|sending\|done\|failed),"id"?,"name"?,"reason"?,"pages"?,"via"?}` | |
+| 0xE5 | FIND_MAC | phone → Mac | `{"id","action" (ring\|stop\|lock)}` | |
+| 0xE6 | FIND_MAC_STATE | Mac → phone | `{"id","ringing","ok"?,"locked"?,"reason"?,"by"? ("mac")}` | |
+| 0xE7 | HOTSPOT_REQ | Mac → phone | `{"ref","on":true}` | |
+| 0xE8 | HOTSPOT_STATE | phone → Mac | `{"ref"?,"state" (starting\|manual\|on\|off\|failed),"ssid"?,"psk"?,"reason"?}` | |
+| 0xE9 | SHELF_SYNC | both | `{"items":[ShelfItem],"removed":[{"id","ts"}],"full"}` | |
+| 0xEA | SHELF_FILE_REQ | both | `{"id"}` (a Shelf item id) | |
+
+- **Insert from Phone**: the Mac remembers the frontmost app, then sends CAPTURE_REQ. The phone opens the camera (`photo`) or the document scanner (`scan`, `pages` = page count) and reports `open`; when the picture is ready it sends `sending` with the transfer `id`/`name` and the file follows as a FILE_OFFER with `kind:"capture"`, then `done`. `reason` on `failed`: `cancelled`, `disabled`, `busy`, `no_camera`, `tap_phone` (the phone may not open a screen from the background and posted a tap-to-open notification instead), or `error:<detail>`. The Mac puts the file on the pasteboard and presses ⌘V in the remembered app when Accessibility is allowed; otherwise it saves the file to the Desktop and copies it.
+- **Find my Mac**: `ring` starts a loud looping chime and a full-screen "Found it" overlay on every display; `stop` ends it; `lock` stops the sound and locks the Mac (`ok`/`locked` false with `reason:"lock_failed"` when it couldn't). The Mac answers each action with FIND_MAC_STATE, and sends one more with `ringing:false, by:"mac"` when someone presses Found it on the Mac.
+- **Instant Hotspot** (best effort): on HOTSPOT_REQ the phone checks that the feature is on and a hotspot name (and password, unless open) has been saved in Tether, then turns the hotspot on with Tether control (the accessibility service) flipping the switch in Settings. `starting` → `on` with `ssid` and `psk` (null for an open network); the Mac joins with CoreWLAN, falling back to `networksetup`. `manual`: the phone opened its hotspot settings and asks its user to flip the switch (it sends `on` when the soft-AP comes up). `reason` on `failed`: `disabled`, `no_service` (Tether control is off), `no_switch` (the switch wasn't found on this phone), `no_credentials`, `timeout` (the Mac also gives up after 60 s), or `error:<detail>`. Neither side ever logs the password.
+- **Shelf**: a shared, ordered list of at most 50 items. `ShelfItem` = `{"id","kind" (text\|link\|wifi\|address\|snippet\|file),"title","body","secret"? (the Wi-Fi password),"from" (phone\|mac),"created","updated","order","file"?}`; `file` = `{"name","size","mime","sha256","owner"}`. Merge (ShelfState in both cores, same tests): for each id the copy with the newer `updated` wins (ties: the greater `from`); a tombstone `{"id","ts"}` removes any copy whose `updated` ≤ `ts`; tombstones are kept 30 days. `order` is a fractional index (lower = higher up): adding puts an item on top, moving gives it the midpoint of its new neighbours and a new `updated`. Each side sends a full snapshot (`full:true`) when the link comes up and a delta after each change; both prefer the Wi-Fi session. Text is classified the same way on both sides (ShelfDetect; vectors in `protocol/vectors/shelf-detect.json`).
+- **Shelf files**: the bytes stay on the `owner` device. The other side asks with SHELF_FILE_REQ and the owner answers with a FILE_OFFER `kind:"shelf"` (name = the item's file name). The transfer is SHA-256 verified as usual, and the receiver matches it to the item by `file.sha256`.
+- **Wi-Fi fast path after a network change** (no new messages): both sides watch their networks (the phone also watches its own hotspot / tethering state, which is not a client network on Android). When the phone's addresses change it sends a fresh `WIFI_OFFER` (new one-time token) 1.2 s later and, while Bluetooth is up and Wi-Fi isn't, offers again after 4 s, 8 s … up to 60 s (FastPathRetry, same in both cores). The Mac also watches its own paths (NWPathMonitor) and retries the latest offer when its interfaces change, trying the phone's addresses on one of its own /24 subnets first (for example the hotspot gateway).

@@ -85,8 +85,10 @@ struct FindMacOverlay: View {
                         .symbolRinging(!reduce)
                 }
                 .frame(height: 200)
-                Text("Found it").font(Typo.sans(54, .semibold)).foregroundColor(.white)
-                Text("\(phone) is looking for this Mac").font(Typo.sans(16)).foregroundColor(.white.opacity(0.6))
+                Text("This Mac is ringing").font(Typo.sans(48, .semibold)).foregroundColor(.white)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                Text("\(phone) is looking for it. Press Found it to stop the sound.").font(Typo.sans(16))
+                    .foregroundColor(.white.opacity(0.6)).multilineTextAlignment(.center)
                 Button(action: found) {
                     Text("Found it").font(Typo.sans(16, .semibold)).foregroundColor(.black)
                         .padding(.horizontal, 40).frame(height: 48)

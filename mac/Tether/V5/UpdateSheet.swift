@@ -5,16 +5,18 @@ import TetherCore
 /// What 0.5.2 brings, shown once after updating (bundled, so it works offline).
 enum WhatsNew {
     static let version = "0.5.2"
+    /// Kept in step with the 0.5.2 section of CHANGELOG.md (which becomes the release notes).
     static let notes = """
-    - **Motion everywhere.** Pages rise as you move down the sidebar, notifications and messages open with a hero \
-    transition, photos zoom out of their tile and back, lists cascade in and swipe away, buttons squish, symbols react.
-    - **Videos play** in Photos — fetched over Wi-Fi (Bluetooth when that's all there is), with a progress ring and AVKit controls.
+    - **Animations in both apps.** Pages slide the way you move, notifications and messages open with a hero \
+    transition, photos zoom out of their tile and back, lists cascade in and swipe away. Reduce Motion turns it into a fade.
+    - **Videos play in Photos**, fetched over Wi-Fi (Bluetooth when that's all there is) with a progress ring and the macOS controls.
+    - **The Wi-Fi fast path comes back by itself** when the network changes or the Mac joins your phone's hotspot.
     - **Shelf** — a pinned list on both devices: text, links, Wi-Fi, addresses, snippets and files.
-    - **Insert from Phone** — Take Photo or Scan Document on your phone and it lands in the app you're using.
+    - **Insert from Phone** — choose Take Photo or Scan Document, use your phone's camera, and it lands in the app you're using.
     - **Find my Mac** from your phone: a loud chime and a full-screen "Found it", or lock it.
-    - **Instant Hotspot** — one click turns on your phone's hotspot and joins it.
-    - **Wi-Fi comes back by itself** when the network changes or the Mac joins your phone's hotspot.
-    - Drag a rectangle to select photos and files.
+    - **Instant Hotspot** (best effort) — one click turns on your phone's hotspot and joins it. Save the hotspot name and \
+    password once in Tether on the phone and turn on Tether control.
+    - **Update popup** — new versions show up here with their notes, and this sheet after each update.
     """
 }
 

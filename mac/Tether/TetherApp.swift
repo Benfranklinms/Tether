@@ -230,6 +230,17 @@ enum Screenshots {
             AnyView(CaptureCard(session: CaptureSession(ref: "r", kind: CaptureKinds.scan, state: CaptureStates.open, reason: nil,
                                                         frontmostPid: nil, started: 0)).frame(width: 340).padding(20))
         },
+        Shot(name: "main-photos-video", scene: .connected) {
+            AnyView(MainShot(page: .photos) { m in m.v5.viewer = m.v5.library.items.first { $0.video } })
+        },
+        Shot(name: "main-update", scene: .connected) {
+            AnyView(MainShot(page: .home) { m in
+                m.v5.update.info = Demo5.updateInfo()
+                m.v5.update.phase = .available
+                m.v5.updateSheet = true
+            })
+        },
+        Shot(name: "main-whats-new", scene: .connected) { AnyView(MainShot(page: .home) { m in m.v5.whatsNew = true }) },
     ]
 
     /// The main window on one page (the model's V5State is swapped in by `next`).

@@ -28,7 +28,7 @@ struct PhotoViewer52: View {
             let origin = frames.frames[item.id].map { $0.offsetBy(dx: -container.minX, dy: -container.minY) }
             let rect = expanded ? fit : (origin ?? fit.insetBy(dx: fit.width * 0.1, dy: fit.height * 0.1))
             ZStack(alignment: .topLeading) {
-                Color.black.opacity((expanded ? 0.9 : 0) * (1 - dragProgress * 0.7))
+                Color.black.opacity((expanded ? 0.96 : 0) * (1 - dragProgress * 0.7))
                     .frame(width: g.size.width, height: g.size.height)
                     .onTapGesture(perform: close)
                 media
@@ -109,7 +109,8 @@ struct PhotoViewer52: View {
         }
         .padding(18)
         .frame(maxHeight: .infinity)
-        .background(Color.white.opacity(0.06))
+        // Opaque, so the page's toolbar (Refresh, the size slider) never shows through the panel.
+        .background(Color(white: 0.075).overlay(Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1), alignment: .leading))
         .environment(\.colorScheme, .dark)
     }
 

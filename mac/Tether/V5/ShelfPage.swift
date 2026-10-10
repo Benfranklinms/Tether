@@ -330,9 +330,18 @@ struct ShelfCard: View {
         .accessibilityLabel("\(item.kind) \(item.title)")
     }
 
+    /// "forms.gle/x7Tq2abc": the link without its scheme or "www.", capped at 48 characters.
+    static func linkPreview(_ url: String) -> String {
+        var s = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        for p in ["https://", "http://", "www."] where s.lowercased().hasPrefix(p) { s = String(s.dropFirst(p.count)) }
+        if s.hasSuffix("/") { s.removeLast() }
+        return s.count > 48 ? String(s.prefix(47)) + "…" : s
+    }
+
     private var preview: String {
         switch item.kind {
-        case ShelfKinds.link: return ShelfDetect.hostOf(item.body) + String(item.body.drop { $0 != "/" }.prefix(40))
+        case ShelfKinds.link: return ShelfCard.linkPreview(item.body)
+        case ShelfKinds.wifi: return item.secret.map { _ in "Password ••••••••" } ?? "Open network"
         case ShelfKinds.file: return [item.file.map { formatBytes($0.size) }, item.file?.mime].compactMap { $0 }.joined(separator: " · ")
         default: return item.body.replacingOccurrences(of: "\n", with: " ")
         }
