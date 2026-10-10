@@ -130,6 +130,9 @@ class CallMonitor(private val context: Context, private val onUpdate: (LiveCallT
     private fun onState(state: Int, number: String?) {
         val name = number?.let { contacts.lookup(it) } ?: hintName?.takeIf { state == CallTracker.RINGING }
         val u = tracker.onState(state, number, name, now())
+        // Android delivers RINGING twice when READ_CALL_LOG is granted (with and without the
+        // number, either order); the tracker keeps the call and re-sends it once the number is in.
+        Log.i("call.state", "state" to state, "number" to !number.isNullOrEmpty(), "sent" to (u.live != null))
         when (state) {
             CallTracker.IDLE -> {
                 hintName = null

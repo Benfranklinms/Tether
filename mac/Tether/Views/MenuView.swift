@@ -166,7 +166,7 @@ struct MenuView: View {
     // MARK: tabs
 
     private var tabs: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 16) {
             ForEach(Tab.allCases, id: \.self) { t in
                 Button {
                     withAnimation(Motion.spring(reduce)) { tab = t }
@@ -180,6 +180,10 @@ struct MenuView: View {
                                     .contentTransition(.numericText())
                             }
                         }
+                        // One line at its natural width: the bold selected label must never wrap
+                        // ("Notificatio/ns" with a count badge next to it).
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundColor(tab == t ? Mono.text : Mono.muted)
                         ZStack {
                             Rectangle().fill(Color.clear).frame(height: 2)
@@ -195,6 +199,7 @@ struct MenuView: View {
             if tab == .notifications && !m.history.items.isEmpty {
                 Button("Clear") { withAnimation(Motion.spring(reduce)) { m.clearHistory() } }
                     .buttonStyle(.plain).font(Typo.sans(11)).foregroundColor(Mono.muted)
+                    .lineLimit(1).fixedSize()
             }
         }
         .padding(.horizontal, 16)

@@ -107,6 +107,9 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Build test APKs
         run: ./gradlew --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Emulator console without auth (adb emu / AGP console connect reliably)
+        working-directory: .
+        run: ': > "$HOME/.emulator_console_auth_token"'
       - name: Instrumented tests (reply path, MediaStore watcher, real calls via the emulator modem) on API 34
         uses: reactivecircus/android-emulator-runner@v2
         with:

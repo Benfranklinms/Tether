@@ -106,16 +106,29 @@ class DeviceCallTests {
 
     private fun mac(m: Message) = engine.submit { assertTrue(bridge.handle(m)) }.get()
 
+    /**
+     * Rings the phone and waits until the Mac has the caller's number. Android sends the
+     * RINGING broadcast twice when the app also holds READ_CALL_LOG, one copy without the
+     * number and one with it, in no fixed order; the bridge sends a first card at once and
+     * an updated one (same call id) when the number arrives, so the test waits for that.
+     */
     private fun ring(): CallLive {
         driver("CALL $NUMBER")
-        val legacy = waitMsg<CallState>("CALL_STATE ringing") { it.state == CallStates.RINGING }
-        val live = waitMsg<CallLive>("CALL_LIVE ringing") { it.state == CallLiveStates.RINGING }
+        val first = waitMsg<CallLive>("CALL_LIVE ringing") { it.state == CallLiveStates.RINGING }
+        val live = waitMsg<CallLive>("CALL_LIVE ringing with the number (the number reaches the Mac)") {
+            it.state == CallLiveStates.RINGING && hasNumber(it.number)
+        }
+        val legacy = waitMsg<CallState>("CALL_STATE ringing with the number") {
+            it.state == CallStates.RINGING && hasNumber(it.number)
+        }
+        assertEquals("one call, one id", first.id, live.id)
         assertEquals(legacy.id, live.id)
         assertEquals(CallDirs.IN, live.dir)
-        assertTrue("the number reaches the Mac", live.number.orEmpty().filter(Char::isDigit).endsWith(NUMBER))
         assertTrue("Answer offered", live.canAnswer)
         return live
     }
+
+    private fun hasNumber(n: String?) = n.orEmpty().filter(Char::isDigit).endsWith(NUMBER)
 
     @Test
     fun incomingCallAnsweredFromMacThenEnded() {
