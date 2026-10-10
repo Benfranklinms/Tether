@@ -137,6 +137,25 @@ object MsgType {
     const val CALL_LOG = 0xA6
     const val CONTACT_SEARCH = 0xA7
     const val CONTACTS = 0xA8
+
+    // ---- revision 5 (0.5.0), gated on Hello.caps ----
+    const val OTP = 0x32
+    const val FS_LIST_REQ = 0xC0
+    const val FS_LIST = 0xC1
+    const val FS_GET = 0xC2
+    const val FS_GET_RESULT = 0xC3
+    const val THUMB_REQ = 0xC4
+    const val THUMB = 0xC5
+    const val PHOTOS_REQ = 0xC6
+    const val PHOTOS = 0xC7
+    const val CONTINUE = 0xC8
+    const val OPEN_ON_PHONE = 0xC9
+    const val OPEN_RESULT = 0xCA
+    const val TYPE_TEXT = 0xCB
+    const val TYPE_RESULT = 0xCC
+    const val DND_STATE = 0xE0
+    const val PHONE_STATUS = 0xE1
+    const val PHONE_STATUS_REQ = 0xE2
 }
 
 @Serializable data class Ping(val t: Long) : Message { override val type get() = MsgType.PING }
@@ -238,6 +257,7 @@ data class UnknownMessage(override val type: Int) : Message
 
 @Serializable private data class ClipHeader(val id: String, val ts: Long)
 @Serializable private data class ChunkHeader(val id: String, val offset: Long)
+@Serializable private data class ThumbHeader(val ref: String, val ok: Boolean, val reason: String? = null)
 
 /**
  * Message wire format (inside a Noise transport record):
@@ -258,6 +278,7 @@ object MessageCodec {
     private const val PREFIX = 5
     private val EMPTY = ByteArray(0)
 
+    @Suppress("LongMethod")
     fun encode(m: Message): ByteArray {
         val (header, body) = when (m) {
             is Ping -> enc(Ping.serializer(), m) to EMPTY
@@ -320,6 +341,23 @@ object MessageCodec {
             is CallLog -> enc(CallLog.serializer(), m) to EMPTY
             is ContactSearch -> enc(ContactSearch.serializer(), m) to EMPTY
             is Contacts -> enc(Contacts.serializer(), m) to EMPTY
+            is Otp -> enc(Otp.serializer(), m) to EMPTY
+            is FsListReq -> enc(FsListReq.serializer(), m) to EMPTY
+            is FsList -> enc(FsList.serializer(), m) to EMPTY
+            is FsGet -> enc(FsGet.serializer(), m) to EMPTY
+            is FsGetResult -> enc(FsGetResult.serializer(), m) to EMPTY
+            is ThumbReq -> enc(ThumbReq.serializer(), m) to EMPTY
+            is Thumb -> enc(ThumbHeader.serializer(), ThumbHeader(m.ref, m.ok, m.reason)) to m.data
+            is PhotosReq -> enc(PhotosReq.serializer(), m) to EMPTY
+            is Photos -> enc(Photos.serializer(), m) to EMPTY
+            is ContinueCard -> enc(ContinueHeader.serializer(), m.header()) to m.thumb
+            is OpenOnPhone -> enc(OpenOnPhone.serializer(), m) to EMPTY
+            is OpenResult -> enc(OpenResult.serializer(), m) to EMPTY
+            is TypeText -> enc(TypeText.serializer(), m) to EMPTY
+            is TypeResult -> enc(TypeResult.serializer(), m) to EMPTY
+            is DndState -> enc(DndState.serializer(), m) to EMPTY
+            is PhoneStatus -> enc(PhoneStatus.serializer(), m) to EMPTY
+            is PhoneStatusReq -> enc(PhoneStatusReq.serializer(), m) to EMPTY
             is UnknownMessage -> throw ProtocolException("cannot encode unknown message")
         }
         val buf = ByteBuffer.allocate(PREFIX + header.size + body.size)
@@ -422,10 +460,10 @@ object MessageCodec {
         }
         MsgType.RSSI -> dec(Rssi.serializer(), header)
         MsgType.PROXIMITY_CFG -> dec(ProximityCfg.serializer(), header)
-        else -> decodeRevision4(type, header)
+        else -> decodeRevision4(type, header, body)
     }
 
-    private fun decodeRevision4(type: Int, header: String): Message = when (type) {
+    private fun decodeRevision4(type: Int, header: String, body: ByteArray): Message = when (type) {
         MsgType.NOTIF_ACCESS -> dec(NotifAccess.serializer(), header)
         MsgType.CALL_DIAL -> dec(CallDial.serializer(), header)
         MsgType.CALL_DIAL_RESULT -> dec(CallDialResult.serializer(), header)
@@ -434,8 +472,40 @@ object MessageCodec {
         MsgType.CALL_LOG -> dec(CallLog.serializer(), header)
         MsgType.CONTACT_SEARCH -> dec(ContactSearch.serializer(), header)
         MsgType.CONTACTS -> dec(Contacts.serializer(), header)
+        else -> decodeRevision5(type, header, body)
+    }
+
+    @Suppress("CyclomaticComplexMethod")
+    private fun decodeRevision5(type: Int, header: String, body: ByteArray): Message = when (type) {
+        MsgType.OTP -> dec(Otp.serializer(), header)
+        MsgType.FS_LIST_REQ -> dec(FsListReq.serializer(), header)
+        MsgType.FS_LIST -> dec(FsList.serializer(), header)
+        MsgType.FS_GET -> dec(FsGet.serializer(), header)
+        MsgType.FS_GET_RESULT -> dec(FsGetResult.serializer(), header)
+        MsgType.THUMB_REQ -> dec(ThumbReq.serializer(), header)
+        MsgType.THUMB -> {
+            if (body.size > MAX_THUMB_BYTES) throw ProtocolException("thumbnail too large")
+            val h = dec(ThumbHeader.serializer(), header)
+            Thumb(h.ref, h.ok, body, h.reason)
+        }
+        MsgType.PHOTOS_REQ -> dec(PhotosReq.serializer(), header)
+        MsgType.PHOTOS -> dec(Photos.serializer(), header)
+        MsgType.CONTINUE -> {
+            if (body.size > MAX_THUMB_BYTES) throw ProtocolException("thumbnail too large")
+            ContinueCard.of(dec(ContinueHeader.serializer(), header), body)
+        }
+        MsgType.OPEN_ON_PHONE -> dec(OpenOnPhone.serializer(), header)
+        MsgType.OPEN_RESULT -> dec(OpenResult.serializer(), header)
+        MsgType.TYPE_TEXT -> dec(TypeText.serializer(), header)
+        MsgType.TYPE_RESULT -> dec(TypeResult.serializer(), header)
+        MsgType.DND_STATE -> dec(DndState.serializer(), header)
+        MsgType.PHONE_STATUS -> dec(PhoneStatus.serializer(), header)
+        MsgType.PHONE_STATUS_REQ -> dec(PhoneStatusReq.serializer(), header)
         else -> UnknownMessage(type)
     }
+
+    /** Largest THUMB / CONTINUE body accepted (the phone sends ≤ 48 KiB JPEGs). */
+    const val MAX_THUMB_BYTES: Int = 96 * 1024
 
     /** Largest NOW_PLAYING_ART body accepted (the phone sends ≤ 96 KiB JPEGs). */
     const val MAX_ART_BYTES: Int = 256 * 1024

@@ -25,6 +25,11 @@ import dev.benfranklin.tether.core.proto.CallActions
 import dev.benfranklin.tether.core.proto.CallState
 import dev.benfranklin.tether.core.proto.CallStates
 import dev.benfranklin.tether.core.proto.Caps3
+import dev.benfranklin.tether.core.proto.Caps5
+import dev.benfranklin.tether.core.proto.FileKinds5
+import dev.benfranklin.tether.core.proto.MsgType
+import dev.benfranklin.tether.core.transfer.Direction
+import dev.benfranklin.tether.core.transfer.TransferStatus
 import dev.benfranklin.tether.core.proto.MediaCmd
 import dev.benfranklin.tether.core.proto.MediaCmds
 import dev.benfranklin.tether.core.proto.NowPlaying
@@ -87,6 +92,8 @@ class InteropTest {
     private val peerPath: String? = System.getenv("TETHER_SWIFT_PEER")
     /** The released 0.3.1 Swift Mac core (tools/interop built at tag v0.3.1), for old-peer compatibility. */
     private val oldPeerPath: String? = System.getenv("TETHER_SWIFT_PEER_OLD")
+    /** The released 0.4.3 Swift Mac core (tag v0.4.3): the 0.5 old-peer compatibility target. */
+    private val old043PeerPath: String? = System.getenv("TETHER_SWIFT_PEER_OLD043")
     /** Largest fragment the Kotlin phone wrote towards the Swift Mac in this test. */
     private val maxPhoneFragment = java.util.concurrent.atomic.AtomicInteger()
 
@@ -199,7 +206,8 @@ class InteropTest {
     fun phoneToMacFeatureMessagesRoundTrip() = session(185, 185, qr = true) { loop, phone, peer ->
         assertTrue(phone.controller.peerSupports(Caps.SCREEN))
         loop.runUntil(5_000) {
-            peer.has("CAPS", "battery,call,callctl,calllog,clip,dial,file,media,notif,notifaccess,nowplaying,proximity,reply,ring,screen,sms")
+            peer.has("CAPS", "battery,call,callctl,calllog,clip,clipimg,continue,dial,dnd,file,fs,media,notif,notifaccess,nowplaying,openurl,otp,photos," +
+                "proximity,reply,ring,screen,sms,status,type")
         }
         peer.send("ECHO on")
         val sent: List<Message> = listOf(
@@ -515,6 +523,96 @@ class InteropTest {
         // 0.3 traffic and the link itself are unaffected.
         peer.send("SEND " + Hex.encode(MessageCodec.encode(CallAction("c9", CallActions.DECLINE))))
         loop.runUntil(10_000) { phone.messages.lastOrNull() == CallAction("c9", CallActions.DECLINE) }
+        clipBothWays(loop, phone, peer)
+        assertFalse(peer.has("CLOSED"))
+        assertFalse(peer.has("DECODE_ERROR"))
+    }
+
+    // ---------------- revision 5 (0.5.0) ----------------
+
+    /** Messages the phone sends in revision 5 (the rest go Mac -> phone). */
+    private val phoneToMac5 = setOf(
+        MsgType.OTP, MsgType.FS_LIST, MsgType.FS_GET_RESULT, MsgType.THUMB, MsgType.PHOTOS, MsgType.CONTINUE,
+        MsgType.OPEN_RESULT, MsgType.TYPE_RESULT, MsgType.DND_STATE, MsgType.PHONE_STATUS,
+    )
+
+    /** Phone -> Mac 0.5 messages at real-device fragment sizes: Swift decodes, re-encodes, echoes them back. */
+    @Test
+    fun phoneToMacRevision5RoundTrip() = session(514, 512, qr = true) { loop, phone, peer ->
+        for (c in Caps5.ALL) assertTrue(c, phone.controller.peerSupports(c))
+        peer.send("ECHO on")
+        val sent = Rev5Samples.all().filter { it.type in phoneToMac5 }
+        assertTrue("a 150-entry listing spans many fragments", sent.any { MessageCodec.encode(it).size > 10 * 512 })
+        for (m in sent) {
+            val before = phone.messages.size
+            loop.execute { assertTrue(phone.controller.send(m)) }
+            loop.runUntil(20_000) { phone.messages.size > before }
+            assertEquals(m, phone.messages.last())
+        }
+        val raws = peer.lines.filter { it.startsWith("RAW ") }.map { MessageCodec.decode(Hex.decode(it.substring(4))) }
+        assertTrue(raws.containsAll(sent.filter { MessageCodec.encode(it).size < 4096 }))
+        assertFalse(peer.has("CLOSED"))
+        assertTrue(maxPhoneFragment.get() <= 512)
+    }
+
+    /** Mac -> phone 0.5 messages: encoded by Kotlin, decoded and re-sent by the Swift controller. */
+    @Test
+    fun macToPhoneRevision5() = session(244, 244, qr = false) { loop, phone, peer ->
+        val fromMac = Rev5Samples.all().filter { it.type !in phoneToMac5 }
+        assertTrue(fromMac.size >= 8)
+        for (m in fromMac) {
+            val before = phone.messages.size
+            peer.send("SEND " + Hex.encode(MessageCodec.encode(m)))
+            loop.runUntil(10_000) { phone.messages.size > before }
+            assertEquals(m, phone.messages.last())
+        }
+        assertFalse(peer.has("DECODE_ERROR"))
+    }
+
+    /** Clipboard images both ways as transfers with kind "clip" (BLE), verified by SHA-256 on each side. */
+    @Test
+    fun clipboardImagesBothWays() = session(244, 244, qr = true) { loop, phone, peer ->
+        assertTrue(phone.controller.peerSupports(Caps5.CLIP_IMAGE))
+        val png = Random(5).nextBytes(48_000)
+        val rec = phone.files.stage("clip.png", png, loop.now).copy(kind = FileKinds5.CLIP, mime = "image/png")
+        loop.execute { phone.controller.sendFile(rec) }
+        loop.runUntil(30_000) { peer.has("FILE ${rec.id}") }
+        assertTrue(peer.has("FILE ${rec.id} clip ${rec.sha256} DONE via=BLE"))
+        val jpeg = Random(6).nextBytes(30_000)
+        peer.send("SENDFILE clip.jpg clip " + Hex.encode(jpeg))
+        loop.runUntil(30_000) {
+            phone.transfers.values.any { it.direction == Direction.IN && it.status == TransferStatus.DONE && it.kind == FileKinds5.CLIP }
+        }
+        val got = phone.transfers.values.first { it.direction == Direction.IN && it.kind == FileKinds5.CLIP }
+        assertTrue(phone.files.finished[got.id]!!.contentEquals(jpeg))
+        clipBothWays(loop, phone, peer)
+    }
+
+    /** A 0.4.x Mac (revision 4 caps): no 0.5 features are announced, 0.4 calling still works. */
+    @Test
+    fun v04MacDoesNotGetRevision5() = session(185, 185, qr = true, "v04") { loop, phone, peer ->
+        assertTrue(phone.controller.peerSupports(Caps4.DIAL))
+        for (c in Caps5.ALL) assertFalse(c, phone.controller.peerSupports(c))
+        peer.send("ECHO on")
+        val live = CallLive("c1", CallDirs.IN, CallLiveStates.RINGING, "+919847012345", ts = 1)
+        loop.execute { assertTrue(phone.controller.send(live)) }
+        loop.runUntil(10_000) { phone.messages.lastOrNull() == live }
+        clipBothWays(loop, phone, peer)
+    }
+
+    /**
+     * The real released 0.4.3 Mac core (built from tag v0.4.3): every revision-5 message is
+     * ignored as an unknown type, and the link, clipboard and 0.4 traffic keep working.
+     */
+    @Test
+    fun released043MacIgnoresRevision5() = session(185, 185, qr = true, path = old043PeerPath) { loop, phone, peer ->
+        assertTrue(phone.controller.peerSupports(Caps4.CALL_LOG))
+        for (c in Caps5.ALL) assertFalse(c, phone.controller.peerSupports(c))
+        val rev5: List<Message> = Rev5Samples.all().filter { it.type in phoneToMac5 }
+        for (m in rev5) loop.execute { assertTrue(phone.controller.send(m)) }
+        loop.runUntil(20_000) { peer.lines.count { it.startsWith("MSG unknown") } >= rev5.size }
+        peer.send("SEND " + Hex.encode(MessageCodec.encode(CallLogReq(10))))
+        loop.runUntil(10_000) { phone.messages.lastOrNull() == CallLogReq(10) }
         clipBothWays(loop, phone, peer)
         assertFalse(peer.has("CLOSED"))
         assertFalse(peer.has("DECODE_ERROR"))

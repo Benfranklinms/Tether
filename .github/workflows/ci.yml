@@ -158,15 +158,18 @@ jobs:
       - name: Build the Swift peer (real TetherCore)
         working-directory: tools/interop
         run: swift --version && swift build
-      - name: Build the released 0.3.1 Swift peer (old-Mac compatibility)
+      - name: Build the released 0.3.1 and 0.4.3 Swift peers (old-Mac compatibility)
         run: |
           git worktree add "$RUNNER_TEMP/old031" v0.3.1
           (cd "$RUNNER_TEMP/old031/tools/interop" && swift build)
+          git worktree add "$RUNNER_TEMP/old043" v0.4.3
+          (cd "$RUNNER_TEMP/old043/tools/interop" && swift build)
       - name: Kotlin phone core ↔ Swift Mac core
         working-directory: android
         run: |
           export TETHER_SWIFT_PEER="$GITHUB_WORKSPACE/tools/interop/.build/debug/tether-peer"
           export TETHER_SWIFT_PEER_OLD="$RUNNER_TEMP/old031/tools/interop/.build/debug/tether-peer"
+          export TETHER_SWIFT_PEER_OLD043="$RUNNER_TEMP/old043/tools/interop/.build/debug/tether-peer"
           ./gradlew --stacktrace :core:test --tests '*InteropTest*'
           # Fail if the tests were skipped (peer not found) instead of silently passing.
           f=core/build/test-results/test/TEST-dev.benfranklin.tether.core.InteropTest.xml

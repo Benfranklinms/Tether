@@ -6,6 +6,7 @@
 //         "CONFIRM" | "CLIP <text>" | "QUIT"
 //         "SEND <hex>"  an encoded message: decoded by the Swift codec, then sent by the Swift controller
 //         "ECHO on|off" re-send every app-level message received (decode -> encode round trip)
+//         "SENDFILE <name> <kind> <hex>"  queue an outgoing file (Mac -> phone), e.g. a clipboard image (kind "clip")
 //         "TAP <viewW> <viewH> <videoW> <videoH> <x> <y> <rot>"  a click in the Mac's screen window
 //                       (top-left origin) -> VideoGeometry + GestureClassifier -> SCREEN_INPUT
 //         "DRAG <viewW> <viewH> <videoW> <videoH> <x1> <y1> <x2> <y2> <ms> <rot>"
@@ -29,7 +30,12 @@ final class Mem: IdentityStore, OutgoingFiles, IncomingFiles {
     var partial: [String: Data] = [:]
     var finished: [String: Data] = [:]
 
-    func read(_ record: TransferRecord, offset: Int64, length: Int) throws -> Data { Data(count: length) }
+    var outgoing: [String: Data] = [:]
+    func read(_ record: TransferRecord, offset: Int64, length: Int) throws -> Data {
+        guard let d = outgoing[record.id] else { return Data(count: length) }
+        let start = Int(offset)
+        return d.subdata(in: start..<min(d.count, start + length))
+    }
     func release(_ record: TransferRecord) {}
     func partialLength(_ id: String) -> Int64 { Int64(partial[id]?.count ?? 0) }
     func begin(_ record: TransferRecord) throws { partial[record.id] = Data() }
@@ -89,14 +95,16 @@ let args = CommandLine.arguments
 let maxFragment = args.count > 1 ? Int(args[1]) ?? 182 : 182
 let legacy = args.contains("legacy")
 let v03 = args.contains("v03") // a 0.3.x Mac: revision 3 caps, no calling (0.4) caps
+let v04 = args.contains("v04") // a 0.4.x Mac: revision 4 caps, none of 0.5
 let future = args.contains("future") // a hypothetical protocol v2 build: must be refused cleanly
 let mem = Mem()
 let listener = L()
 controller = TetherController(role: .responder, identity: mem,
                               localHello: {
-                                  let caps = legacy ? Caps.v1 : v03 ? Caps.current.filter { !Caps4.all.contains($0) } : Caps.current
+                                  let caps = legacy ? Caps.v1 : v03 ? Caps.current.filter { !Caps4.all.contains($0) && !Caps5.all.contains($0) }
+                                      : v04 ? Caps.current.filter { !Caps5.all.contains($0) } : Caps.current
                                   var h = Hello(name: "Ben’s MacBook Air", platform: "macos",
-                                                app: legacy ? "0.1.1" : v03 ? "0.3.1" : "0.4.0", caps: caps)
+                                                app: legacy ? "0.1.1" : v03 ? "0.3.1" : v04 ? "0.4.3" : "0.5.0", caps: caps)
                                   if future { h.v = 2 }
                                   return h
                               },
@@ -141,6 +149,14 @@ while let line = readLine() {
             let input = GestureClassifier.classify(down: a, up: b, durationMs: Int64(p[8]), aspect: p[2] / p[3], rotation: Int(p[9]))
             out("SENT \(controller.send(.screenInput(input)))")
         }
+    case "SENDFILE":
+        let data = Hex.decode(parts[3]) ?? Data()
+        let id = "mac-\(parts[1])"
+        mem.outgoing[id] = data
+        controller.sendFile(TransferRecord(id: id, direction: .OUT, name: parts[1], size: Int64(data.count), sha256: sha256Hex(data),
+                                           mime: parts[2] == "clip" ? "image/png" : "application/octet-stream", status: .QUEUED,
+                                           createdAt: 1, kind: parts[2] == "-" ? nil : parts[2]))
+        out("QUEUED \(id)")
     case "QUIT": exit(0)
     default: break
     }

@@ -203,6 +203,24 @@ public enum Message: Equatable {
     case callLog(CallLogPayload)
     case contactSearch(ContactSearchPayload)
     case contacts(ContactsPayload)
+    // revision 5 (0.5.0)
+    case otp(OtpPayload)
+    case fsListReq(FsListReq)
+    case fsList(FsListPayload)
+    case fsGet(FsGetPayload)
+    case fsGetResult(FsGetResultPayload)
+    case thumbReq(ThumbReq)
+    case thumb(ThumbPayload)
+    case photosReq(PhotosReq)
+    case photos(PhotosPayload)
+    case continueCard(ContinuePayload, thumb: Data)
+    case openOnPhone(OpenOnPhonePayload)
+    case openResult(OpenResultPayload)
+    case typeText(TypeTextPayload)
+    case typeResult(TypeResultPayload)
+    case dndState(DndStatePayload)
+    case phoneStatus(PhoneStatusPayload)
+    case phoneStatusReq(ts: Int64)
     case unknown(type: UInt8)
 
     public var type: UInt8 {
@@ -265,6 +283,23 @@ public enum Message: Equatable {
         case .callLog: return 0xA6
         case .contactSearch: return 0xA7
         case .contacts: return 0xA8
+        case .otp: return 0x32
+        case .fsListReq: return 0xC0
+        case .fsList: return 0xC1
+        case .fsGet: return 0xC2
+        case .fsGetResult: return 0xC3
+        case .thumbReq: return 0xC4
+        case .thumb: return 0xC5
+        case .photosReq: return 0xC6
+        case .photos: return 0xC7
+        case .continueCard: return 0xC8
+        case .openOnPhone: return 0xC9
+        case .openResult: return 0xCA
+        case .typeText: return 0xCB
+        case .typeResult: return 0xCC
+        case .dndState: return 0xE0
+        case .phoneStatus: return 0xE1
+        case .phoneStatusReq: return 0xE2
         case .unknown(let t): return t
         }
     }
@@ -358,7 +393,10 @@ public enum MessageCodec {
         case .callLog(let p): header = try encoder.encode(p)
         case .contactSearch(let p): header = try encoder.encode(p)
         case .contacts(let p): header = try encoder.encode(p)
-        case .unknown: throw ProtocolError("cannot encode unknown message")
+        default:
+            let r = try encodeRevision5(m)
+            header = r.0
+            body = r.1
         }
         var out = Data(capacity: 5 + header.count + body.count)
         out.append(m.type)
@@ -366,6 +404,29 @@ public enum MessageCodec {
         out.append(header)
         out.append(body)
         return out
+    }
+
+    private static func encodeRevision5(_ m: Message) throws -> (Data, Data) {
+        switch m {
+        case .otp(let p): return (try encoder.encode(p), Data())
+        case .fsListReq(let p): return (try encoder.encode(p), Data())
+        case .fsList(let p): return (try encoder.encode(p), Data())
+        case .fsGet(let p): return (try encoder.encode(p), Data())
+        case .fsGetResult(let p): return (try encoder.encode(p), Data())
+        case .thumbReq(let p): return (try encoder.encode(p), Data())
+        case .thumb(let p): return (try encoder.encode(ThumbHeader(ref: p.ref, ok: p.ok, reason: p.reason)), p.data)
+        case .photosReq(let p): return (try encoder.encode(p), Data())
+        case .photos(let p): return (try encoder.encode(p), Data())
+        case .continueCard(let p, let thumb): return (try encoder.encode(p), thumb)
+        case .openOnPhone(let p): return (try encoder.encode(p), Data())
+        case .openResult(let p): return (try encoder.encode(p), Data())
+        case .typeText(let p): return (try encoder.encode(p), Data())
+        case .typeResult(let p): return (try encoder.encode(p), Data())
+        case .dndState(let p): return (try encoder.encode(p), Data())
+        case .phoneStatus(let p): return (try encoder.encode(p), Data())
+        case .phoneStatusReq(let ts): return (try encoder.encode(StatusReqHeader(ts: ts)), Data())
+        default: throw ProtocolError("cannot encode unknown message")
+        }
     }
 
     public static func decode(_ data: Data) throws -> Message {
@@ -462,11 +523,11 @@ public enum MessageCodec {
             return .nowPlayingArt(hash: try d(ArtHeader.self).hash, data: body)
         case 0xD0: let x = try d(RssiHeader.self); return .rssi(rssi: x.rssi, ts: x.ts)
         case 0xD1: return .proximityCfg(try d(ProximityCfgPayload.self))
-        default: return try decodeRevision4(type, h)
+        default: return try decodeRevision4(type, h, body)
         }
     }
 
-    private static func decodeRevision4(_ type: UInt8, _ h: Data) throws -> Message {
+    private static func decodeRevision4(_ type: UInt8, _ h: Data, _ body: Data) throws -> Message {
         func d<T: Decodable>(_ t: T.Type) throws -> T { try decoder.decode(t, from: h) }
         switch type {
         case 0x45: return .notifAccess(try d(NotifAccessPayload.self))
@@ -477,6 +538,38 @@ public enum MessageCodec {
         case 0xA6: return .callLog(try d(CallLogPayload.self))
         case 0xA7: return .contactSearch(try d(ContactSearchPayload.self))
         case 0xA8: return .contacts(try d(ContactsPayload.self))
+        default: return try decodeRevision5(type, h, body)
+        }
+    }
+
+    /// Largest THUMB / CONTINUE body accepted (the phone sends ≤ 48 KiB JPEGs).
+    public static let maxThumbBytes = 96 * 1024
+
+    private static func decodeRevision5(_ type: UInt8, _ h: Data, _ body: Data) throws -> Message {
+        func d<T: Decodable>(_ t: T.Type) throws -> T { try decoder.decode(t, from: h) }
+        switch type {
+        case 0x32: return .otp(try d(OtpPayload.self))
+        case 0xC0: return .fsListReq(try d(FsListReq.self))
+        case 0xC1: return .fsList(try d(FsListPayload.self))
+        case 0xC2: return .fsGet(try d(FsGetPayload.self))
+        case 0xC3: return .fsGetResult(try d(FsGetResultPayload.self))
+        case 0xC4: return .thumbReq(try d(ThumbReq.self))
+        case 0xC5:
+            guard body.count <= maxThumbBytes else { throw ProtocolError("thumbnail too large") }
+            let x = try d(ThumbHeader.self)
+            return .thumb(ThumbPayload(ref: x.ref, ok: x.ok, data: body, reason: x.reason))
+        case 0xC6: return .photosReq(try d(PhotosReq.self))
+        case 0xC7: return .photos(try d(PhotosPayload.self))
+        case 0xC8:
+            guard body.count <= maxThumbBytes else { throw ProtocolError("thumbnail too large") }
+            return .continueCard(try d(ContinuePayload.self), thumb: body)
+        case 0xC9: return .openOnPhone(try d(OpenOnPhonePayload.self))
+        case 0xCA: return .openResult(try d(OpenResultPayload.self))
+        case 0xCB: return .typeText(try d(TypeTextPayload.self))
+        case 0xCC: return .typeResult(try d(TypeResultPayload.self))
+        case 0xE0: return .dndState(try d(DndStatePayload.self))
+        case 0xE1: return .phoneStatus(try d(PhoneStatusPayload.self))
+        case 0xE2: return .phoneStatusReq(ts: try d(StatusReqHeader.self).ts ?? 0)
         default: return .unknown(type: type)
         }
     }

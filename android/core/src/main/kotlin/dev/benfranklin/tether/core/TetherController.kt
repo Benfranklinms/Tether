@@ -10,11 +10,15 @@ import dev.benfranklin.tether.core.proto.CallLog
 import dev.benfranklin.tether.core.proto.Clip
 import dev.benfranklin.tether.core.proto.CloseReason
 import dev.benfranklin.tether.core.proto.Contacts
+import dev.benfranklin.tether.core.proto.ContinueCard
+import dev.benfranklin.tether.core.proto.FsList
 import dev.benfranklin.tether.core.proto.Hello
 import dev.benfranklin.tether.core.proto.KeyRotate
 import dev.benfranklin.tether.core.proto.KeyRotateAck
 import dev.benfranklin.tether.core.proto.Message
 import dev.benfranklin.tether.core.proto.NowPlayingArt
+import dev.benfranklin.tether.core.proto.PhoneStatus
+import dev.benfranklin.tether.core.proto.Photos
 import dev.benfranklin.tether.core.proto.Ping
 import dev.benfranklin.tether.core.proto.Pong
 import dev.benfranklin.tether.core.proto.Protocol
@@ -25,6 +29,8 @@ import dev.benfranklin.tether.core.proto.ScreenState
 import dev.benfranklin.tether.core.proto.ScreenStop
 import dev.benfranklin.tether.core.proto.SmsMessages
 import dev.benfranklin.tether.core.proto.SmsThreads
+import dev.benfranklin.tether.core.proto.Thumb
+import dev.benfranklin.tether.core.proto.TypeText
 import dev.benfranklin.tether.core.proto.Unpair
 import dev.benfranklin.tether.core.proto.VideoFeedback
 import dev.benfranklin.tether.core.proto.VideoFrame
@@ -330,7 +336,8 @@ class TetherController(
     /** Latency-sensitive screen control and anything big (lists, artwork) goes over Wi-Fi when it is up. */
     private fun prefersWifi(m: Message): Boolean =
         m is Clip || m is ScreenInput || m is VideoFeedback || m is ScreenStart || m is ScreenStop || m is ScreenState ||
-            m is SmsThreads || m is SmsMessages || m is NowPlayingArt || m is CallLog || m is Contacts
+            m is SmsThreads || m is SmsMessages || m is NowPlayingArt || m is CallLog || m is Contacts ||
+            m is FsList || m is Photos || m is Thumb || m is ContinueCard || m is PhoneStatus || m is TypeText
 
     fun sendFile(record: TransferRecord) = engine.enqueue(record)
 
