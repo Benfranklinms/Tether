@@ -105,7 +105,10 @@ class Features5(
             is ThumbReq -> io.execute { onThumb(m) }
             is PhotosReq -> io.execute { onPhotos(m) }
             is AlbumsReq -> io.execute { onAlbums(m) }
-            is OpenOnPhone -> main.post { onOpen(m) }
+            is OpenOnPhone -> main.post {
+                val setup = m.url?.trim()?.let { dev.benfranklin.tether.core.features.PhoneSetupLink.itemId(it) }
+                if (setup != null && settings().allowOpenOnPhone) openSetupFix(m, setup) else onOpen(m)
+            }
             is TypeText -> main.post { onType(m) }
             is DndState -> onRemoteDnd(m)
             is PhoneStatusReq -> pushStatus(force = true)
@@ -190,7 +193,6 @@ class Features5(
             Notifications.alert(app, "Copied from your Mac", text.take(PREVIEW))
             return reply(OpenResult(o.id, true, "clipboard"))
         }
-        dev.benfranklin.tether.core.features.PhoneSetupLink.itemId(url)?.let { return openSetupFix(o, it) }
         val uri = Uri.parse(url)
         if (uri.scheme?.lowercase() !in OPENABLE) return reply(OpenResult(o.id, false, reason = "invalid"))
         val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

@@ -335,10 +335,8 @@ class TetherController(
     }
 
     /** Latency-sensitive screen control and anything big (lists, artwork) goes over Wi-Fi when it is up. */
-    private fun prefersWifi(m: Message): Boolean =
-        m is Clip || m is ScreenInput || m is VideoFeedback || m is ScreenStart || m is ScreenStop || m is ScreenState ||
-            m is SmsThreads || m is SmsMessages || m is NowPlayingArt || m is CallLog || m is Contacts ||
-            m is FsList || m is Photos || m is Thumb || m is ContinueCard || m is PhoneStatus || m is TypeText || m is Albums
+    /** Big or latency-sensitive records go over Wi-Fi when it is up. */
+    private fun prefersWifi(m: Message): Boolean = WIFI_PREFERRED.any { it.isInstance(m) }
 
     fun sendFile(record: TransferRecord) = engine.enqueue(record)
 
@@ -582,6 +580,12 @@ class TetherController(
     }
 
     companion object {
+        /** Record types that prefer the Wi-Fi session (big lists, thumbnails, screen control). */
+        private val WIFI_PREFERRED = listOf(
+            Clip::class, ScreenInput::class, VideoFeedback::class, ScreenStart::class, ScreenStop::class, ScreenState::class,
+            SmsThreads::class, SmsMessages::class, NowPlayingArt::class, CallLog::class, Contacts::class,
+            FsList::class, Photos::class, Thumb::class, ContinueCard::class, PhoneStatus::class, TypeText::class, Albums::class,
+        )
         /** Fragment size the link will actually use for a reported [maxFragment] (ATT MTU - 3). */
         fun clampFragment(maxFragment: Int): Int = maxFragment.coerceIn(DEFAULT_FRAGMENT, Fragmentation.MAX_BLE_FRAGMENT)
 
