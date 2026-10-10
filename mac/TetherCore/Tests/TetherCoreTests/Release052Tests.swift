@@ -229,4 +229,20 @@ final class Release052Tests: XCTestCase {
         XCTAssertFalse(r.due(now: 200_000, bleReady: false, wifiReady: false))
         XCTAssertEqual(FastPathRetry.rank(["192.168.29.142", "10.183.42.1"], local: ["10.183.42.77"]), ["10.183.42.1", "192.168.29.142"])
     }
+
+    func testUpdatePopupPolicy() {
+        let now: Int64 = 1_000_000_000
+        XCTAssertTrue(UpdatePrompt.shouldShow(latest: "0.5.3", current: "0.5.2", skipped: nil, snoozedUntil: 0, now: now))
+        XCTAssertFalse(UpdatePrompt.shouldShow(latest: "0.5.2", current: "0.5.2", skipped: nil, snoozedUntil: 0, now: now))
+        XCTAssertFalse(UpdatePrompt.shouldShow(latest: "0.5.3", current: "0.5.2", skipped: "0.5.3", snoozedUntil: 0, now: now))
+        XCTAssertFalse(UpdatePrompt.shouldShow(latest: "0.5.3", current: "0.5.2", skipped: nil, snoozedUntil: now + 1, now: now))
+        XCTAssertTrue(UpdatePrompt.shouldCheck(lastCheck: now, now: now, launch: true, foreground: false))
+        XCTAssertFalse(UpdatePrompt.shouldCheck(lastCheck: now - 5 * 3_600_000, now: now, launch: false, foreground: true))
+        XCTAssertTrue(UpdatePrompt.shouldCheck(lastCheck: now - 6 * 3_600_000, now: now, launch: false, foreground: true))
+        XCTAssertTrue(UpdatePrompt.showWhatsNew(current: "0.5.2", seen: "0.5.1"))
+        XCTAssertFalse(UpdatePrompt.showWhatsNew(current: "0.5.2", seen: nil))
+        let notes = "## What's new in 0.5.2\n\n- Motion everywhere\n- Shelf\n\n### Mac\n- Videos play\n\n## Downloads\n- Tether-0.5.2.apk"
+        XCTAssertEqual(UpdatePrompt.changelog(notes), "- Motion everywhere\n- Shelf\n\n### Mac\n- Videos play")
+        XCTAssertEqual(UpdatePrompt.changelog("Fixes\n\n## Downloads\n- x"), "Fixes")
+    }
 }

@@ -34,7 +34,7 @@ object ShelfDetect {
             return if (lines.size > 1 && !looksLikeCode(lines[0])) {
                 ShelfGuess(ShelfKinds.SNIPPET, lines[0].take(TITLE), lines.drop(1).joinToString("\n"))
             } else {
-                ShelfGuess(ShelfKinds.SNIPPET, lines[0].split(' ').take(3).joinToString(" ").take(TITLE), text)
+                ShelfGuess(ShelfKinds.SNIPPET, lines[0].split(' ').take(TITLE_WORDS).joinToString(" ").take(TITLE), text)
             }
         }
         address(text, lines)?.let { return it }
@@ -108,7 +108,9 @@ object ShelfDetect {
         val hasPin = pin.containsMatchIn(text)
         val commas = text.count { it == ',' }
         val streety = street.containsMatchIn(text)
-        if (!(hasPin && (commas >= 1 || lines.size >= 2)) && !(streety && commas >= 2)) return null
+        val byPin = hasPin && (commas >= 1 || lines.size >= 2)
+        val byStreet = streety && commas >= 2
+        if (!byPin && !byStreet) return null
         if (text.length > ADDRESS_MAX) return null
         return if (lines.size >= 2) {
             ShelfGuess(ShelfKinds.ADDRESS, lines[0].trimEnd(',').take(TITLE), lines.drop(1).joinToString(", ") { it.trimEnd(',') })
@@ -144,6 +146,7 @@ object ShelfDetect {
     }
 
     const val TITLE = 80
+    private const val TITLE_WORDS = 3
     private const val KEY_MAX = 24
     private const val ADDRESS_MAX = 300
 }

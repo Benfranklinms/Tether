@@ -7,6 +7,7 @@ import dev.benfranklin.tether.core.features.HotspotSwitchFinder
 import dev.benfranklin.tether.core.features.ShelfDetect
 import dev.benfranklin.tether.core.features.ShelfState
 import dev.benfranklin.tether.core.features.UiNode
+import dev.benfranklin.tether.core.features.UpdatePrompt
 import dev.benfranklin.tether.core.proto.Caps
 import dev.benfranklin.tether.core.proto.Caps6
 import dev.benfranklin.tether.core.proto.CaptureKinds
@@ -234,5 +235,24 @@ class Release052Test {
         val phone = listOf("192.168.29.142", "10.183.42.1")
         assertEquals(listOf("10.183.42.1", "192.168.29.142"), FastPathRetry.rank(phone, listOf("10.183.42.77")))
         assertEquals(phone, FastPathRetry.rank(phone, listOf("172.16.0.2")))
+    }
+
+    @Test fun updatePopupPolicy() {
+        val now = 1_000_000_000L
+        assertTrue(UpdatePrompt.shouldShow("0.5.3", "0.5.2", null, 0, now))
+        assertFalse(UpdatePrompt.shouldShow("0.5.2", "0.5.2", null, 0, now))
+        assertFalse(UpdatePrompt.shouldShow("0.5.3", "0.5.2", "0.5.3", 0, now)) // skipped
+        assertFalse(UpdatePrompt.shouldShow("0.5.3", "0.5.2", null, now + 1, now)) // Later
+        assertTrue(UpdatePrompt.shouldShow("0.5.4", "0.5.2", "0.5.3", 0, now)) // a newer one than the skipped
+        assertTrue(UpdatePrompt.shouldCheck(now, now, launch = true, foreground = false))
+        assertFalse(UpdatePrompt.shouldCheck(now - 5 * 3_600_000, now, launch = false, foreground = true))
+        assertTrue(UpdatePrompt.shouldCheck(now - 6 * 3_600_000, now, launch = false, foreground = true))
+        assertFalse(UpdatePrompt.shouldCheck(now - 23 * 3_600_000, now, launch = false, foreground = false))
+        assertTrue(UpdatePrompt.showWhatsNew("0.5.2", "0.5.1"))
+        assertFalse(UpdatePrompt.showWhatsNew("0.5.2", "0.5.2"))
+        assertFalse(UpdatePrompt.showWhatsNew("0.5.2", null)) // fresh install: no sheet
+        val notes = "## What's new in 0.5.2\n\n- Motion everywhere\n- Shelf\n\n### Mac\n- Videos play\n\n## Downloads\n- Tether-0.5.2.apk"
+        assertEquals("- Motion everywhere\n- Shelf\n\n### Mac\n- Videos play", UpdatePrompt.changelog(notes))
+        assertEquals("Fixes", UpdatePrompt.changelog("Fixes\n\n## Downloads\n- x"))
     }
 }

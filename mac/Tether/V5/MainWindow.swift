@@ -30,6 +30,15 @@ struct MainWindowView: View {
         .tetherBackground()
         .tetherWindowChrome()
         .overlay(alignment: .bottom) { noticeView }
+        .overlay {
+            if v5.updateSheet {
+                UpdateSheet(v5: v5).transition(.opacity)
+            } else if v5.whatsNew {
+                WhatsNewSheet(v5: v5).transition(.opacity)
+            }
+        }
+        .animation(Motion.spring(reduce), value: v5.updateSheet)
+        .animation(Motion.spring(reduce), value: v5.whatsNew)
         .animation(reduce ? Motion.reducedFade : .spring(response: 0.48, dampingFraction: 0.86), value: v5.page)
         .animation(Motion.spring(reduce), value: v5.searchQuery.isEmpty)
         .animation(Motion.spring(reduce), value: m.notice)
@@ -81,6 +90,7 @@ struct MainWindowView: View {
                 .accessibilityAddTraits(v5.page == p ? .isSelected : [])
             }
             Spacer()
+            if m.updatePill { HStack { UpdatePill(); Spacer() }.padding(.bottom, 6) }
             DeviceFooter()
         }
         .padding(12)

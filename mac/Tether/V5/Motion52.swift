@@ -317,9 +317,9 @@ struct MarqueeSelect: ViewModifier {
     }
 }
 
-// MARK: - Animated progress ring (video download, capture)
+// MARK: - Animated progress ring (LoadRing) (video download, capture)
 
-struct ProgressRing: View {
+struct LoadRing: View {
     var fraction: Double?
     var size: CGFloat = 54
     @State private var spin = false

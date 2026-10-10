@@ -110,6 +110,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.zxing.embedded)
     implementation(libs.zxing.core)
+    implementation(libs.mlkit.docscanner)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 

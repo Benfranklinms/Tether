@@ -63,11 +63,9 @@ final class MacUpdater: NSObject, URLSessionTaskDelegate {
                 $0.lastCheck = Date()
                 $0.phase = newer ? .available : .upToDate
             }
-            if newer && !manual {
-                DispatchQueue.main.async {
-                    self.model?.notifier.postLocal(id: "update-\(info.version)", title: "Tether \(info.version) is available",
-                                                   body: "Open Settings › Updates to install it.")
-                }
+            if newer {
+                // 0.5.2: the in-app popup (respects Skip / Later) instead of only a notification.
+                DispatchQueue.main.async { self.model?.maybePromptUpdate(info, manual: manual) }
             }
         }.resume()
     }
@@ -225,12 +223,19 @@ extension AppModel {
         MacUpdater.shared.model = self
         let t = Timer(timeInterval: 6 * 3600, repeats: true) { [weak self] _ in self?.dailyUpdateCheck() }
         RunLoop.main.add(t, forMode: .common)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.dailyUpdateCheck() }
+        // 0.5.2: check on launch, and on coming to the foreground at most every 6 h.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.dailyUpdateCheck(launch: true) }
+        let center = NotificationCenter.default
+        center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.dailyUpdateCheck(foreground: true)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.maybeShowWhatsNew() }
     }
 
-    private func dailyUpdateCheck() {
+    private func dailyUpdateCheck(launch: Bool = false, foreground: Bool = false) {
         guard settings.autoUpdateCheck else { return }
-        if let last = v5.update.lastCheck, Date().timeIntervalSince(last) < 20 * 3600 { return }
+        let last = Int64((v5.update.lastCheck?.timeIntervalSince1970 ?? 0) * 1000)
+        guard UpdatePrompt.shouldCheck(lastCheck: last, now: Self.nowMs, launch: launch, foreground: foreground) else { return }
         MacUpdater.shared.check(manual: false)
     }
 }

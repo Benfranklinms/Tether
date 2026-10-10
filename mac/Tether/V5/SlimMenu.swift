@@ -87,6 +87,9 @@ struct SlimMenuView: View {
                 Text(status).font(Typo.sans(11)).foregroundColor(Mono.muted)
             }
             Spacer()
+            if m.updatePill {
+                UpdatePill().simultaneousGesture(TapGesture().onEnded { open(.main) })
+            }
             if let b = m.battery { BatteryBadge(b: b) }
         }
         .padding(.trailing, panel == nil ? 0 : 26)

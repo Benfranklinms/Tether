@@ -206,8 +206,11 @@ class InteropTest {
     fun phoneToMacFeatureMessagesRoundTrip() = session(185, 185, qr = true) { loop, phone, peer ->
         assertTrue(phone.controller.peerSupports(Caps.SCREEN))
         loop.runUntil(5_000) {
-            peer.has("CAPS", "battery,call,callctl,calllog,clip,clipimg,continue,dial,dnd,file,fs,media,notif,notifaccess,nowplaying,openurl,otp,photos," +
-                "proximity,reply,ring,screen,sms,status,type")
+            peer.has(
+                "CAPS",
+                "battery,call,callctl,calllog,capture,clip,clipimg,continue,dial,dnd,file,findmac,fs,hotspot,media,notif,notifaccess," +
+                    "nowplaying,openurl,otp,photos,proximity,reply,ring,screen,shelf,sms,status,type",
+            )
         }
         peer.send("ECHO on")
         val sent: List<Message> = listOf(

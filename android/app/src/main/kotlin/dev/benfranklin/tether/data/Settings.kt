@@ -83,6 +83,16 @@ data class AppSettings(
     /** Check for updates when Tether opens (at most daily). */
     val autoUpdateCheck: Boolean = true,
     val lastUpdateCheck: Long = 0,
+    // 0.5.2
+    /** Let the Mac open the camera / document scanner (Insert from Phone). */
+    val allowCapture: Boolean = true,
+    /** Let the Mac ask this phone to turn on its hotspot. */
+    val allowHotspot: Boolean = true,
+    /** Update popup: a version the user skipped, and "Later" until this time. */
+    val skippedVersion: String? = null,
+    val updateSnoozedUntil: Long = 0,
+    /** The version whose "What's new" sheet was shown. */
+    val whatsNewSeen: String? = null,
 )
 
 /** App settings as a hot flow, persisted atomically on every change. */

@@ -183,9 +183,9 @@ struct VideoStage: View {
             default:
                 statusCard {
                     if case .fetching(let f, _) = state {
-                        ProgressRing(fraction: f)
+                        LoadRing(fraction: f)
                     } else {
-                        ProgressRing(fraction: nil)
+                        LoadRing(fraction: nil)
                     }
                     Text(state.label).font(Typo.mono(11, .medium)).foregroundColor(.white)
                         .contentTransition(.numericText())

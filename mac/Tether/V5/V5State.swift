@@ -102,6 +102,8 @@ final class V5State: ObservableObject {
     @Published var shelfUndo: ShelfItem?
     @Published var shelfDetail: String?
     @Published var shelfFetching: Set<String> = []
+    @Published var updateSheet = false
+    @Published var whatsNew = false
     /// The last app other than Tether that was frontmost (where Insert from Phone pastes).
     var lastOtherApp: pid_t?
     @Published var preview: PreviewItem?

@@ -256,6 +256,11 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         send = { m -> controller.send(m) }, sendFile = { r -> controller.sendFile(r) },
         supports = { c -> controller.peerSupports(c) }, connected = { controller.isConnected },
     )
+    val v6 = dev.benfranklin.tether.v6.Features6(
+        app, engine, files, { settings.current },
+        send = { m -> controller.send(m) }, sendFile = { r -> controller.sendFile(r) },
+        supports = { c -> controller.peerSupports(c) },
+    )
     val updater = Updater(app).also { Updater.instance = it }
 
     // ---- 0.3.1 reconnect safety net ----
@@ -835,6 +840,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     // ===================== ControllerListener =====================
 
     override fun onState(state: LinkState) {
+        val wasConnectedForShelf = this.state.value.link is LinkState.Connected
         val label = when (state) {
             is LinkState.Connected -> if (state.wifi) "connected-wifi" else "connected"
             is LinkState.Pairing -> "pairing"
@@ -867,6 +873,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         retick(state)
         if (state is LinkState.Connected) {
             this.state.update { it.copy(lastError = null) }
+            if (!wasConnectedForShelf) v6.linkUp()
             if (!state.wifi) {
                 val now = SystemClock.elapsedRealtime()
                 if (fastPath.nextAt == null) {
@@ -903,7 +910,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             is CallAction, is CallDial, is CallLogReq, is ContactSearch -> calls.handle(message)
             is MediaCmd -> onMediaCmd(message)
             is ProximityCfg -> onProximityCfg(message)
-            else -> if (!v5.handle(message)) Log.i("msg.ignored", "type" to message.type)
+            else -> if (!v5.handle(message) && !v6.handle(message)) Log.i("msg.ignored", "type" to message.type)
         }
     }
 
@@ -923,6 +930,13 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     }
 
     override fun onTransfer(record: TransferRecord, important: Boolean) {
+        if (v6.hides(record)) {
+            if (important && record.status.isFinal) {
+                v6.transferDone(record)
+                engine.execute { controller.removeTransfer(record.id) }
+            }
+            return
+        }
         if (v5.hides(record)) {
             // Clipboard images are not downloads: no rows, no notifications.
             if (important && record.status.isFinal) {

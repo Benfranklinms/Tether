@@ -277,3 +277,49 @@ public struct FastPathRetry: Equatable {
         return on + addrs.filter { !on.contains($0) }
     }
 }
+
+/// When the update popup and the one-time "What's new" sheet appear; mirrors UpdatePrompt.kt.
+public enum UpdatePrompt {
+    public static let snoozeMs: Int64 = 24 * 3600 * 1000
+    public static let foregroundCheckMs: Int64 = 6 * 3600 * 1000
+    public static let dailyMs: Int64 = 24 * 3600 * 1000
+    static let changelogMax = 1_800
+
+    public static func shouldShow(latest: String, current: String, skipped: String?, snoozedUntil: Int64, now: Int64) -> Bool {
+        Versions.compare(latest, current) > 0 && latest != skipped && now >= snoozedUntil
+    }
+
+    public static func shouldCheck(lastCheck: Int64, now: Int64, launch: Bool, foreground: Bool) -> Bool {
+        if launch { return true }
+        return now - lastCheck >= (foreground ? foregroundCheckMs : dailyMs)
+    }
+
+    public static func showWhatsNew(current: String, seen: String?) -> Bool {
+        guard let seen else { return false }
+        return Versions.compare(current, seen) > 0
+    }
+
+    public static func changelog(_ notes: String) -> String {
+        let lines = notes.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        func heading(_ l: String) -> Int {
+            let t = l.drop { $0 == " " }
+            return t.hasPrefix("#") ? t.prefix { $0 == "#" }.count : 0
+        }
+        var body: [String]
+        if let start = lines.firstIndex(where: { heading($0) > 0 && $0.lowercased().contains("what's new") }) {
+            let level = heading(lines[start])
+            let rest = Array(lines[(start + 1)...])
+            if let end = rest.firstIndex(where: { heading($0) > 0 && heading($0) <= level }) {
+                body = Array(rest[..<end])
+            } else {
+                body = rest
+            }
+        } else {
+            body = Array(lines.prefix { !(heading($0) > 0 && $0.lowercased().contains("download")) })
+        }
+        let text = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count > changelogMax else { return text }
+        let cut = String(text.prefix(changelogMax))
+        return (cut.range(of: "\n", options: .backwards).map { String(cut[..<$0.lowerBound]) } ?? cut) + "\n…"
+    }
+}
