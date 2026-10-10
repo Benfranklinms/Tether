@@ -19,26 +19,33 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // A key committed to the repo so every CI build (debug and release) is signed the same
-    // way and installs over the previous one. It is NOT a secret: see README "Signing".
+    // Release signing key: stored encrypted in keystore/tether-release.p12.enc; CI decrypts it to
+    // keystore/tether-release.p12 using the TETHER_STORE_PASSWORD Actions secret. Without it
+    // (local builds, forks) every build falls back to the standard Android debug key.
+    val releaseStore = rootProject.file("keystore/tether-release.p12")
+    val storePass = System.getenv("TETHER_STORE_PASSWORD")
+    val hasReleaseKey = releaseStore.exists() && !storePass.isNullOrEmpty()
     signingConfigs {
-        create("tether") {
-            storeFile = rootProject.file("keystore/tether.jks")
-            storePassword = "tetherdebug"
-            keyAlias = "tether"
-            keyPassword = "tetherdebug"
+        if (hasReleaseKey) {
+            create("tether") {
+                storeFile = releaseStore
+                storeType = "PKCS12"
+                storePassword = storePass
+                keyAlias = "tether"
+                keyPassword = storePass
+            }
         }
     }
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("tether")
+            if (hasReleaseKey) signingConfig = signingConfigs.getByName("tether")
             applicationIdSuffix = ".debug"
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("tether")
+            signingConfig = if (hasReleaseKey) signingConfigs.getByName("tether") else signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

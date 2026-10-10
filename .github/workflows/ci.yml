@@ -31,6 +31,18 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Decrypt release signing key
+        env:
+          TETHER_STORE_PASSWORD: ${{ secrets.TETHER_STORE_PASSWORD }}
+        run: |
+          if [ -n "$TETHER_STORE_PASSWORD" ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in keystore/tether-release.p12.enc -out keystore/tether-release.p12 -pass env:TETHER_STORE_PASSWORD
+            echo "TETHER_STORE_PASSWORD=$TETHER_STORE_PASSWORD" >> "$GITHUB_ENV"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::error::TETHER_STORE_PASSWORD secret missing; refusing to release with the debug key"; exit 1
+          else
+            echo "No signing secret: building with the debug key"
+          fi
       - name: Version
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-ci.${GITHUB_RUN_NUMBER}"; fi
@@ -105,6 +117,18 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Decrypt release signing key
+        env:
+          TETHER_STORE_PASSWORD: ${{ secrets.TETHER_STORE_PASSWORD }}
+        run: |
+          if [ -n "$TETHER_STORE_PASSWORD" ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in keystore/tether-release.p12.enc -out keystore/tether-release.p12 -pass env:TETHER_STORE_PASSWORD
+            echo "TETHER_STORE_PASSWORD=$TETHER_STORE_PASSWORD" >> "$GITHUB_ENV"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::error::TETHER_STORE_PASSWORD secret missing; refusing to release with the debug key"; exit 1
+          else
+            echo "No signing secret: building with the debug key"
+          fi
       - name: Build test APKs
         run: ./gradlew --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Emulator console without auth (adb emu / AGP console connect reliably)
@@ -313,7 +337,7 @@ jobs:
           cat > notes.md <<NOTES
           Tether $v: your Android phone and your Mac linked directly — texts, calls, notifications with reply, media controls, clipboard, files, screen and more over Bluetooth LE (+ Wi-Fi fast path), end-to-end encrypted with Noise XX. See the README for setup and permissions.
 
-          - **Android**: \`Tether-$v.apk\` (Android 8.0+). Signed with the repo's committed key, see README.
+          - **Android**: \`Tether-$v.apk\` (Android 8.0+). Signed with Tether's release key (new in 0.5.0: uninstall 0.4.x once before installing).
           - **macOS**: \`Tether-$v.dmg\` or \`Tether-$v.zip\` (macOS 13+, universal). Ad-hoc signed, not notarized: right-click → Open the first time, or run \`xattr -dr com.apple.quarantine /Applications/Tether.app\`.
 
           Built by CI and not yet tested on real devices. See README → Limitations.

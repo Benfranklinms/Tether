@@ -291,7 +291,7 @@ cd android && bash scripts/emulator-tests.sh
 
 **CI** (`.github/workflows/ci.yml`) runs on every push: detekt, core + Robolectric tests, Android lint, R8 release build and screenshots; the interop job (Ubuntu, Swift + JDK, plus the released 0.3.1 Mac core); an emulator job (API 34: notification reply, MediaStore, real incoming/outgoing calls); SwiftLint, TetherCore tests and a universal Release build of the Mac app on macOS (checks Liquid Glass is linked), ad-hoc signed and packaged; demo-mode screenshots. A `v*` tag publishes the release with `Tether-<version>.apk`, `.dmg` and `.zip`.
 
-**Signing.** `android/keystore/tether.jks` (password `tetherdebug`) is committed on purpose so every build installs over the previous one. It protects nothing: if you distribute a fork, use your own key. Try the Mac UI without a phone: `/Applications/Tether.app/Contents/MacOS/Tether --demo`.
+**Signing.** Release APKs are signed with Tether's release key, stored encrypted as `android/keystore/tether-release.p12.enc` and decrypted in CI with the `TETHER_STORE_PASSWORD` secret. Local and fork builds use the standard Android debug key. 0.5.0 switched to this key, so uninstall 0.4.x once before installing 0.5.0 (you'll pair again). Try the Mac UI without a phone: `/Applications/Tether.app/Contents/MacOS/Tether --demo`.
 
 ## Limitations
 
@@ -306,7 +306,7 @@ cd android && bash scripts/emulator-tests.sh
 - **Find my phone** can't override a phone with alarm volume locked by the OEM or a DND mode that blocks alarms; full-screen alerts may need permission on Android 14+.
 - **Auto media** sends screenshots/camera photos taken after you enable it; edited copies are sent again only if their bytes differ. Android's "limited photo access" hides new photos from Tether; choose *Allow all*.
 - **Background**: aggressive OEM battery management can still stop the link; set Tether's battery use to Unrestricted.
-- **One phone, one Mac.** Not notarized; the APK key is public (see Signing). Android 10+ blocks background clipboard reads: phone → Mac is manual (selection menu, tile, share sheet or app) unless you set up auto mode over adb. Auto mode briefly takes focus to read (a keyboard that's open may flicker), Android shows *Tether pasted from your clipboard* each time unless you turn that off, it can't read while the phone is locked, it reads text only, and on Android 13+ log access must be re-allowed after every Tether restart. It relies on the system log wording; a phone maker that changes it would break auto mode (Send to Mac keeps working).
+- **One phone, one Mac.** Not notarized (see Signing). Android 10+ blocks background clipboard reads: phone → Mac is manual (selection menu, tile, share sheet or app) unless you set up auto mode over adb. Auto mode briefly takes focus to read (a keyboard that's open may flicker), Android shows *Tether pasted from your clipboard* each time unless you turn that off, it can't read while the phone is locked, it reads text only, and on Android 13+ log access must be re-allowed after every Tether restart. It relies on the system log wording; a phone maker that changes it would break auto mode (Send to Mac keeps working).
 
 ## Credits and license
 
