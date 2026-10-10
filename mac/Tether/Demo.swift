@@ -57,11 +57,11 @@ enum Demo {
         loadFeatures3(m, scene, t)
         loadFeatures4(m, scene, t)
         let notes = [
-            NotifPayload(key: "d1", pkg: "com.google.android.gm", app: "Gmail", title: "Placement Cell",
-                         text: "Drive registration closes at 5 PM", ts: t - 31 * 60_000),
+            NotifPayload(key: "d1", pkg: "com.google.android.gm", app: "Gmail", title: "Jordan",
+                         text: "Tickets for Saturday are booked", ts: t - 31 * 60_000),
             NotifPayload(key: "d2", pkg: "org.telegram.messenger", app: "Telegram", title: "Project group",
                          text: "Pushed the new build, can you test?", ts: t - 9 * 60_000),
-            NotifPayload(key: "d3", pkg: "com.whatsapp", app: "WhatsApp", title: "Amma", text: "Call when you're free",
+            NotifPayload(key: "d3", pkg: "com.whatsapp", app: "WhatsApp", title: "Alex", text: "Call when you're free",
                          ts: t - 2 * 60_000, actions: [NotifActionInfo(id: "reply0", title: "Reply", reply: true),
                                                   NotifActionInfo(id: "a1", title: "Mark as read")]),
         ]
@@ -86,25 +86,25 @@ enum Demo {
                                          artist: "Arijit Singh", album: "Brahmastra", durationMs: 268_000, positionMs: 94_000,
                                          playing: true, speed: 1, canSeek: true, canNext: true, canPrev: true, volume: 0.6, ts: t)
         if scene == .call {
-            m.call = CallStatePayload(id: "c1", state: CallStates.ringing, number: "+91 98470 12345", name: "Amma", ts: t)
+            m.call = CallStatePayload(id: "c1", state: CallStates.ringing, number: "+1 415-555-0132", name: "Alex", ts: t)
         }
         m.sms.sims = [SimInfo(id: 1, slot: 0, name: "Jio"), SimInfo(id: 2, slot: 1, name: "Airtel")]
         m.sms.threads = [
-            SmsThread(id: 1, addrs: ["+919847012345"], names: ["Amma"], snippet: "Reached? Call when free",
+            SmsThread(id: 1, addrs: ["+14155550132"], names: ["Alex"], snippet: "Reached? Call when free",
                       date: t - 4 * 60_000, unread: 1),
-            SmsThread(id: 2, addrs: ["JM-HDFCBK"], names: [nil], snippet: "OTP 482913 for your transaction. Do not share.",
+            SmsThread(id: 2, addrs: ["BANK-ALERT"], names: [nil], snippet: "OTP 482913 for your transaction. Do not share.",
                       date: t - 52 * 60_000),
-            SmsThread(id: 3, addrs: ["+919995551234"], names: ["Rahul (CSBS)"], snippet: "Lab record submission moved to Monday",
+            SmsThread(id: 3, addrs: ["+14155550187"], names: ["Sam"], snippet: "Design review moved to Monday",
                       date: t - 3 * 3_600_000, outLast: true),
-            SmsThread(id: 4, addrs: ["+918089001122"], names: ["Placement Cell"], snippet: "Drive registration closes at 5 PM",
+            SmsThread(id: 4, addrs: ["+14155550111"], names: ["Jordan"], snippet: "Tickets for Saturday are booked",
                       date: t - 26 * 3_600_000),
         ]
         m.sms.selected = 1
         m.sms.conversations[1] = [
-            SmsMessage(id: "s1", thread: 1, addr: "+919847012345", name: "Amma", body: "Did you eat?", date: t - 75 * 60_000, sub: 1),
-            SmsMessage(id: "s2", thread: 1, addr: "+919847012345", body: "Yes, in the canteen. Leaving college at 5.",
+            SmsMessage(id: "s1", thread: 1, addr: "+14155550132", name: "Alex", body: "Did you eat?", date: t - 75 * 60_000, sub: 1),
+            SmsMessage(id: "s2", thread: 1, addr: "+14155550132", body: "Yes, just grabbing lunch. Leaving at 5.",
                        date: t - 70 * 60_000, out: true, status: SmsStatus.sent, sub: 1),
-            SmsMessage(id: "s3", thread: 1, addr: "+919847012345", name: "Amma", body: "Reached? Call when free",
+            SmsMessage(id: "s3", thread: 1, addr: "+14155550132", name: "Alex", body: "Reached? Call when free",
                        date: t - 4 * 60_000, sub: 1, read: false),
         ]
     }
@@ -112,26 +112,26 @@ enum Demo {
     private static func loadFeatures4(_ m: AppModel, _ scene: Shot, _ t: Int64) {
         m.calls.seenUntil = t - 50 * 60_000
         m.calls.log = [
-            CallLogEntry(id: 9, number: "+91 98470 12345", name: "Amma", type: CallLogTypes.missed, date: t - 6 * 60_000, sub: 1,
+            CallLogEntry(id: 9, number: "+1 415-555-0132", name: "Alex", type: CallLogTypes.missed, date: t - 6 * 60_000, sub: 1,
                          isNew: true),
-            CallLogEntry(id: 8, number: "+91 99955 51234", name: "Rahul (CSBS)", type: CallLogTypes.outgoing, date: t - 47 * 60_000,
+            CallLogEntry(id: 8, number: "+1 415-555-0187", name: "Sam", type: CallLogTypes.outgoing, date: t - 47 * 60_000,
                          dur: 312, sub: 2),
-            CallLogEntry(id: 7, number: "+91 80890 01122", name: "Placement Cell", type: CallLogTypes.incoming, date: t - 5 * 3_600_000,
+            CallLogEntry(id: 7, number: "+1 415-555-0111", name: "Jordan", type: CallLogTypes.incoming, date: t - 5 * 3_600_000,
                          dur: 95, sub: 1),
-            CallLogEntry(id: 6, number: "1800 425 1425", type: CallLogTypes.outgoing, date: t - 26 * 3_600_000, dur: 64, sub: 1),
-            CallLogEntry(id: 5, number: "+91 484 234 5678", type: CallLogTypes.rejected, date: t - 30 * 3_600_000, sub: 2),
+            CallLogEntry(id: 6, number: "1-800-555-0199", type: CallLogTypes.outgoing, date: t - 26 * 3_600_000, dur: 64, sub: 1),
+            CallLogEntry(id: 5, number: "+1 212-555-0148", type: CallLogTypes.rejected, date: t - 30 * 3_600_000, sub: 2),
         ]
         m.calls.more = true
         switch scene {
         case .liveCall:
             m.settings.panel.compactPlayer = true
-            m.liveCall = CallLivePayload(id: "c2", dir: CallDirs.outgoing, state: CallLiveStates.active, number: "+91 98470 12345",
-                                         name: "Amma", since: t - 83_000, speaker: true, canEnd: true, canSpeaker: true,
+            m.liveCall = CallLivePayload(id: "c2", dir: CallDirs.outgoing, state: CallLiveStates.active, number: "+1 415-555-0132",
+                                         name: "Alex", since: t - 83_000, speaker: true, canEnd: true, canSpeaker: true,
                                          canMute: true, sub: 1, ts: t)
         case .calls:
             m.settings.panel.moreExpanded = true
             m.calls.query = "ra"
-            m.calls.contacts = [ContactInfo(name: "Rahul (CSBS)", numbers: [ContactNumber(n: "+91 99955 51234", label: "Mobile")])]
+            m.calls.contacts = [ContactInfo(name: "Sam", numbers: [ContactNumber(n: "+1 415-555-0187", label: "Mobile")])]
         case .codes:
             m.notifAccess = NotifAccessPayload(redacting: true, sdk: 36, oem: "OnePlus", ts: t)
         default:

@@ -19,9 +19,9 @@ enum Demo5 {
                                                 app: "Spotify", ts: t), thumb: png(0.3), now: t)
         v.folder = PhoneFolder(root: FsRoots.downloads, path: "", entries: [
             FsEntry(name: "Telegram", dir: true, mtime: t - 3_600_000),
-            FsEntry(name: "Placement_Brochure_2027.pdf", size: 2_480_000, mtime: t - 7_200_000, mime: "application/pdf"),
+            FsEntry(name: "Quarterly_Report.pdf", size: 2_480_000, mtime: t - 7_200_000, mime: "application/pdf"),
             FsEntry(name: "IMG-20261009-WA0004.jpg", size: 412_000, mtime: t - 86_400_000, mime: "image/jpeg"),
-            FsEntry(name: "DBMS_Lab_Record.docx", size: 88_000, mtime: t - 172_800_000,
+            FsEntry(name: "Meeting_Notes.docx", size: 88_000, mtime: t - 172_800_000,
                     mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
             FsEntry(name: "screen-recording.mp4", size: 28_400_000, mtime: t - 259_200_000, mime: "video/mp4"),
         ], total: 5)
@@ -40,7 +40,7 @@ enum Demo5 {
             ClipItem(kind: .text, text: "482913", direction: .fromPhone, ts: t - 20_000, hash: "a"),
             ClipItem(kind: .text, text: "https://github.com/Benfranklinms/Tether/releases", direction: .fromMac, ts: t - 600_000,
                 hash: "b"),
-            ClipItem(kind: .text, text: "Lab record submission moved to Monday", direction: .fromPhone, ts: t - 3_600_000, hash: "c"),
+            ClipItem(kind: .text, text: "Design review moved to Monday", direction: .fromPhone, ts: t - 3_600_000, hash: "c"),
         ]
         for c in clips.reversed() { v.clips.add(c) }
         v.phoneDnd = DndStatePayload(on: false, src: "phone", ts: t, canSet: true)
