@@ -243,7 +243,7 @@ struct MenuView: View {
             .animation(Motion.spring(reduce), value: m.history.items.map(\.key))
             .animation(Motion.spring(reduce), value: m.transfers.map(\.id))
         }
-        .id(tab) // a fresh ScrollView per tab, so every tab opens at the top (0.4.1)
+        .id(tab) // a fresh ScrollView per tab, so every tab opens at the top (0.4.2)
         .onAppear { m.refreshReceivedFiles() }
         .frame(minHeight: 300, idealHeight: 300, maxHeight: detached ? .infinity : 300)
         .transition(.opacity)

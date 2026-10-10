@@ -13,7 +13,7 @@ public enum PanelOnlyAlerts {
     public static func isOn(_ defaults: UserDefaults = .standard) -> Bool { defaults.bool(forKey: key) }
 }
 
-/// Received files deleted or moved away in Finder (0.4.1): finished incoming transfers whose saved file is
+/// Received files deleted or moved away in Finder (0.4.2): finished incoming transfers whose saved file is
 /// gone. The Mac drops them from Transfers and the "From your phone" strip instead of showing empty tiles.
 public enum ReceivedFiles {
     public static func missing(_ records: [TransferRecord], exists: (String) -> Bool) -> Set<String> {

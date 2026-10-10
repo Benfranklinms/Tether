@@ -476,7 +476,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
     static func wifiId(_ key: Data) -> String { B64.encode(Data(SHA256.hash(data: key)).prefix(8)) }
 }
 
-// MARK: received files deleted in Finder (0.4.1)
+// MARK: received files deleted in Finder (0.4.2)
 
 extension Engine {
     /// Drop finished incoming transfers whose file no longer exists (deleted or moved in Finder).

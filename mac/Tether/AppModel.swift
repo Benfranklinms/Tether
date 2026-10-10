@@ -331,7 +331,7 @@ final class AppModel: ObservableObject {
     func retry(_ id: String) { engine?.retry(id) }
     func remove(_ id: String) { engine?.remove(id) }
 
-    /// Forget received files that were deleted or moved in Finder (0.4.1).
+    /// Forget received files that were deleted or moved in Finder (0.4.2).
     func refreshReceivedFiles() { engine?.dropMissingFiles() }
 
     func reveal(_ r: TransferRecord) {
