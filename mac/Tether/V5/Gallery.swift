@@ -162,27 +162,51 @@ struct PhotosPage: View {
         return n.map { "\($0) items · newest first" } ?? "Your phone's camera roll, newest first."
     }
 
+    // One row when the window is wide enough; otherwise the filters get their own row so nothing is clipped.
     private var toolbar: some View {
-        HStack(spacing: 12) {
-            MonoSegmented(options: ["all", PhotoFilters.photos, PhotoFilters.videos, PhotoFilters.screenshots],
-                          selection: Binding(get: { v5.photoFilter ?? "all" }, set: { m.setPhotoFilter($0 == "all" ? nil : $0) })) {
-                Self.filterTitles[$0] ?? $0
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                filterControl
+                zoomControl
+                Spacer(minLength: 8)
+                toolbarTrailing
             }
-            MonoSegmented(options: PhotoSections.Zoom.allCases, selection: $v5.photoZoom) { $0.rawValue }
-            Spacer(minLength: 8)
-            if !v5.photoSelection.ids.isEmpty {
-                GhostButton(title: "Download \(v5.photoSelection.ids.count)") { m.downloadSelectedPhotos() }
-                GhostButton(title: "Clear") { withAnimation(Motion.spring(reduce)) { v5.photoSelection.clear() } }
-                    .transition(.scale(scale: 0.9).combined(with: .opacity))
-            } else if v5.photoZoom == .all {
-                Image(systemName: "square.grid.3x3").font(.system(size: 10)).foregroundColor(Mono.muted)
-                Slider(value: $v5.gallerySize, in: GallerySize.min...GallerySize.max, step: GallerySize.step)
-                    .frame(width: 110).controlSize(.small)
-                    .help("Thumbnail size (⌘+ / ⌘−)")
-                Image(systemName: "square.grid.2x2").font(.system(size: 12)).foregroundColor(Mono.muted)
+            VStack(alignment: .leading, spacing: 8) {
+                filterControl
+                HStack(spacing: 12) {
+                    zoomControl
+                    Spacer(minLength: 8)
+                    toolbarTrailing
+                }
             }
         }
         .animation(Motion.spring(reduce), value: v5.photoSelection.ids.isEmpty)
+    }
+
+    private var filterControl: some View {
+        MonoSegmented(options: ["all", PhotoFilters.photos, PhotoFilters.videos, PhotoFilters.screenshots],
+                      selection: Binding(get: { v5.photoFilter ?? "all" },
+                                         set: { m.setPhotoFilter($0 == "all" ? nil : $0) })) {
+            Self.filterTitles[$0] ?? $0
+        }
+    }
+
+    private var zoomControl: some View {
+        MonoSegmented(options: PhotoSections.Zoom.allCases, selection: $v5.photoZoom) { $0.rawValue }
+    }
+
+    @ViewBuilder private var toolbarTrailing: some View {
+        if !v5.photoSelection.ids.isEmpty {
+            GhostButton(title: "Download \(v5.photoSelection.ids.count)") { m.downloadSelectedPhotos() }
+            GhostButton(title: "Clear") { withAnimation(Motion.spring(reduce)) { v5.photoSelection.clear() } }
+                .transition(.scale(scale: 0.9).combined(with: .opacity))
+        } else if v5.photoZoom == .all {
+            Image(systemName: "square.grid.3x3").font(.system(size: 10)).foregroundColor(Mono.muted)
+            Slider(value: $v5.gallerySize, in: GallerySize.min...GallerySize.max, step: GallerySize.step)
+                .frame(width: 110).controlSize(.small)
+                .help("Thumbnail size (⌘+ / ⌘−)")
+            Image(systemName: "square.grid.2x2").font(.system(size: 12)).foregroundColor(Mono.muted)
+        }
     }
 
     @ViewBuilder private var content: some View {
