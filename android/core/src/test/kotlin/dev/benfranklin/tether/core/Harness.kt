@@ -270,6 +270,8 @@ class LoopbackWifi(private val loop: Loop, val phone: Side, val mac: Side) {
         private set
     private var generation = 0
     var cutAfter: Int? = null
+    /** Half-open socket: records vanish in both directions and no close is ever reported. */
+    var blackhole = false
 
     fun connect(token: String) {
         up = true
@@ -279,7 +281,7 @@ class LoopbackWifi(private val loop: Loop, val phone: Side, val mac: Side) {
     }
 
     private fun deliver(gen: Int, record: ByteArray, toMac: Boolean) {
-        if (!up || gen != generation) return
+        if (!up || gen != generation || blackhole) return
         cutAfter?.let { left ->
             if (left <= 0) {
                 loop.execute { disconnect() }

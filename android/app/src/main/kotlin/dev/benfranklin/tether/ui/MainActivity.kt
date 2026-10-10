@@ -128,6 +128,9 @@ fun homeModel(s: UiState, transfers: List<TransferRecord>, mirroringOff: Boolean
         searching = link !is LinkState.Connected && s.radio != BleCentral.RadioState.OFF,
         wifi = (link as? LinkState.Connected)?.wifi == true, error = s.lastError, notice = s.notice,
         transfers = transfers, mirroringOff = mirroringOff, screenLive = s.screenLive,
+        canReconnect = s.peer != null && !s.pairingMode &&
+            (link is LinkState.Offline || link is LinkState.Handshaking) &&
+            s.radio != BleCentral.RadioState.OFF && s.radio != BleCentral.RadioState.NO_PERMISSION,
     )
 }
 
@@ -268,6 +271,7 @@ private fun TetherApp(rt: TetherRuntime) {
                 onNoticeShown = rt::clearNotice,
                 onFixMirroring = { grant("listener") },
                 onStopScreen = rt::stopScreenSharing,
+                onReconnect = rt::reconnect,
             )
           }
         }

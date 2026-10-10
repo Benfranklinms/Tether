@@ -32,6 +32,11 @@ class UiLogicTest {
         assertFalse(off.searching)
         val looking = homeModel(UiState(radio = BleCentral.RadioState.SCANNING, peer = peer), emptyList(), true)
         assertTrue(looking.searching && looking.mirroringOff)
+        assertTrue(looking.canReconnect)
+        assertFalse(connected.canReconnect)
+        assertFalse(off.canReconnect)
+        assertFalse(homeModel(UiState(radio = BleCentral.RadioState.SCANNING), emptyList(), false).canReconnect)
+        assertFalse(homeModel(UiState(radio = BleCentral.RadioState.SCANNING, peer = peer, pairingMode = true), emptyList(), false).canReconnect)
         assertEquals("Allow Nearby devices to connect", homeModel(UiState(radio = BleCentral.RadioState.NO_PERMISSION), emptyList(), false).subtitle)
     }
 

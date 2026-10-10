@@ -26,6 +26,7 @@ import android.os.ParcelUuid
 import androidx.core.content.ContextCompat
 import dev.benfranklin.tether.core.proto.Protocol
 import dev.benfranklin.tether.core.util.Backoff
+import dev.benfranklin.tether.core.util.ScanBudget
 import dev.benfranklin.tether.log.Log
 import java.util.ArrayDeque
 import java.util.UUID
@@ -100,7 +101,8 @@ class BleCentral(
     private var foreground = false
     private var scanning = false
     private var scanUnfiltered = false
-    private val scanStarts = ArrayDeque<Long>()
+    private val scanBudget = ScanBudget()
+    private var scanCycle: ScheduledFuture<*>? = null
     private var gatt: BluetoothGatt? = null
     private var device: BluetoothDevice? = null
     private var quickRetries = 0
@@ -157,6 +159,28 @@ class BleCentral(
         teardown("stopped")
         setRadio(RadioState.IDLE)
         setStage(Stage.IDLE)
+    }
+
+    /**
+     * Throw the whole Bluetooth side away and start again: close any GATT, stop the scan,
+     * forget avoided Macs and backoff, re-register for adapter changes, scan now. This is
+     * what quitting and reopening Tether did (watchdog, Reconnect button).
+     */
+    fun hardRestart(reason: String) = engine.execute {
+        Log.w("ble.hard_restart", "reason" to reason, "stage" to diag.stage.name, "radio" to radio.name)
+        ignored.clear()
+        quickRetries = 0
+        refusedWrites = 0
+        if (running) {
+            try {
+                context.unregisterReceiver(btReceiver)
+            } catch (_: IllegalArgumentException) {
+                // not registered
+            }
+            running = false
+        }
+        teardown(reason)
+        start()
     }
 
     /** Clear the counters (a new pairing attempt starts from zero). */
@@ -237,7 +261,7 @@ class BleCentral(
             return setRadio(RadioState.OFF)
         }
         val scanner = a.bluetoothLeScanner ?: return setRadio(RadioState.OFF)
-        val wait = throttleWait(System.currentTimeMillis())
+        val wait = scanBudget.waitMs(System.currentTimeMillis())
         if (wait > 0) {
             Log.i("ble.scan_throttled", "waitMs" to wait)
             return scanSoon(wait)
@@ -257,8 +281,18 @@ class BleCentral(
             .build()
         try {
             scanner.startScan(filters, settings, scanCallback)
-            scanStarts.addLast(System.currentTimeMillis())
+            scanBudget.started(System.currentTimeMillis())
             scanning = true
+            // Android quietly downgrades scans older than 30 min to opportunistic (deaf on
+            // their own): cycle a scan that hasn't found the Mac.
+            scanCycle?.cancel(false)
+            scanCycle = engine.schedule({
+                if (running && scanning && gatt == null) {
+                    Log.i("ble.scan_cycle")
+                    stopScan()
+                    startScan()
+                }
+            }, scanBudget.cycleMs, TimeUnit.MILLISECONDS)
             scanUnfiltered = unfiltered
             setRadio(RadioState.SCANNING)
             diag = diag.copy(unfiltered = unfiltered, locationOff = locationOff())
@@ -268,20 +302,15 @@ class BleCentral(
             Log.e("ble.scan_denied", e)
             setRadio(RadioState.NO_PERMISSION)
             setStage(Stage.NO_PERMISSION)
-        } catch (e: IllegalStateException) {
+        } catch (@Suppress("TooGenericExceptionCaught") e: RuntimeException) {
+            // IllegalStateException (adapter turning off) and OEM oddities: try again later.
             Log.e("ble.scan_failed", e)
             scanSoon(backoff.next())
         }
     }
 
-    /** Milliseconds to wait so this start stays within Android's scan-start budget. */
-    private fun throttleWait(now: Long): Long {
-        while (scanStarts.isNotEmpty() && now - scanStarts.peekFirst() > SCAN_WINDOW_MS) scanStarts.removeFirst()
-        if (scanStarts.size < MAX_SCAN_STARTS) return 0
-        return SCAN_WINDOW_MS - (now - scanStarts.peekFirst()) + THROTTLE_SLACK_MS
-    }
-
     private fun stopScan() {
+        scanCycle?.cancel(false)
         if (!scanning) return
         scanning = false
         try {
@@ -343,6 +372,9 @@ class BleCentral(
             d.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
         } catch (e: SecurityException) {
             Log.e("ble.connect_denied", e)
+            null
+        } catch (@Suppress("TooGenericExceptionCaught") e: RuntimeException) {
+            Log.e("ble.connect_error", e)
             null
         }
         if (gatt == null) {
@@ -596,11 +628,13 @@ class BleCentral(
 
     private fun setRadio(s: RadioState) {
         if (radio == s) return
+        Log.i("ble.radio", "from" to radio.name, "to" to s.name)
         radio = s
         listener.onRadioState(s)
     }
 
     private fun setStage(s: Stage) {
+        if (diag.stage != s) Log.i("ble.stage", "from" to diag.stage.name, "to" to s.name)
         diag = diag.copy(stage = s)
         listener.onDiag(diag)
     }
@@ -612,6 +646,9 @@ class BleCentral(
     }
 
     fun hasPermissions(): Boolean = permissionsGranted(context)
+
+    /** Bluetooth is on and Tether may use it (the watchdog only acts then). */
+    fun radioUsable(): Boolean = hasPermissions() && adapter?.isEnabled == true
 
     companion object {
         private val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
@@ -633,9 +670,6 @@ class BleCentral(
         private const val MTU_WAIT_MS = 2_000L
         private const val QUICK_RETRY_MS = 700L
         private const val MAX_QUICK_RETRIES = 2
-        private const val SCAN_WINDOW_MS = 30_000L
-        private const val MAX_SCAN_STARTS = 4
-        private const val THROTTLE_SLACK_MS = 250L
         private const val DIAG_EVERY = 25
 
         fun permissionsGranted(c: Context): Boolean = requiredPermissions().all {

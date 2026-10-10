@@ -223,6 +223,8 @@ final class LoopbackWifi {
     let mac: Side
     private(set) var up = false
     var cutAfter: Int?
+    /// Half-open socket: records vanish both ways and no close is reported.
+    var blackhole = false
     private var generation = 0
 
     init(_ loop: Loop, _ phone: Side, _ mac: Side) {
@@ -240,7 +242,7 @@ final class LoopbackWifi {
     }
 
     private func deliver(_ gen: Int, _ record: Data, toMac: Bool) {
-        guard up, gen == generation else { return }
+        guard up, gen == generation, !blackhole else { return }
         if let left = cutAfter {
             if left <= 0 {
                 loop.execute { self.disconnect() }

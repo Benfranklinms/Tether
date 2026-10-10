@@ -348,6 +348,13 @@ final class AppModel: ObservableObject {
     func unpair() { engine?.unpair() }
     func rotateKey() { engine?.rotateKey() }
 
+    /// Panel button: rebuild the Bluetooth side now (what quitting and reopening used to do).
+    func reconnect() {
+        Log.info("ui.reconnect")
+        engine?.reconnect()
+        toast("Reconnecting…")
+    }
+
     /// System Settings › Notifications (Tether's row when macOS supports deep links to it).
     func openNotificationSettings() {
         let id = Bundle.main.bundleIdentifier ?? ""

@@ -12,7 +12,7 @@
 
 macOS 13+ (Apple silicon and Intel) · Android 8.0+ · MIT licensed
 
-**New in 0.3.1 (fix release, update both devices):** the Bluetooth link no longer drops and reconnects every minute on phones with a 517-byte MTU (Android 13+ refused the 514-byte writes 0.3.0 used, so nothing reached the Mac after connecting); Messages loads reliably (one bounded read of the phone's threads, an answer even when the phone's SMS store fails, Wi-Fi for big lists, a 15 s timeout with **Retry** on the Mac, re-requests after a reconnect); the Mac panel tells you when macOS has Tether's notifications turned off and opens the right settings page.
+**New in 0.3.1 (fix release, update both devices):** the Bluetooth link no longer drops and reconnects every minute on phones with a 517-byte MTU (Android 13+ refused the 514-byte writes 0.3.0 used, so nothing reached the Mac after connecting); Messages loads reliably (one bounded read of the phone's threads, an answer even when the phone's SMS store fails, Wi-Fi for big lists, a 15 s timeout with **Retry** on the Mac, re-requests after a reconnect); the Mac panel tells you when macOS has Tether's notifications turned off and opens the right settings page. Both apps now restart their own Bluetooth side when the link stays down while it should be up (no more quitting and reopening Tether), and show a **Reconnect** button while paired but not connected.
 
 ---
 
@@ -132,6 +132,8 @@ Wire protocol: [docs/PROTOCOL.md](docs/PROTOCOL.md).
 | Messages spins or the list stays empty | Update **both** apps to 0.3.1 or later. The window now gives up after 15 s with the reason and **Retry**. Still empty: export diagnostics on both and look for `sms.threads` on the phone (it shows `ms`, `count`, `path` and `err`) and `sms.threads_failed` / `msg.decode_failed` on the Mac |
 | Mac panel says "Mac notifications are off for Tether" | Click **Open Settings** (System Settings › Notifications › Tether) and allow notifications; the banner goes away when you come back |
 | Link keeps reconnecting every minute or two | Update both apps to 0.3.1+. Mac diagnostics showing `link.closed reason=timeout remote=false` again and again mean the phone's Bluetooth writes aren't arriving: look on the phone for `ble.write_failed` / `executor.uncaught` and `ble.link_up` (its `frag` must be ≤ 512) |
+| Paired but stuck on "Looking nearby…" / "Not connected to your phone" | Tap **Reconnect** (phone home screen, Mac menu-bar panel): it restarts Tether's Bluetooth side, the same as quitting and reopening the app. Both apps also do this on their own after about 45 s down (then 90 s, 180 s, up to every 5 min), and sooner after the screen turns on or the Mac wakes |
+| Reconnect doesn't help | Export diagnostics on both. `radio.restart` lines (`reason=manual` or `watchdog`, `attempt`, `total`) show each restart; on the phone `ble.hard_restart` follows with `ble.radio` / `ble.stage` transitions, on the Mac `ble.shutdown` then `ble.advertising`. Phone restarts with no `ble.link_up` after them mean the phone never found the Mac: toggle Bluetooth on both, check *Nearby devices* and Location on the phone |
 | Messages window says "Allow SMS" / SMS permission greyed out | Phone: Settings › Apps › Tether › ⋮ › **Allow restricted settings**, then Tether › Settings › On your Mac › Allow SMS access |
 | A text shows "Not sent" | Signal, airplane mode or the chosen SIM; press **Retry**. Short codes may be blocked by your carrier |
 | Calls show a number instead of a name | Grant **Contacts** and **Call logs** to Tether on the phone |

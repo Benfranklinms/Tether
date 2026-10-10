@@ -22,6 +22,11 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
     private var lastTransferWrite = Date.distantPast
     private var wakeObserver: NSObjectProtocol?
     private var screenSink: ScreenSink?
+    /// Restarts the radio stack when the link stays down while it should be up (0.3.1).
+    private var watchdog = ReconnectWatchdog()
+    private var watchdogTimer: DispatchSourceTimer?
+    private var bluetoothOn = false
+    private var radioRestarts = 0
 
     init(model: AppModel, settings: MacSettings) {
         self.model = model
@@ -50,6 +55,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             peripheral = Peripheral(queue: queue, delegate: self)
             wifi = WifiClient(queue: queue, delegate: self)
             updateAdvertising()
+            startWatchdog()
             Log.info("engine.start", ["version": Engine.version, "macOS": ProcessInfo.processInfo.operatingSystemVersionString])
         }
         // Advertising can silently stop across sleep; start it again on wake.
@@ -58,13 +64,57 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
         ) { [weak self] _ in
             guard let self else { return }
             self.queue.async {
-                Log.info("engine.wake")
+                Log.info("engine.wake", ["linked": "\(self.controller?.bleReady ?? false)"])
                 self.peripheral?.refreshAdvertising()
+                // Radios often come back from sleep in a bad state: allow an early restart.
+                self.watchdog.poke()
             }
         }
     }
 
     static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev" }
+
+    // MARK: reconnect
+
+    /// The panel's Reconnect button: what quitting and reopening Tether used to fix.
+    func reconnect() {
+        queue.async { [self] in
+            watchdog.reset()
+            restartRadio(reason: "manual")
+        }
+    }
+
+    private func startWatchdog() {
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        t.schedule(deadline: .now() + .seconds(5), repeating: .seconds(5), leeway: .seconds(1))
+        t.setEventHandler { [weak self] in self?.watchdogTick() }
+        t.resume()
+        watchdogTimer = t
+    }
+
+    private func watchdogTick() {
+        guard let controller else { return }
+        let eligible = identity.peer != nil && pairingToken == nil && bluetoothOn
+        if watchdog.observe(now: Self.now(), up: controller.bleReady, eligible: eligible) {
+            restartRadio(reason: "watchdog")
+        }
+    }
+
+    /// Tear the Bluetooth side down and build it again with a fresh CBPeripheralManager. A
+    /// live Wi-Fi session is kept (it carries everything meanwhile).
+    private func restartRadio(reason: String) {
+        radioRestarts += 1
+        Log.warn("radio.restart", ["reason": reason, "attempt": "\(watchdog.attempts)", "total": "\(radioRestarts)",
+                                   "wifi": "\(controller.wifiReady)", "state": Self.describe(controller.state),
+                                   "next_s": "\(watchdog.thresholdMs / 1000)"])
+        controller.bleDisconnected()
+        if !controller.wifiReady {
+            wifi.revoke()
+            controller.wifiDisconnected()
+        }
+        peripheral.shutdown()
+        peripheral = Peripheral(queue: queue, delegate: self) // advertises again once powered on
+    }
 
     // MARK: intents
 
@@ -359,7 +409,10 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
 
     func linkDown() { controller.bleDisconnected() }
 
+    func linkEstablished() -> Bool { controller?.bleReady ?? false }
+
     func bluetooth(_ status: BluetoothStatus) {
+        bluetoothOn = status == .on
         DispatchQueue.main.async { self.model?.bluetooth = status }
         if status == .on { updateAdvertising() }
     }

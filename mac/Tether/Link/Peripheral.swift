@@ -29,6 +29,8 @@ protocol PeripheralDelegate: AnyObject {
     func linkDown()
     func bluetooth(_ status: BluetoothStatus)
     func radio(_ diag: RadioDiag)
+    /// The current phone has a working secure session (a newer subscriber must not steal it).
+    func linkEstablished() -> Bool
 }
 
 /// The Mac's side of the Bluetooth link: a GATT peripheral that advertises Tether's service
@@ -55,6 +57,8 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
     private var early: [(UUID, Data)] = []
     private var wantAdvertising = false
     private var serviceAdded = false
+    private var advertiseRetry: DispatchWorkItem?
+    private var shutDown = false
     private var diag = RadioDiag() { didSet { if diag != oldValue { delegate?.radio(diag) } } }
 
     init(queue: DispatchQueue, delegate: PeripheralDelegate) {
@@ -76,6 +80,25 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
         if manager.isAdvertising { manager.stopAdvertising() }
         diag.advertising = false
         applyAdvertising()
+    }
+
+    /// Stop everything and detach from CoreBluetooth (before the Engine makes a fresh manager:
+    /// the in-app equivalent of quitting and reopening Tether).
+    func shutdown() {
+        shutDown = true
+        advertiseRetry?.cancel()
+        if manager.isAdvertising { manager.stopAdvertising() }
+        manager.removeAllServices()
+        manager.delegate = nil
+        if central != nil {
+            central = nil
+            delegate?.linkDown()
+        }
+        outbox.removeAll()
+        early.removeAll()
+        characteristic = nil
+        serviceAdded = false
+        Log.info("ble.shutdown")
     }
 
     func send(_ fragment: Data) {
@@ -130,22 +153,49 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
     }
 
     func peripheralManagerDidStartAdvertising(_ p: CBPeripheralManager, error: Error?) {
-        if let error {
-            Log.error("ble.advertise_failed", error)
-            diag.advertising = false
-            diag.advertiseError = error.localizedDescription
-        } else {
-            Log.info("ble.advertising")
+        let code = error.map { ($0 as NSError).code }
+        switch LinkPolicy.advertiseResult(errorCode: code) {
+        case .advertising:
+            // "Advertising has already started" (CBError 9) means we are advertising.
+            Log.info(code == nil ? "ble.advertising" : "ble.advertising_already")
             diag.advertising = true
             diag.advertiseError = nil
+        case .retry:
+            Log.error("ble.advertise_failed", error)
+            diag.advertising = false
+            diag.advertiseError = error?.localizedDescription
+            scheduleAdvertiseRetry()
         }
+    }
+
+    /// Stop and start advertising again shortly (CoreBluetooth sometimes refuses once).
+    private func scheduleAdvertiseRetry() {
+        advertiseRetry?.cancel()
+        let w = DispatchWorkItem { [weak self] in
+            guard let self, !self.shutDown else { return }
+            Log.info("ble.advertise_retry")
+            self.refreshAdvertising()
+        }
+        advertiseRetry = w
+        queue.asyncAfter(deadline: .now() + 3, execute: w)
     }
 
     func peripheralManager(_ p: CBPeripheralManager, central c: CBCentral, didSubscribeTo ch: CBCharacteristic) {
         guard ch.uuid == charUUID else { return }
-        if let current = central, current.identifier != c.identifier {
+        let established = delegate?.linkEstablished() ?? false
+        switch LinkPolicy.subscriber(current: central?.identifier, incoming: c.identifier, currentLinkEstablished: established) {
+        case .ignore:
             Log.info("ble.second_central_ignored")
             return
+        case .replace:
+            // A stale central (its disconnect never reported, or the phone back under a new
+            // identifier) must not block the new link: drop it and take the new one.
+            Log.info("ble.central_replaced", ["same": "\(central?.identifier == c.identifier)"])
+            central = nil
+            outbox.removeAll()
+            delegate?.linkDown()
+        case .accept:
+            break
         }
         central = c
         outbox.removeAll()
@@ -173,8 +223,8 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
     func peripheralManager(_ p: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         for r in requests where r.characteristic.uuid == charUUID {
             guard let v = r.value else { continue }
-            if let current = central {
-                if r.central.identifier == current.identifier { delegate?.fragment(v) }
+            if let current = central, r.central.identifier == current.identifier {
+                delegate?.fragment(v)
             } else {
                 // Not subscribed yet (or the subscription callback hasn't arrived): hold it.
                 diag.phoneSeen = true

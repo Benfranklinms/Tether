@@ -1,90 +1,57 @@
 package dev.benfranklin.tether
 
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PersistableBundle
+import android.os.PowerManager
 import android.os.SystemClock
+import androidx.core.content.ContextCompat
 import dev.benfranklin.tether.ble.BleCentral
+import dev.benfranklin.tether.call.CallMonitor
 import dev.benfranklin.tether.core.ControllerListener
 import dev.benfranklin.tether.core.LinkState
 import dev.benfranklin.tether.core.TetherController
 import dev.benfranklin.tether.core.crypto.Role
-import dev.benfranklin.tether.core.proto.Clip
-import dev.benfranklin.tether.core.proto.CloseReason
-import dev.benfranklin.tether.core.proto.Hello
-import dev.benfranklin.tether.core.proto.Message
-import dev.benfranklin.tether.core.proto.Notif
-import dev.benfranklin.tether.core.proto.NotifDismiss
-import dev.benfranklin.tether.core.proto.NotifRemoved
-import dev.benfranklin.tether.core.proto.Protocol
-import dev.benfranklin.tether.core.proto.WifiOffer
 import dev.benfranklin.tether.core.features.AdaptiveBitrate
 import dev.benfranklin.tether.core.features.BatteryThrottle
 import dev.benfranklin.tether.core.features.FrameSplitter
 import dev.benfranklin.tether.core.proto.Battery
+import dev.benfranklin.tether.core.proto.CallAction
+import dev.benfranklin.tether.core.proto.CallState
 import dev.benfranklin.tether.core.proto.Caps
+import dev.benfranklin.tether.core.proto.Caps3
+import dev.benfranklin.tether.core.proto.Clip
+import dev.benfranklin.tether.core.proto.CloseReason
+import dev.benfranklin.tether.core.proto.Hello
+import dev.benfranklin.tether.core.proto.MediaCmd
+import dev.benfranklin.tether.core.proto.Message
+import dev.benfranklin.tether.core.proto.MessageCodec
+import dev.benfranklin.tether.core.proto.Notif
 import dev.benfranklin.tether.core.proto.NotifAction
 import dev.benfranklin.tether.core.proto.NotifActionResult
+import dev.benfranklin.tether.core.proto.NotifDismiss
+import dev.benfranklin.tether.core.proto.NotifRemoved
+import dev.benfranklin.tether.core.proto.NowPlaying
+import dev.benfranklin.tether.core.proto.Protocol
+import dev.benfranklin.tether.core.proto.ProximityCfg
 import dev.benfranklin.tether.core.proto.Ring
 import dev.benfranklin.tether.core.proto.RingState
 import dev.benfranklin.tether.core.proto.RingStop
+import dev.benfranklin.tether.core.proto.Rssi
 import dev.benfranklin.tether.core.proto.ScreenInput
 import dev.benfranklin.tether.core.proto.ScreenStart
 import dev.benfranklin.tether.core.proto.ScreenState
 import dev.benfranklin.tether.core.proto.ScreenStates
 import dev.benfranklin.tether.core.proto.ScreenStop
-import dev.benfranklin.tether.core.proto.VideoFeedback
-import dev.benfranklin.tether.data.AppSettings
-import dev.benfranklin.tether.device.BatteryMonitor
-import dev.benfranklin.tether.device.Ringer
-import dev.benfranklin.tether.media.MediaWatcher
-import dev.benfranklin.tether.notify.NotificationActions
-import dev.benfranklin.tether.screen.ControlService
-import dev.benfranklin.tether.screen.ScreenCaptureService
-import dev.benfranklin.tether.screen.ScreenConsentActivity
-import dev.benfranklin.tether.core.session.PairingContext
-import dev.benfranklin.tether.core.session.PairingUri
-import dev.benfranklin.tether.core.session.PeerRecord
-import dev.benfranklin.tether.core.transfer.Direction
-import dev.benfranklin.tether.core.transfer.TransferRecord
-import dev.benfranklin.tether.core.transfer.TransferStatus
-import dev.benfranklin.tether.core.transfer.Transport
-import dev.benfranklin.tether.core.util.B64
-import dev.benfranklin.tether.core.util.fingerprint
-import dev.benfranklin.tether.core.wifi.TcpLink
-import dev.benfranklin.tether.data.FileIdentityStore
-import dev.benfranklin.tether.data.SeenAppsRepository
-import dev.benfranklin.tether.data.SettingsRepository
-import dev.benfranklin.tether.data.TransferRepository
-import dev.benfranklin.tether.files.AndroidFiles
-import dev.benfranklin.tether.log.Log
-import dev.benfranklin.tether.log.LoggedExecutor
-import dev.benfranklin.tether.notify.MirrorListenerService
-import dev.benfranklin.tether.service.Notifications
-import dev.benfranklin.tether.service.TetherService
-import dev.benfranklin.tether.wifi.WifiServer
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import java.io.IOException
-import java.net.Socket
-import java.security.MessageDigest
-import dev.benfranklin.tether.call.CallMonitor
-import dev.benfranklin.tether.core.proto.CallAction
-import dev.benfranklin.tether.core.proto.CallState
-import dev.benfranklin.tether.core.proto.Caps3
-import dev.benfranklin.tether.core.proto.MediaCmd
-import dev.benfranklin.tether.core.proto.MessageCodec
-import dev.benfranklin.tether.core.proto.NowPlaying
-import dev.benfranklin.tether.core.proto.ProximityCfg
-import dev.benfranklin.tether.core.proto.Rssi
 import dev.benfranklin.tether.core.proto.Sims
 import dev.benfranklin.tether.core.proto.SmsMessage
 import dev.benfranklin.tether.core.proto.SmsMessages
@@ -95,14 +62,53 @@ import dev.benfranklin.tether.core.proto.SmsSendResult
 import dev.benfranklin.tether.core.proto.SmsThreadReq
 import dev.benfranklin.tether.core.proto.SmsThreads
 import dev.benfranklin.tether.core.proto.SmsThreadsReq
+import dev.benfranklin.tether.core.proto.VideoFeedback
+import dev.benfranklin.tether.core.proto.WifiOffer
+import dev.benfranklin.tether.core.session.PairingContext
+import dev.benfranklin.tether.core.session.PairingUri
+import dev.benfranklin.tether.core.session.PeerRecord
+import dev.benfranklin.tether.core.transfer.Direction
+import dev.benfranklin.tether.core.transfer.TransferRecord
+import dev.benfranklin.tether.core.transfer.TransferStatus
+import dev.benfranklin.tether.core.transfer.Transport
+import dev.benfranklin.tether.core.util.B64
+import dev.benfranklin.tether.core.util.ReconnectWatchdog
+import dev.benfranklin.tether.core.util.fingerprint
+import dev.benfranklin.tether.core.wifi.TcpLink
+import dev.benfranklin.tether.data.AppSettings
+import dev.benfranklin.tether.data.FileIdentityStore
+import dev.benfranklin.tether.data.SeenAppsRepository
+import dev.benfranklin.tether.data.SettingsRepository
+import dev.benfranklin.tether.data.TransferRepository
+import dev.benfranklin.tether.device.BatteryMonitor
+import dev.benfranklin.tether.device.Ringer
+import dev.benfranklin.tether.files.AndroidFiles
+import dev.benfranklin.tether.log.Log
+import dev.benfranklin.tether.log.LoggedExecutor
+import dev.benfranklin.tether.media.MediaWatcher
 import dev.benfranklin.tether.media.NowPlayingMonitor
+import dev.benfranklin.tether.notify.MirrorListenerService
+import dev.benfranklin.tether.notify.NotificationActions
+import dev.benfranklin.tether.screen.ControlService
+import dev.benfranklin.tether.screen.ScreenCaptureService
+import dev.benfranklin.tether.screen.ScreenConsentActivity
+import dev.benfranklin.tether.service.Notifications
+import dev.benfranklin.tether.service.TetherService
 import dev.benfranklin.tether.sms.SmsBridge
 import dev.benfranklin.tether.sms.SmsStore
 import dev.benfranklin.tether.sms.StoreException
+import dev.benfranklin.tether.wifi.WifiServer
+import java.io.IOException
+import java.net.Socket
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 /** Everything the UI renders, as one immutable snapshot. */
 data class UiState(
@@ -221,7 +227,32 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     )
     private var rssiTask: ScheduledFuture<*>? = null
 
+    // ---- 0.3.1 reconnect safety net ----
+    private val watchdog = ReconnectWatchdog()
+    private var radioRestarts = 0
+    private var lastLoggedState: String? = null
+
+    /** Screen on / leaving Doze: radios may be fresh again, so allow an early restart. */
+    private val wakeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            engine.execute {
+                Log.i("device.wake", "action" to i.action?.substringAfterLast('.'), "linked" to controller.bleReady)
+                watchdog.poke()
+                checkWatchdog()
+            }
+        }
+    }
+
     init {
+        ContextCompat.registerReceiver(
+            app, wakeReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        engine.scheduleWithFixedDelay({ checkWatchdog() }, WATCHDOG_S, WATCHDOG_S, TimeUnit.SECONDS)
         engine.execute {
             controller.restoreTransfers(transfers.saved)
             files.sweep(transfers.saved.map { it.id }.toSet())
@@ -248,6 +279,29 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     fun stopLink() = engine.execute {
         central.stop()
         stopWifi()
+    }
+
+    /** The Reconnect button: rebuild the Bluetooth side now (what quit + reopen used to fix). */
+    fun reconnect() = engine.execute {
+        Log.i("ui.reconnect")
+        watchdog.reset()
+        restartRadio("manual")
+    }
+
+    private fun checkWatchdog() {
+        val eligible = identity.peer != null && pairing == null && central.radioUsable()
+        if (watchdog.observe(SystemClock.elapsedRealtime(), controller.bleReady, eligible)) restartRadio("watchdog")
+    }
+
+    /** Tear down Bluetooth (and a Wi-Fi path that isn't carrying the session) and start over. */
+    private fun restartRadio(reason: String) {
+        radioRestarts++
+        Log.w(
+            "radio.restart", "reason" to reason, "attempt" to watchdog.attempts, "total" to radioRestarts,
+            "wifi" to controller.wifiReady, "stage" to state.value.diag.stage.name, "nextS" to watchdog.thresholdMs() / MS_PER_S,
+        )
+        if (!controller.wifiReady) stopWifi()
+        central.hardRestart(reason)
     }
 
     fun setForeground(foreground: Boolean) {
@@ -731,6 +785,16 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     // ===================== ControllerListener =====================
 
     override fun onState(state: LinkState) {
+        val label = when (state) {
+            is LinkState.Connected -> if (state.wifi) "connected-wifi" else "connected"
+            is LinkState.Pairing -> "pairing"
+            LinkState.Handshaking -> "handshaking"
+            LinkState.Offline -> "offline"
+        }
+        if (label != lastLoggedState) {
+            Log.i("link.state", "from" to lastLoggedState, "to" to label, "retries" to controller.bleHandshakeRetries)
+            lastLoggedState = label
+        }
         this.state.update {
             it.copy(link = state, peer = identity.peer, peerCaps = controller.peerCaps, peerApp = controller.peerApp)
         }
@@ -915,6 +979,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     }
 
     private fun onNetworkChanged() {
+        watchdog.poke()
         val addrs = WifiServer.lanAddresses()
         if (addrs == offeredAddrs) return
         if (controller.wifiReady && tcp != null && addrs.isNotEmpty()) return // live session survives
@@ -968,6 +1033,8 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     companion object {
         private const val MAX_LIST_BYTES = 60 * 1024
         private const val DECODE_REASON_MAX = 160
+        private const val WATCHDOG_S = 10L
+        private const val MS_PER_S = 1000L
         private const val FIT_STEP = 4
         private const val RSSI_MIN_MS = 1000L
         private const val RSSI_MAX_MS = 10_000L

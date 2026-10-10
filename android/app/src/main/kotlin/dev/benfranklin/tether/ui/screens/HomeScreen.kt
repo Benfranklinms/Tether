@@ -99,6 +99,8 @@ data class HomeModel(
     val mirroringOff: Boolean,
     /** The Mac is viewing this screen right now. */
     val screenLive: Boolean = false,
+    /** Paired, Bluetooth usable, but not linked: offer a manual radio restart (0.3.1). */
+    val canReconnect: Boolean = false,
 )
 
 @Composable
@@ -113,6 +115,7 @@ fun HomeScreen(
     onNoticeShown: () -> Unit,
     onFixMirroring: () -> Unit,
     onStopScreen: () -> Unit = {},
+    onReconnect: () -> Unit = {},
 ) {
     val snack = remember { SnackbarHostState() }
     val reduce = LocalReduceMotion.current
@@ -134,6 +137,24 @@ fun HomeScreen(
                 }
             }
             item { StatusCard(m) }
+            if (m.canReconnect) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, Mono.Line, RoundedCornerShape(12.dp)).padding(start = 16.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Not connected to your Mac", style = MaterialTheme.typography.bodyMedium,
+                            color = Mono.Muted, modifier = Modifier.weight(1f),
+                        )
+                        TextButton(
+                            onClick = onReconnect,
+                            modifier = Modifier.semantics { contentDescription = "Reconnect: restart Bluetooth for Tether" },
+                        ) { Text("Reconnect") }
+                    }
+                }
+            }
             item {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
