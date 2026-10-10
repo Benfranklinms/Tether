@@ -87,17 +87,10 @@ fi
 echo "Emulator console ready."
 clear_modem || true
 
-# Keep the ringtone off: the emulator runs with -noaudio and Telecom's ringtone player is the
-# flakiest part of an incoming call there (it crashed system_server once). `media volume` is
-# gone on API 34; `cmd media_session volume` is its replacement. Verified, else left alone (the
-# tests also wait 2.5 s after the ring before acting, which is what actually avoids the crash).
-adb shell cmd media_session volume --stream 2 --set 0 >/dev/null 2>&1 || true
-ring=$(adb shell cmd media_session volume --stream 2 --get 2>/dev/null | tr -d '\r')
-if printf '%s' "$ring" | grep -qE 'volume is 0 '; then
-  echo "Ring stream muted ($ring)."
-else
-  echo "Ring stream not muted (${ring:-no answer}); relying on the post-ring settle instead."
-fi
+# No ring-volume step: API 34 has no `media volume`, and `cmd media_session volume --stream 2
+# --set 0` is accepted but leaves the ring stream at 5 (run 38031677427). The ringtone race on
+# -noaudio (AsyncRingtonePlayer NPE in system_server) is avoided by the tests waiting 2.5 s after
+# the ring before they act.
 
 # A freshly booted emulator is still delivering boot broadcasts for minutes; let that finish.
 settle_broadcasts 180
