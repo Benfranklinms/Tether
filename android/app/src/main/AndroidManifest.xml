@@ -70,6 +70,14 @@
     <uses-permission android:name="android.permission.READ_LOGS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 0.5.0: browse Downloads, Documents and WhatsApp media from the Mac ("All files access",
+         granted by the user in Settings; Tether is sideloaded, not on Play). -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <!-- 0.5.0: videos in the Mac's photos browser. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <!-- 0.5.0: in-app updates (Android asks the user to confirm each install). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
@@ -128,6 +136,31 @@
             </intent-filter>
         </activity>
 
+        <!-- Share › Continue on Mac (0.5): links and files become a card on the Mac. -->
+        <activity
+            android:name=".share.ContinueShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/continue_target"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Tether.Translucent">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <!-- Package installer results for in-app updates (0.5). -->
+        <receiver
+            android:name=".v5.InstallResultReceiver"
+            android:exported="false" />
         <!-- Briefly takes focus so Android 10+ lets us read the clipboard, then sends it. -->
         <activity
             android:name=".clip.ClipSendActivity"

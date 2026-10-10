@@ -15,10 +15,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.benfranklin.tether.core.features.ClipAutoSetup
 import dev.benfranklin.tether.ui.theme.Mono
+import dev.benfranklin.tether.ui.theme.MonoCode
 
 /** The wireless-adb steps for auto mode, shared by the guide, the README and a unit test. */
 object ClipAutoSteps {
@@ -86,7 +86,7 @@ fun ClipAutoGuide(
         if (setup || status == ClipAutoSetup.Status.NEEDS_OVERLAY) {
             SelectionContainer {
                 Text(
-                    commands, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = Mono.Text,
+                    commands, style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoCode), color = Mono.Text,
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Mono.SurfaceHigh).padding(12.dp),
                 )
             }

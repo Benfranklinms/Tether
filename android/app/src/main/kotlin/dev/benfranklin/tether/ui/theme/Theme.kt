@@ -65,7 +65,13 @@ private val scheme = darkColorScheme(
     scrim = Color(0xCC000000),
 )
 
-/** Manrope (SIL OFL, bundled) for text; numbers and codes use the platform monospace. */
+/** JetBrains Mono (SIL OFL, bundled) for numbers, codes and commands. */
+val MonoCode = FontFamily(
+    Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
+    Font(R.font.jetbrains_mono_medium, FontWeight.Medium),
+)
+
+/** Manrope (SIL OFL, bundled) for text; numbers and codes use JetBrains Mono. */
 private val sans = FontFamily(
     Font(R.font.manrope_light, FontWeight.Light),
     Font(R.font.manrope_regular, FontWeight.Normal),
@@ -84,7 +90,7 @@ val TetherType = Typography(
     bodySmall = TextStyle(fontFamily = sans, fontSize = 12.sp, lineHeight = 16.sp),
     labelLarge = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 14.sp, letterSpacing = 0.2.sp),
     labelMedium = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 12.sp, letterSpacing = 0.4.sp),
-    labelSmall = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, letterSpacing = 0.6.sp),
+    labelSmall = TextStyle(fontFamily = MonoCode, fontSize = 11.sp, letterSpacing = 0.6.sp),
 )
 
 /** True when the user turned animations off (Settings > Accessibility > Remove animations). */

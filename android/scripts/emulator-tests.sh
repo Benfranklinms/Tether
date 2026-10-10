@@ -157,8 +157,27 @@ clip_auto_tests() {
   echo "::error::clipboard auto-mode instrumented tests failed (see emulator-clip-instrument.txt)"
   return 1
 }
+# 0.5 permission paths. All files access is an app op whose change kills the app, so it is
+# granted here, before the instrumentation process starts.
+perm_tests() {
+  local pkg=in.benfranklin.tether.debug out
+  adb shell appops set "$pkg" MANAGE_EXTERNAL_STORAGE allow || { echo "::error::perm tests: appops MANAGE_EXTERNAL_STORAGE failed"; return 1; }
+  adb shell am force-stop "$pkg"
+  echo "driver: appops MANAGE_EXTERNAL_STORAGE = $(adb shell appops get "$pkg" MANAGE_EXTERNAL_STORAGE | tr -d '\r')"
+  out=$(adb shell am instrument -w -r -e class dev.benfranklin.tether.DevicePermTests \
+    "$pkg.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tr -d '\r')
+  printf '%s\n' "$out" > app/build/emulator-perm-instrument.txt
+  printf '%s\n' "$out" | grep -E 'INSTRUMENTATION_STATUS: (test|stack)=|^OK|FAILURES|Tests run' | head -60
+  if printf '%s\n' "$out" | grep -q '^OK (5 tests)'; then
+    echo "driver: permission-path tests passed"
+    return 0
+  fi
+  echo "::error::permission-path instrumented tests failed (see emulator-perm-instrument.txt)"
+  return 1
+}
 if [[ "$TESTS" == "dev.benfranklin.tether.DeviceSuite" ]]; then
   clip_auto_tests || code=1
+  perm_tests || code=1
 fi
 
 kill "$driver" 2>/dev/null || true

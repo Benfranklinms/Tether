@@ -103,6 +103,16 @@ class AndroidFiles(private val context: Context, private val settings: SettingsR
         FileInputStream(p).use { input -> copyHashing(input, NullOut, md) }
         val actual = Hex.encode(md.digest())
         if (actual != record.sha256) throw IntegrityException("checksum mismatch")
+        if (record.kind == dev.benfranklin.tether.core.proto.FileKinds5.CLIP) {
+            // A clipboard image from the Mac: kept privately, never published to Downloads.
+            val dir = File(context.filesDir, "clips").apply { mkdirs() }
+            val dst = File(dir, "in-" + record.id)
+            if (!p.renameTo(dst)) {
+                p.copyTo(dst, overwrite = true)
+                p.delete()
+            }
+            return dst.absolutePath
+        }
         val where = publish(p, record)
         p.delete()
         Log.i("file.saved", "size" to record.size)

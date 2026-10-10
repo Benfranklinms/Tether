@@ -87,6 +87,7 @@ data class DeviceInfo(
     val batteryOptimized: Boolean,
 )
 
+@Suppress("TooManyFunctions")
 interface SettingsActions {
     fun update(change: (AppSettings) -> AppSettings)
     fun openApps()
@@ -102,6 +103,10 @@ interface SettingsActions {
     fun exportLogs()
     fun openLicenses()
     fun openFeatures() = Unit
+    fun openSetup() = Unit
+    fun openMore5() = Unit
+    /** "12 of 16 ready" for the setup row. */
+    fun setupSummary(): String = ""
 }
 
 fun minutesLabel(m: Int): String = String.format(Locale.ROOT, "%02d:%02d", m / 60, m % 60)
@@ -119,7 +124,13 @@ fun SettingsScreen(s: AppSettings, d: DeviceInfo, a: SettingsActions, onBack: ()
             item { SectionHeader("Features") }
             item {
                 Card {
-                    NavRow("On your Mac", "Calls, texts, codes, photos, screen", onClick = a::openFeatures)
+                    Column {
+                        NavRow("Setup checklist", a.setupSummary(), onClick = a::openSetup)
+                        Divider()
+                        NavRow("On your Mac", "Calls, texts, codes, photos, screen", onClick = a::openFeatures)
+                        Divider()
+                        NavRow("Continue, files & updates", "New in 0.5", onClick = a::openMore5)
+                    }
                 }
             }
             item { SectionHeader("Clipboard") }

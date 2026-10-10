@@ -15,9 +15,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.benfranklin.tether.ui.theme.Mono
+import dev.benfranklin.tether.ui.theme.MonoCode
 
 /** The steps, shared by the phone guide and its unit test (the Mac shows the same list). */
 object SensitiveSteps {
@@ -68,7 +68,7 @@ fun SensitiveGuide(
         }
         SelectionContainer {
             Text(
-                command, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = Mono.Text,
+                command, style = MaterialTheme.typography.bodySmall.copy(fontFamily = MonoCode), color = Mono.Text,
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Mono.SurfaceHigh).padding(12.dp),
             )
         }

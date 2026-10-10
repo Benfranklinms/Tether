@@ -26,7 +26,8 @@
     <string name="screen_sharing_control">Your Mac can see and control this screen.</string>
     <string name="screen_stop">Stop sharing</string>
     <string name="control_service_label">Tether screen control</string>
-    <string name="control_service_desc">Lets your paired Mac tap, swipe and type on this phone while you share your screen with it. Tether only acts on input you send from your Mac during a screen session you approved, and never reads or stores screen content.</string>
+    <string name="control_service_desc">Lets your paired Mac tap, swipe and type on this phone: during a screen session you approved, and in the Mac\'s keyboard window when you type from the Mac. Tether only acts on input you send from your Mac. If you turn on Continue on Mac › Current browser tab, it also reads the address bar of Chrome, Brave, Edge or Samsung Internet to offer that page on your Mac. Nothing else on screen is read or stored.</string>
     <string name="call_tap_title">Call %1$s</string>
     <string name="call_tap_text">Your Mac asked to call. Tap to start the call.</string>
+    <string name="continue_target">Continue on Mac</string>
 </resources>

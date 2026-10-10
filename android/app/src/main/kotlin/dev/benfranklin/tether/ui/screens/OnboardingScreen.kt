@@ -54,12 +54,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.benfranklin.tether.ui.TetherMark
 import dev.benfranklin.tether.ui.theme.Mono
+import dev.benfranklin.tether.ui.theme.MonoCode
 
 enum class OnboardingStep { WELCOME, PERMISSIONS, PAIR }
 
@@ -236,7 +236,7 @@ private fun StatusLine(text: String, modifier: Modifier = Modifier) {
     ) { t ->
         Text(
             t, style = MaterialTheme.typography.bodySmall, color = Mono.Muted, textAlign = TextAlign.Center,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = MonoCode,
             modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
         )
     }
@@ -321,7 +321,7 @@ private fun SasDigits(sas: String) {
             val y by animateFloatAsState(if (visible) 0f else 1f, Motion.bouncy(reduce), label = "digitY")
             val a by animateFloatAsState(if (visible) 1f else 0f, Motion.spring(reduce), label = "digitA")
             Text(
-                c.toString(), fontFamily = FontFamily.Monospace, fontSize = 44.sp, color = Mono.Text, textAlign = TextAlign.Center,
+                c.toString(), fontFamily = MonoCode, fontSize = 44.sp, color = Mono.Text, textAlign = TextAlign.Center,
                 modifier = Modifier.width(30.dp).graphicsLayer {
                     alpha = a
                     translationY = y * DIGIT_DROP_PX

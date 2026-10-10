@@ -219,4 +219,39 @@ class ScreenshotTest {
     private companion object {
         const val ANIMATION_SETTLE_MS = 2_000L
     }
+
+    // ---------------- 0.5.0 ----------------
+
+    private val setupRowsSample = listOf(
+        dev.benfranklin.tether.ui.screens.SetupRow("nearby", "Nearby devices", "Find and connect to your Mac over Bluetooth", true, true),
+        dev.benfranklin.tether.ui.screens.SetupRow("notif", "Notification access", "Mirror notifications to the Mac, reply, one-time codes", true, true),
+        dev.benfranklin.tether.ui.screens.SetupRow("battery", "Battery unrestricted", "Keep the link alive in the background", false, true),
+        dev.benfranklin.tether.ui.screens.SetupRow("sms", "SMS", "Messages on the Mac, codes from texts", true, false),
+        dev.benfranklin.tether.ui.screens.SetupRow("allfiles", "All files access", "Browse Downloads, Documents and WhatsApp media from the Mac", false, false),
+        dev.benfranklin.tether.ui.screens.SetupRow("accessibility", "Accessibility (Tether control)", "Control the screen and type from the Mac", false, false),
+        dev.benfranklin.tether.ui.screens.SetupRow(
+            "readlogs", "Read logs (adb)", "Clipboard auto mode: send copies without opening Tether", false, false,
+            listOf("adb shell pm grant in.benfranklin.tether android.permission.READ_LOGS", "adb shell am force-stop in.benfranklin.tether"),
+            "Needs a computer with adb once (wireless debugging works).",
+        ),
+    )
+
+    @Test
+    fun setup() = shot("setup") {
+        dev.benfranklin.tether.ui.screens.SetupScreen(setupRowsSample, onFix = {}, onCopy = {}, onBack = {})
+    }
+
+    @Test
+    fun more5() = shot("continue-files-updates") {
+        dev.benfranklin.tether.ui.screens.More5Screen(
+            AppSettings(continueTabs = true), "11 of 16 ready",
+            dev.benfranklin.tether.ui.screens.UpdateUi("Tether 0.5.1 is available", "Download and install"), "0.5.0",
+            object : dev.benfranklin.tether.ui.screens.More5Actions {
+                override fun update(change: (AppSettings) -> AppSettings) = Unit
+                override fun openSetup() = Unit
+                override fun updateAction() = Unit
+            },
+            onBack = {},
+        )
+    }
 }

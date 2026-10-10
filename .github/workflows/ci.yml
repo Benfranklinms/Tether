@@ -133,6 +133,7 @@ jobs:
             android/app/build/outputs/androidTest-results
             android/app/build/emulator-logcat*.txt
             android/app/build/emulator-clip-instrument.txt
+            android/app/build/emulator-perm-instrument.txt
 
   interop:
     name: Interop (Kotlin ↔ Swift)

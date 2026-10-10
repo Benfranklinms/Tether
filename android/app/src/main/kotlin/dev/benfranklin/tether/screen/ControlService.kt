@@ -14,6 +14,7 @@ import dev.benfranklin.tether.core.features.GestureMapper
 import dev.benfranklin.tether.core.proto.InputKinds
 import dev.benfranklin.tether.core.proto.ScreenInput
 import dev.benfranklin.tether.log.Log
+import dev.benfranklin.tether.runtime
 import java.lang.ref.WeakReference
 
 /** Text editing for keyboard input from the Mac. Pure; unit-tested. */
@@ -34,12 +35,16 @@ object TextEdit {
 /**
  * Accessibility service used only for screen control from the Mac while the user is sharing
  * the screen: taps, long presses, swipes and scrolls via dispatchGesture, typed text via
- * ACTION_SET_TEXT on the focused field, and Back/Home/Recents via global actions. It handles
- * no accessibility events and never reads or keeps screen content.
+ * ACTION_SET_TEXT on the focused field (screen control and the 0.5 keyboard window), and
+ * Back/Home/Recents via global actions. Only when "Current browser tab" is turned on (Continue
+ * on Mac, off by default) does it read one thing: the address bar of Chrome, Brave, Edge or
+ * Samsung Internet. Nothing else on screen is read or kept.
  */
 class ControlService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = WeakReference(this)
+        val s = applicationContext.runtime.settings.current
+        configureTabs(s.continueCards && s.continueTabs)
         Log.i("control.connected")
         ScreenCaptureService.active?.refreshNotification()
     }
@@ -50,7 +55,72 @@ class ControlService : AccessibilityService() {
         return super.onUnbind(intent)
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val e = event ?: return
+        if (!tabsOn) return
+        val pkg = e.packageName?.toString() ?: return
+        val browser = BrowserTabs.browsers[pkg] ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastTabScan < TAB_SCAN_MS) return
+        lastTabScan = now
+        val root = rootInActiveWindow ?: return
+        val url = BrowserTabs.urlBarIds(pkg).firstNotNullOfOrNull { id ->
+            root.findAccessibilityNodeInfosByViewId(id)?.firstOrNull { !it.isFocused }?.text?.toString()
+        } ?: return
+        val clean = BrowserTabs.clean(url) ?: return
+        if (clean == lastTab) return
+        lastTab = clean
+        applicationContext.runtime.v5.browserTab(clean, null, browser)
+    }
+
+    private var tabsOn = false
+    private var lastTab: String? = null
+    private var lastTabScan = 0L
+
+    /** Follow the browser tab (Continue on Mac). Off = no content events are read at all. */
+    fun configureTabs(on: Boolean) {
+        if (on == tabsOn) return
+        tabsOn = on
+        val info = serviceInfo ?: return
+        info.eventTypes = if (on) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        } else {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        }
+        serviceInfo = info
+        Log.i("control.tabs", "on" to on)
+    }
+
+    /** Typing from the Mac's keyboard window (TYPE_TEXT). */
+    fun type(t: dev.benfranklin.tether.core.proto.TypeText): dev.benfranklin.tether.core.proto.TypeResult {
+        val node = focused() ?: return dev.benfranklin.tether.core.proto.TypeResult(t.seq, false, "no_field")
+        val field = listOfNotNull(node.packageName?.toString()?.substringAfterLast('.'), node.hintText?.toString())
+            .joinToString(" · ").take(FIELD_MAX)
+        val ok = when (t.key) {
+            "enter" -> enter()
+            null, "backspace", "tab", "clear" -> {
+                val current = if (hint(node)) "" else node.text?.toString().orEmpty()
+                val cursor = node.textSelectionEnd.takeIf { it >= 0 && !hint(node) }
+                val r = dev.benfranklin.tether.core.features.TypeEditor.apply(current, cursor, t.text, t.key)
+                setText(node, r.text, r.cursor)
+            }
+            else -> false
+        }
+        return dev.benfranklin.tether.core.proto.TypeResult(t.seq, ok, if (ok) null else "failed", field)
+    }
+
+    private fun setText(node: AccessibilityNodeInfo, text: String, cursor: Int): Boolean {
+        val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+        val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (ok) {
+            val sel = Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, cursor)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, cursor)
+            }
+            node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
+        }
+        return ok
+    }
 
     override fun onInterrupt() = Unit
 
@@ -120,6 +190,8 @@ class ControlService : AccessibilityService() {
         private const val SWIPE_MS = 250L
         private const val MIN_SWIPE_MS = 40L
         private const val MAX_MS = 5_000L
+        private const val TAB_SCAN_MS = 1_500L
+        private const val FIELD_MAX = 80
         @Volatile private var instance: WeakReference<ControlService>? = null
 
         val current: ControlService? get() = instance?.get()
@@ -132,5 +204,29 @@ class ControlService : AccessibilityService() {
             val list = Settings.Secure.getString(c.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
             return list.split(':').any { it.equals(me, ignoreCase = true) }
         }
+    }
+}
+
+/** Address bars of the supported browsers (best-effort: view ids can change with browser updates). */
+object BrowserTabs {
+    val browsers: Map<String, String> = mapOf(
+        "com.android.chrome" to "Chrome",
+        "com.chrome.beta" to "Chrome Beta",
+        "com.brave.browser" to "Brave",
+        "com.microsoft.emmx" to "Edge",
+        "com.sec.android.app.sbrowser" to "Samsung Internet",
+    )
+
+    fun urlBarIds(pkg: String): List<String> = when (pkg) {
+        "com.sec.android.app.sbrowser" -> listOf("$pkg:id/location_bar_edit_text", "$pkg:id/custom_tab_toolbar_url_bar_text")
+        else -> listOf("$pkg:id/url_bar", "$pkg:id/search_box_text")
+    }
+
+    /** "careers.armada.ai/apply" -> "https://careers.armada.ai/apply"; search terms and blanks are dropped. Pure; unit-tested. */
+    fun clean(raw: String): String? {
+        val t = raw.trim()
+        if (t.isEmpty() || t.contains(' ') || !t.contains('.')) return null
+        if (t.startsWith("chrome://") || t.startsWith("about:") || t.startsWith("edge://") || t.startsWith("internet://")) return null
+        return if (t.startsWith("http://") || t.startsWith("https://")) t else "https://$t"
     }
 }

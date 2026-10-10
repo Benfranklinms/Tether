@@ -103,6 +103,8 @@ import dev.benfranklin.tether.service.TetherService
 import dev.benfranklin.tether.sms.SmsBridge
 import dev.benfranklin.tether.sms.SmsStore
 import dev.benfranklin.tether.sms.StoreException
+import dev.benfranklin.tether.v5.Features5
+import dev.benfranklin.tether.v5.Updater
 import dev.benfranklin.tether.wifi.WifiServer
 import java.io.IOException
 import java.net.Socket
@@ -242,6 +244,14 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         onArt = { art -> engine.execute { if (nowPlayingAllowed()) controller.send(art) } },
     )
     private var rssiTask: ScheduledFuture<*>? = null
+
+    // ---- 0.5.0 features ----
+    val v5 = Features5(
+        app, engine, files, { settings.current },
+        send = { m -> controller.send(m) }, sendFile = { r -> controller.sendFile(r) },
+        supports = { c -> controller.peerSupports(c) }, connected = { controller.isConnected },
+    )
+    val updater = Updater(app).also { Updater.instance = it }
 
     // ---- 0.3.1 reconnect safety net ----
     private val watchdog = ReconnectWatchdog()
@@ -385,6 +395,18 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         }
         if (notice != null) note(notice)
         Log.i("clip.sent", "ok" to ok, "bytes" to bytes, "user" to fromUser)
+        if (ok) v5.linkCopied(text)
+    }
+
+    /** The app came to the foreground and the clipboard holds an image: send it if new (0.5). */
+    fun clipboardImageSeen(uri: Uri) {
+        if (!settings.current.sendClipboardOnOpen) return
+        val h = hash(uri.toString())
+        engine.execute {
+            if (h == lastClipHash || !controller.isConnected) return@execute
+            lastClipHash = h
+            v5.sendClipImage(uri)
+        }
     }
 
     /** The app came to the foreground and could read the clipboard: send it if new. */
@@ -435,7 +457,10 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     // ===================== notifications from the listener =====================
 
-    fun mirror(n: Notif) = engine.execute { controller.send(n) }
+    fun mirror(n: Notif) = engine.execute {
+        controller.send(n)
+        v5.maybeOtp(n.app, n.title + "\n" + n.text, "notif")
+    }
 
     // ===================== 0.2.0 features =====================
 
@@ -453,11 +478,14 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         if (!s.allowProximity) stopRssi()
         // 0.4.3
         clipWatcher.configure(paired && s.autoClip, s.autoClipSensitive)
+        // 0.5.0
+        v5.apply(paired, s)
     }
 
     /** Permissions changed (the app came back from a permission screen). */
     fun permissionsChanged() = engine.execute {
         applyFeatures(settings.current)
+        v5.pushStatus()
         calls.permissionsChanged()
         sensitive.recheck()?.let(::pushNotifAccess)
     }
@@ -732,6 +760,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     private fun pushSms(m: SmsMessage) {
         if (smsAllowed()) controller.send(SmsNew(m))
+        if (!m.out) v5.maybeOtp(m.name ?: m.addr, m.body, "sms")
     }
 
     private fun pushSims() {
@@ -763,6 +792,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     private fun pushNowPlaying(np: NowPlaying) {
         if (nowPlayingAllowed()) controller.send(np)
+        v5.nowPlaying(np)
     }
 
     private fun onMediaCmd(c: MediaCmd) {
@@ -820,6 +850,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             pushSims()
             nowPlaying.resend()
             calls.connected()
+            v5.linkUp()
             if (SensitiveWatch.applies) {
                 sensitive.recheck()
                 pushNotifAccess(sensitive.status())
@@ -858,7 +889,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             is CallAction, is CallDial, is CallLogReq, is ContactSearch -> calls.handle(message)
             is MediaCmd -> onMediaCmd(message)
             is ProximityCfg -> onProximityCfg(message)
-            else -> Log.i("msg.ignored", "type" to message.type)
+            else -> if (!v5.handle(message)) Log.i("msg.ignored", "type" to message.type)
         }
     }
 
@@ -878,6 +909,14 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     }
 
     override fun onTransfer(record: TransferRecord, important: Boolean) {
+        if (v5.hides(record)) {
+            // Clipboard images are not downloads: no rows, no notifications.
+            if (important && record.status.isFinal) {
+                v5.transferDone(record)
+                engine.execute { controller.removeTransfer(record.id) }
+            }
+            return
+        }
         transfers.upsert(record, important)
         if (important) {
             val activeBle = transfers.saved.any { it.status == TransferStatus.ACTIVE && it.via == Transport.BLE }

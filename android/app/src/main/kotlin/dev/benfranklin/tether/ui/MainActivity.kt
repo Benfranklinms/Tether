@@ -94,6 +94,11 @@ import dev.benfranklin.tether.ui.screens.PairView
 import dev.benfranklin.tether.ui.screens.PermissionItem
 import dev.benfranklin.tether.ui.screens.SettingsActions
 import dev.benfranklin.tether.ui.screens.SettingsScreen
+import dev.benfranklin.tether.ui.screens.More5Actions
+import dev.benfranklin.tether.ui.screens.More5Screen
+import dev.benfranklin.tether.ui.screens.SetupScreen
+import dev.benfranklin.tether.ui.screens.setupSummary
+import dev.benfranklin.tether.ui.screens.updateUi
 import dev.benfranklin.tether.ui.theme.TetherTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -108,7 +113,10 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         // Android 10+: the clipboard is readable only while we have focus.
-        if (hasFocus && runtime.ui.value.link is LinkState.Connected) runtime.clipboardSeen(readClipboardText(this))
+        if (hasFocus && runtime.ui.value.link is LinkState.Connected) {
+            val image = readClipboardImage(this)
+            if (image != null) runtime.clipboardImageSeen(image) else runtime.clipboardSeen(readClipboardText(this))
+        }
     }
 }
 
@@ -249,6 +257,16 @@ private fun TetherApp(rt: TetherRuntime) {
         return
     }
 
+    LaunchedEffect(Unit) {
+        val s = rt.settings.current
+        val now = System.currentTimeMillis()
+        if (s.autoUpdateCheck && now - s.lastUpdateCheck > UPDATE_EVERY_MS) {
+            rt.settings.update { it.copy(lastUpdateCheck = now) }
+            rt.updater.check(s.updateFeed) { st ->
+                if (st is dev.benfranklin.tether.v5.Updater.State.Available) rt.note("Tether ${st.info.version} is available · Settings")
+            }
+        }
+    }
     val nav = rememberNavController()
     val reduce = LocalReduceMotion.current
     // iOS-style push: the new screen slides in from the right on a spring while the old one
@@ -311,6 +329,9 @@ private fun TetherApp(rt: TetherRuntime) {
                     override fun exportLogs() = exportLogs(activity, state)
                     override fun openLicenses() = nav.navigate("licenses")
                     override fun openFeatures() = nav.navigate("features")
+                    override fun openSetup() = nav.navigate("setup")
+                    override fun openMore5() = nav.navigate("more5")
+                    override fun setupSummary() = setupSummary(setupRows(ctx))
                 },
                 onBack = { nav.popBackStack() },
             )
@@ -336,6 +357,42 @@ private fun TetherApp(rt: TetherRuntime) {
             )
         }
         composable("licenses") { LicensesScreen(onBack = { nav.popBackStack() }) }
+        composable("setup") {
+            val rows = remember(permsTick) { setupRows(ctx) }
+            SetupScreen(
+                rows = rows,
+                onFix = { id -> fixSetup(ctx, id) { p -> permissionLauncher.launch(p.toTypedArray()) } },
+                onCopy = { text -> copyText(ctx, text) },
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable("more5") {
+            val upd by rt.updater.status.collectAsStateWithLifecycle()
+            More5Screen(
+                s = settings, setup = remember(permsTick) { setupSummary(setupRows(ctx)) }, upd = updateUi(upd),
+                version = BuildConfig.VERSION_NAME,
+                a = object : More5Actions {
+                    override fun update(change: (AppSettings) -> AppSettings) {
+                        rt.settings.update(change)
+                        rt.permissionsChanged()
+                    }
+                    override fun openSetup() = nav.navigate("setup")
+                    override fun updateAction() {
+                        when (val st = upd) {
+                            is dev.benfranklin.tether.v5.Updater.State.Available -> {
+                                if (dev.benfranklin.tether.v5.Setup.canInstall(ctx)) {
+                                    rt.updater.download(st.info)
+                                } else {
+                                    fixSetup(ctx, "install") {}
+                                }
+                            }
+                            else -> rt.updater.check(settings.updateFeed)
+                        }
+                    }
+                },
+                onBack = { nav.popBackStack() },
+            )
+        }
         composable("features") {
             val sensitive by rt.sensitive.state.collectAsStateWithLifecycle()
             val clipStatus by rt.clipWatcher.status.collectAsStateWithLifecycle()
@@ -512,3 +569,45 @@ private fun appRows(
 }
 
 private const val ICON_PX = 96
+
+/** The clipboard's image, if it holds one (only readable while Tether has focus). */
+fun readClipboardImage(c: android.content.Context): android.net.Uri? = runCatching {
+    val cm = c.getSystemService(android.content.ClipboardManager::class.java) ?: return null
+    val clip = cm.primaryClip ?: return null
+    val desc = clip.description
+    val isImage = (0 until desc.mimeTypeCount).any { desc.getMimeType(it).startsWith("image/") }
+    if (!isImage || clip.itemCount == 0) return null
+    // Our own FileProvider = an image that came from the Mac: never echo it back.
+    clip.getItemAt(0).uri?.takeIf { it.authority != c.packageName + ".files" }
+}.getOrNull()
+
+private const val UPDATE_EVERY_MS = 24L * 60 * 60 * 1000
+
+/** Checklist rows for the UI (pure mapping of [dev.benfranklin.tether.v5.Setup.items]). */
+fun setupRows(c: android.content.Context): List<dev.benfranklin.tether.ui.screens.SetupRow> =
+    dev.benfranklin.tether.v5.Setup.items(c).map { i ->
+        val adb = i.fix as? dev.benfranklin.tether.v5.Setup.Fix.Adb
+        dev.benfranklin.tether.ui.screens.SetupRow(i.id, i.label, i.why, i.ok, i.required, adb?.commands.orEmpty(), adb?.note)
+    }
+
+/** Fix one checklist row: ask for runtime permissions, or open the Settings screen that grants it. */
+fun fixSetup(c: android.content.Context, id: String, request: (List<String>) -> Unit) {
+    val item = dev.benfranklin.tether.v5.Setup.items(c).firstOrNull { it.id == id } ?: return
+    when (val f = item.fix) {
+        is dev.benfranklin.tether.v5.Setup.Fix.Runtime -> request(f.permissions)
+        is dev.benfranklin.tether.v5.Setup.Fix.Screen -> try {
+            c.startActivity(f.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (@Suppress("SwallowedException") e: android.content.ActivityNotFoundException) {
+            // Some OEMs lack a specific screen: fall back to the app's info page.
+            val info = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + c.packageName))
+            c.startActivity(info.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        is dev.benfranklin.tether.v5.Setup.Fix.Adb, null -> Unit
+    }
+}
+
+fun copyText(c: android.content.Context, text: String) {
+    c.getSystemService(android.content.ClipboardManager::class.java)
+        ?.setPrimaryClip(android.content.ClipData.newPlainText("Tether", text))
+    android.widget.Toast.makeText(c, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+}
