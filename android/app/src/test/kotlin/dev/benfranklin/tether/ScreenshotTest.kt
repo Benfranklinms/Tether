@@ -29,6 +29,8 @@ import dev.benfranklin.tether.ui.screens.PermissionItem
 import dev.benfranklin.tether.ui.screens.SettingsActions
 import dev.benfranklin.tether.ui.screens.SettingsScreen
 import dev.benfranklin.tether.ui.theme.TetherTheme
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import org.junit.Rule
 import java.io.File
 import org.junit.Test
@@ -77,6 +79,12 @@ class ScreenshotTest {
                 ),
             ),
             {}, {}, {}, {}, {}, {}, {}, {},
+            extras = dev.benfranklin.tether.ui.screens.HomeExtras(
+                shelfCount = 4, updateVersion = "0.5.2",
+                find = dev.benfranklin.tether.ui.screens.FindModel(
+                    ringing = false, pending = null, locked = false, error = null, available = true,
+                ),
+            ),
         )
     }
 
@@ -269,4 +277,91 @@ class ScreenshotTest {
             onBack = {},
         )
     }
+
+    // ---- 0.5.2 ----
+    private val shelfItems = listOf(
+        dev.benfranklin.tether.core.proto.ShelfItem("1", "link", "Lab schedule", "https://example.com/lab", null, "mac", now, now, -4.0),
+        dev.benfranklin.tether.core.proto.ShelfItem("2", "wifi", "Studio Wi-Fi", "Studio-5G", "correct-horse", "phone", now, now, -3.0),
+        dev.benfranklin.tether.core.proto.ShelfItem(
+            "3", "address", "Sample Street", "12 Sample Street, Springfield 682021", null, "mac", now, now, -2.0,
+        ),
+        dev.benfranklin.tether.core.proto.ShelfItem(
+            "4", "snippet", "ssh", "ssh -L 8080:localhost:80 demo@example.com", null, "phone", now, now, -1.0,
+        ),
+    )
+
+    private object NoShelf : dev.benfranklin.tether.ui.screens.ShelfActions {
+        override fun addText(text: String) = Unit
+        override fun addFile() = Unit
+        override fun pasteText(): String? = null
+        override fun remove(id: String): dev.benfranklin.tether.core.proto.ShelfItem? = null
+        override fun restore(item: dev.benfranklin.tether.core.proto.ShelfItem) = Unit
+        override fun move(id: String, to: Int) = Unit
+        override fun primary(item: dev.benfranklin.tether.core.proto.ShelfItem) = "Copied"
+        override fun copy(item: dev.benfranklin.tether.core.proto.ShelfItem) = Unit
+        override fun open(id: String) = Unit
+    }
+
+    @Test
+    fun shelf() = shot("shelf") {
+        dev.benfranklin.tether.ui.screens.ShelfScreen(shelfItems, connected = true, a = NoShelf, onBack = {})
+    }
+
+    @Test
+    fun shelfEmpty() = shot("shelf-empty") {
+        dev.benfranklin.tether.ui.screens.ShelfScreen(emptyList(), connected = false, a = NoShelf, onBack = {})
+    }
+
+    @Test
+    fun shelfDetail() = shot("shelf-detail") {
+        dev.benfranklin.tether.ui.screens.ShelfDetailScreen(shelfItems[1], NoShelf, onBack = {})
+    }
+
+    @Test
+    fun hotspot() = shot("hotspot") {
+        dev.benfranklin.tether.ui.screens.HotspotScreen(
+            AppSettings(), savedSsid = "Pixel hotspot", hasPassword = true, controlOn = false,
+            status = dev.benfranklin.tether.ui.screens.hotspotStatusText("on", null),
+            a = object : dev.benfranklin.tether.ui.screens.HotspotActions {
+                override fun update(change: (AppSettings) -> AppSettings) = Unit
+                override fun save(ssid: String, password: String) = Unit
+                override fun forget() = Unit
+                override fun openAccessibility() = Unit
+            },
+            onBack = {},
+        )
+    }
+
+    @Test
+    fun updateSheet() = shot("update-available") {
+        androidx.compose.foundation.layout.Box(
+            androidx.compose.ui.Modifier.sheetBackdrop(),
+            contentAlignment = androidx.compose.ui.Alignment.BottomCenter,
+        ) {
+            dev.benfranklin.tether.ui.screens.UpdateSheetContent(
+                dev.benfranklin.tether.ui.screens.UpdateSheetModel(
+                    "0.5.2", "0.5.1",
+                    "- Shelf: links, Wi-Fi and addresses on both devices\n- Find my Mac\n- Instant Hotspot\n- Insert from Phone",
+                    progress = 0.42f, installing = false, error = null,
+                ),
+                {}, {}, {},
+            )
+        }
+    }
+
+    @Test
+    fun whatsNew() = shot("whats-new") {
+        androidx.compose.foundation.layout.Box(
+            androidx.compose.ui.Modifier.sheetBackdrop(),
+            contentAlignment = androidx.compose.ui.Alignment.BottomCenter,
+        ) {
+            dev.benfranklin.tether.ui.screens.WhatsNewContent(
+                "0.5.2", "- Shelf on both devices\n- Find my Mac\n- Instant Hotspot", onDone = {},
+            )
+        }
+    }
 }
+
+private fun androidx.compose.ui.Modifier.sheetBackdrop() = this.then(
+    androidx.compose.ui.Modifier.fillMaxSize().background(dev.benfranklin.tether.ui.theme.Mono.Surface),
+)

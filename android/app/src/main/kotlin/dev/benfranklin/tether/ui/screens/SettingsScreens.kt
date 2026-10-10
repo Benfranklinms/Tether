@@ -65,6 +65,7 @@ import dev.benfranklin.tether.ui.sharedHero
 import dev.benfranklin.tether.ui.theme.LocalReduceMotion
 import dev.benfranklin.tether.ui.monoSwitchColors
 import dev.benfranklin.tether.ui.theme.Mono
+import dev.benfranklin.tether.ui.theme.Motion
 import java.util.Locale
 
 @Composable
@@ -367,16 +368,22 @@ fun AppsScreen(apps: List<AppRow>, onSet: (String, AppRule) -> Unit, onBack: () 
                     )
                 }
             }
-            items(shown, key = { it.pkg }) { app -> AppItem(app, onSet) }
+            items(shown, key = { it.pkg }) { app ->
+                val r = LocalReduceMotion.current
+                AppItem(
+                    app, onSet,
+                    Modifier.animateItem(fadeInSpec = Motion.fade(r), placementSpec = Motion.spring(r), fadeOutSpec = Motion.fade(r)),
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun AppItem(app: AppRow, onSet: (String, AppRule) -> Unit) {
+private fun AppItem(app: AppRow, onSet: (String, AppRule) -> Unit, modifier: Modifier = Modifier) {
     val next = if (app.effectiveOn) AppRule.BLOCK else AppRule.ALLOW
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(role = Role.Switch) { onSet(app.pkg, next) }
+        modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(role = Role.Switch) { onSet(app.pkg, next) }
             .padding(horizontal = 20.dp, vertical = 8.dp)
             .semantics(mergeDescendants = true) {
                 contentDescription = "${app.label}, ${if (app.effectiveOn) "mirrored" else "not mirrored"}" +
@@ -445,8 +452,10 @@ fun KeywordsScreen(words: List<String>, onChange: (List<String>) -> Unit, onBack
             }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 items(words, key = { it }) { w ->
+                    val r = LocalReduceMotion.current
                     Row(
-                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp).heightIn(min = 52.dp),
+                        Modifier.animateItem(fadeInSpec = Motion.fade(r), placementSpec = Motion.spring(r), fadeOutSpec = Motion.fade(r))
+                            .fillMaxWidth().padding(start = 20.dp, end = 8.dp).heightIn(min = 52.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(w, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))

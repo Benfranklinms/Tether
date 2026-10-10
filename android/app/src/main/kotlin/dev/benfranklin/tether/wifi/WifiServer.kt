@@ -158,7 +158,11 @@ class WifiServer(
         val req = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
-            .apply { if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) addTransportType(TRANSPORT_USB) }
+            .apply {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    addTransportType(NetworkCapabilities.TRANSPORT_USB)
+                }
+            }
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
         try {
@@ -196,7 +200,6 @@ class WifiServer(
         /** Hidden ConnectivityManager / WifiManager broadcasts (system-sent, stable since Android 4). */
         const val ACTION_TETHER_STATE_CHANGED = "android.net.conn.TETHER_STATE_CHANGED"
         const val ACTION_WIFI_AP_STATE_CHANGED = "android.net.wifi.WIFI_AP_STATE_CHANGED"
-        private const val TRANSPORT_USB = 8 // NetworkCapabilities.TRANSPORT_USB (API 31)
         private val CELLULAR = listOf("rmnet", "ccmni", "pdp", "v4-rmnet", "dummy", "tun", "ipsec", "clat")
 
         /**
