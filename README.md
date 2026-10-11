@@ -16,10 +16,6 @@
 </div>
 
 <p align="center">
-  <img src="docs/launch.gif" width="100%" alt="Tether in action: the phone and the Mac linked, with notifications, Shelf, files and Insert from Phone">
-</p>
-
-<p align="center">
   <img src="docs/screenshots/mac/main-home.png" width="49%" alt="Tether on the Mac in Dark mode: sidebar with Home, Messages, Calls, Notifications, Files, Photos, Shelf, Phone screen and Clipboard; Home shows a one-time code, Continue on Mac cards and quick actions">
   <img src="docs/screenshots/mac/main-home-light.png" width="49%" alt="The same Home page in Light mode">
 </p>
