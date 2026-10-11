@@ -16,11 +16,17 @@
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/mac/main-home.png" width="49%" alt="Tether on the Mac in Dark mode: sidebar with Home, Messages, Calls, Notifications, Files, Photos, Phone screen and Clipboard; Home shows a one-time code, Continue on Mac cards and quick actions">
+  <img src="docs/launch.gif" width="100%" alt="Tether in action: the phone and the Mac linked, with notifications, Shelf, files and Insert from Phone">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/mac/main-home.png" width="49%" alt="Tether on the Mac in Dark mode: sidebar with Home, Messages, Calls, Notifications, Files, Photos, Shelf, Phone screen and Clipboard; Home shows a one-time code, Continue on Mac cards and quick actions">
   <img src="docs/screenshots/mac/main-home-light.png" width="49%" alt="The same Home page in Light mode">
 </p>
 
 Tether brings your Android phone to your Mac: texts, calls, notifications you can reply to, your phone's files and photos, one-time codes on the clipboard, clipboard sync, media controls and screen mirroring. The two devices talk to each other over Bluetooth LE, with a direct Wi-Fi fast path when they share a network, end-to-end encrypted with the Noise protocol. Nothing goes through a server.
+
+**Why Tether:** it works over Bluetooth, so the phone and the Mac don't need to share a Wi-Fi network; Wi-Fi is only used, when it's there, to make big things faster. And it's free and open source.
 
 ## Contents
 
@@ -43,7 +49,18 @@ Tether brings your Android phone to your Mac: texts, calls, notifications you ca
 
 ## What's new in 0.5.3
 
-
+- **Take Photo and Scan Document work from the Mac menu bar.** The phone now really opens the camera even when Tether is in the background (Android blocks that unless Tether is allowed to). If it can't, your phone shows a notification to tap, and the Mac tells you so instead of waiting silently.
+- **Copy on a Shelf photo or file copies the file itself.** Paste in Finder, Mail or Messages gives you the picture or the document, not a line of text.
+- **Shelf files open even when the other device is away.** Every Shelf file up to 100 MB is copied to both devices in the background (encrypted, like the rest of the Shelf).
+- **Rename Shelf items** on both devices (right-click › Rename or double-click the title on the Mac; long-press or the detail screen on the phone). The new name is used when you open or copy the file.
+- **Search the Shelf**: ⌘F on the Mac, the search bar on the phone. Searches titles, contents, file names and types.
+- **Shelf cards say "Word document" or "PDF"** instead of long technical types, and image files show a thumbnail.
+- **Transfers on the phone stay tidy**: Home shows the latest three with **See all**, a full list grouped by day with Sent / Received filters, swipe to delete and Clear all. Finished transfers fold away after a day.
+- **Nothing scrolls under the phone's status bar or navigation bar** any more, on any screen, and the clock and battery icons stay readable in light mode too.
+- **Find my Mac moved to Settings** on the phone, so Home stays short.
+- **Shelf snippet cards** no longer repeat their title in the preview.
+- **Continue on Mac cards** wait until a new photo is fully saved, so the thumbnail and size are right (no more black thumbnails).
+- **What's new** now shows after every update, including updates from 0.5.1 and older.
 
 Every release's changes are in [CHANGELOG.md](CHANGELOG.md).
 
@@ -83,6 +100,22 @@ Every release's changes are in [CHANGELOG.md](CHANGELOG.md).
     <td align="center"><sub>Insert from Phone</sub></td>
   </tr>
   <tr>
+    <td><img src="docs/screenshots/mac/main-shelf-search.png" alt="Searching the Shelf with ⌘F: typing word finds a Word document by its friendly file type"></td>
+    <td><img src="docs/screenshots/mac/main-shelf-rename.png" alt="Renaming a Shelf file in place on its card"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Shelf search (⌘F)</sub></td>
+    <td align="center"><sub>Rename a Shelf item in place</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/mac/capture-card-tap.png" alt="Insert from Phone when the phone can't open the camera by itself: the Mac asks you to tap the notification on the phone"></td>
+    <td><img src="docs/screenshots/mac/main-whats-new.png" alt="The What's new sheet shown after an update"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Insert from Phone, tap-to-open fallback</sub></td>
+    <td align="center"><sub>What's new after an update</sub></td>
+  </tr>
+  <tr>
     <td><img src="docs/screenshots/mac/main-update-light.png" alt="The in-app update popup with release notes, Skip this version, Later and Update now"></td>
     <td><img src="docs/screenshots/mac/find-my-mac.png" alt="Find my Mac: a full-screen This Mac is ringing overlay with a Found it button"></td>
   </tr>
@@ -93,9 +126,15 @@ Every release's changes are in [CHANGELOG.md](CHANGELOG.md).
 </table>
 
 <p align="center">
-  <img src="docs/screenshots/android/home.png" width="24%" alt="Tether on Android: connected to the Mac over the Wi-Fi fast path">
+  <img src="docs/screenshots/android/home-transfers.png" width="24%" alt="Tether on Android: Home with the connection card, Send clipboard, Send file, the Shelf tile and the latest three transfers with See all">
+  <img src="docs/screenshots/android/transfers.png" width="24%" alt="The Transfers screen: All, Sent and Received filters, transfers grouped by day, Clear all">
+  <img src="docs/screenshots/android/shelf-files.png" width="24%" alt="The Shelf on Android: files with friendly types, a link, a Wi-Fi network, an address and a snippet">
+  <img src="docs/screenshots/android/shelf-search.png" width="24%" alt="Searching the Shelf on Android">
+</p>
+<p align="center">
+  <img src="docs/screenshots/android/settings.png" width="24%" alt="Android Settings with the Find my Mac card: Ring and Lock">
+  <img src="docs/screenshots/android/hotspot.png" width="24%" alt="Instant Hotspot settings on Android">
   <img src="docs/screenshots/android/setup.png" width="24%" alt="The Android setup checklist with a Fix button for each missing permission">
-  <img src="docs/screenshots/android/features.png" width="24%" alt="Android feature settings">
   <img src="docs/screenshots/android/pairing-code.png" width="24%" alt="Pairing without a camera by comparing a 6-digit code">
 </p>
 
@@ -120,9 +159,10 @@ All screenshots are generated by CI from demo data on every build ([`docs/screen
 | **Phone files** | Browse Downloads, Documents, WhatsApp media, DCIM and Pictures as a list or a thumbnail grid; preview, download, open, or drag straight into Finder. |
 | **Photos** | A real gallery of the phone's camera roll: albums (Camera, Screenshots, WhatsApp, Videos, Favorites and every other folder), date sections, Years / Months / All Photos, filters, a size slider (⌘+ / ⌘−), multi-select, and a viewer with arrow keys and photo details. Videos play right in the viewer, fetched over Wi-Fi (Bluetooth when that's all there is). New screenshots (and optionally camera photos) arrive automatically. |
 | **File transfer** | Share sheet, Finder Share extension, Dock-icon drop or drag onto the window. Resumable, SHA-256 verified, up to 4 GB over Wi-Fi. |
+| **Transfers** | On the phone, Home shows the latest three transfers with *See all*; the Transfers screen groups everything by day with *All* / *Sent* / *Received* filters, swipe to delete and *Clear all*. Finished transfers fold away after a day. |
 | **Clipboard** | Copy on one device, paste on the other, text and images. History of the last 20 items. Password-manager items are skipped. |
-| **Shelf** | A pinned list shared by both devices: text, links, Wi-Fi networks (password hidden until you ask), addresses, code snippets and files. Add from either side, from the clipboard history or the Share menu; drag to reorder. Up to 50 items; a file's bytes stay on the device that added it until the other one opens it. |
-| **Insert from Phone** | *Take Photo* or *Scan Document* on the Mac opens the phone's camera or document scanner; the result is pasted into the app you were using (or saved to the Desktop and copied when Tether may not paste). |
+| **Shelf** | A pinned list shared by both devices: text, links, Wi-Fi networks (password hidden until you ask), addresses, code snippets and files. Add from either side, from the clipboard history or the Share menu; drag to reorder; up to 50 items. **Rename** any item (double-click or right-click › Rename on the Mac; long-press or the detail screen on the phone). **Search** titles, contents, file names and types (<kbd>⌘</kbd><kbd>F</kbd> on the Mac, the search bar on the phone). **Offline files:** every Shelf file up to 100 MB is copied, encrypted, to both devices in the background, so it opens even when the other device is away. Cards show friendly types ("Word document", "PDF") and image thumbnails, and *Copy* puts the file or picture itself on the clipboard. |
+| **Insert from Phone** | *Take Photo* or *Scan Document* on the Mac (app or menu bar) opens the phone's camera or document scanner, even when Tether is in the background; the result is pasted into the app you were using (or saved to the Desktop and copied when Tether may not paste). If the phone can't open the camera by itself, it shows a notification to tap and the Mac tells you so. Turn it on or off in the phone's Settings › Insert from Phone. |
 | **Continue on Mac** | A new photo, a finished download, a copied or shared link, the song that is playing or the current browser tab appear as cards with one click to open them on the Mac. |
 | **Open on phone** | Send a link or text from any Mac app (Services menu, Share menu or `tether://send`) to open on the phone. |
 
@@ -147,12 +187,12 @@ All screenshots are generated by CI from demo data on every build ([`docs/screen
 | Feature | Description |
 |---|---|
 | **Windowed app** | Sidebar with Home, Messages, Calls, Notifications, Files, Photos, Shelf, Phone screen, Clipboard and Settings; remembers its size, position and page. |
-| **Universal search** | <kbd>⌘</kbd><kbd>F</kbd> searches messages, calls and notifications at once. |
+| **Universal search** | <kbd>⌘</kbd><kbd>F</kbd> searches messages, calls and notifications at once (and the Shelf, on the Shelf page). |
 | **Menu-bar popover** | Battery, now playing, latest notifications, *Send clipboard* and *Send file*. Show Tether in the Dock, the menu bar, or both. |
 | **Global shortcuts** | <kbd>⌥</kbd><kbd>⌘</kbd><kbd>V</kbd> send clipboard · <kbd>⌥</kbd><kbd>⌘</kbd><kbd>F</kbd> send a file · <kbd>⌥</kbd><kbd>⌘</kbd><kbd>T</kbd> open Tether. |
 | **Widgets** | Phone battery and now playing (macOS 14+). |
 | **Appearance** | Dark, Light or System, in Pure Mono or Liquid Glass (macOS 26; translucent vibrancy on earlier versions). Animated throughout (page transitions, hero transitions, zooming photos, cascading lists) in both apps; Reduce Motion turns it into fades, and Reduce Transparency is respected. |
-| **Updates** | A popup when a new version is out, with its release notes and *Update now* / *Later* / *Skip this version*; a one-time *What's new* sheet after each update. |
+| **Updates** | Straight from this repository's public GitHub releases, with nothing to set up: a popup when a new version is out, with its release notes and *Update now* / *Later* / *Skip this version*, and a *What's new* sheet after every update. |
 | **Setup checklist** | On both devices: every permission a feature needs, with a *Fix* button per row. |
 
 ## How it works
@@ -288,13 +328,13 @@ Both apps can update themselves from this repository's GitHub releases (**Mac:**
 | Same signing certificate / valid code signature | ✓ | ✓ |
 | Install | Android asks you to confirm | Replaces the app and relaunches |
 
-Updates come straight from this repository's public GitHub releases: no account, token or custom feed to set up.
+Updates come only from this repository's public GitHub releases. There is nothing to sign in to or configure.
 
 ## Privacy and security
 
 - **No servers, no account, no analytics.** Tether has no backend; data moves only between your two devices.
 - **Encryption.** Noise XX (X25519, ChaCha20-Poly1305, SHA-256) on both Bluetooth and Wi-Fi. One identity key per install: Android Keystore-wrapped on the phone, a `0600` file on the Mac.
-- **Pairing.** By QR code (Mac key plus a one-time token checked inside the handshake) or by comparing a 6-digit code. Wi-Fi sessions accept only the paired key plus a single-use token offered over Bluetooth. Keys can be rotated, and unpairing on either side forgets both.
+- **Pairing.** By QR code (Mac key plus a one-time secret checked inside the handshake) or by comparing a 6-digit code. Wi-Fi sessions accept only the paired key plus a single-use secret offered over Bluetooth. Keys can be rotated, and unpairing on either side forgets both.
 - **Minimal retention.** Texts, call details and now-playing data are shown on the Mac only while connected and are never written to disk there.
 - **Logs contain no content.** Diagnostics record events and sizes, never clipboard text, notification content, file names or screen content.
 - **Screen control** acts only during a session you started, only on input from the paired Mac; the accessibility service does not read or store screen content.
