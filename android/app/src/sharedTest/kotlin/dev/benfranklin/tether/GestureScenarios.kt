@@ -33,7 +33,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.onAllNodes
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.performSemanticsAction
 import dev.benfranklin.tether.core.proto.ShelfItem
 import dev.benfranklin.tether.core.transfer.Direction
