@@ -75,7 +75,10 @@ struct ShelfChip: View {
         }
         .padding(.leading, 14).padding(.trailing, 16).frame(height: 36)
         .background(Capsule().fill(hovered ? Mono.accent : (pointer ? Mono.surfaceHigh : Mono.surface)))
-        .overlay(Capsule().stroke(hovered ? Mono.accent : Mono.line))
+        // strokeBorder + clip: nothing is drawn outside the capsule (CI screenshots showed stray
+        // vertical hairlines at the chip edges with a centred stroke).
+        .overlay(Capsule().strokeBorder(hovered ? Mono.accent : Mono.line, lineWidth: 1))
+        .clipShape(Capsule())
         .scaleEffect(hovered && !reduce ? 1.06 : 1)
         .animation(reduce ? Motion.reducedFade : .spring(response: 0.3, dampingFraction: 0.7), value: hovered)
         .contentShape(Capsule())
