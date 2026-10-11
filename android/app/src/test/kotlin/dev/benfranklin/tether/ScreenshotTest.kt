@@ -94,99 +94,143 @@ class ScreenshotTest {
         return bmp.asImageBitmap()
     }
 
+    // ---------------- 0.5.4 Home (Control Center) ----------------
+
+    private fun shelfItem(id: String, kind: String, title: String, body: String, from: String, agoMin: Long, order: Double,
+        file: dev.benfranklin.tether.core.proto.ShelfFile? = null) =
+        dev.benfranklin.tether.core.proto.ShelfItem(id, kind, title, body, null, from, now - agoMin * 60_000L, now, order, file)
+
+    /** The mockup's Shelf: 24 items, the newest three on Home. */
     private val homeShelf = listOf(
-        dev.benfranklin.tether.core.proto.ShelfItem(
-            "h1", "link", "Event registration", "https://forms.gle/x7Tq2", null, "phone", now - 14 * 60_000L, now, -3.0,
-        ),
-        dev.benfranklin.tether.core.proto.ShelfItem(
-            "h2", "file", "Aptitude Practice Set 15 Questions.pdf", "", null, "mac", now - 2 * 60_000L, now, -2.0,
-            dev.benfranklin.tether.core.proto.ShelfFile("Aptitude Practice Set 15 Questions.pdf", 464_000, "application/pdf", "bb", "mac"),
-        ),
-        dev.benfranklin.tether.core.proto.ShelfItem("h3", "wifi", "Studio_5G", "", "pw", "phone", now - 3_600_000L, now, -1.0),
+        shelfItem("h1", "file", "IMG_20261010_195129.jpg", "", "phone", 12, -30.0,
+            dev.benfranklin.tether.core.proto.ShelfFile("IMG_20261010_195129.jpg", 4_300_000, "image/jpeg", "aa", "phone")),
+        shelfItem("h2", "link", "Titan Engineering registration", "https://forms.gle/x7Tq2", "phone", 14, -29.0),
+        shelfItem("h3", "file", "Benfranklin M S - Yugabyte.pdf", "", "mac", 20, -28.0,
+            dev.benfranklin.tether.core.proto.ShelfFile("Benfranklin M S - Yugabyte.pdf", 82_000, "application/pdf", "bb", "mac")),
+    ) + (4..24).map { shelfItem("f$it", "text", "Note $it", "Item $it", "phone", 60L * it, it.toDouble()) }
+
+    private val homeMac = dev.benfranklin.tether.v7.MacStatusUi(
+        82, false, dev.benfranklin.tether.core.proto.MacMedia(true, "Nights", "Frank Ocean", "Music", true, 307_000, 100_000), now,
     )
 
     private fun homeData() = dev.benfranklin.tether.ui.screens.HomeData(
-        shelf = homeShelf, clipboard = "forms.gle/x7Tq2",
+        shelf = homeShelf, clipboard = "+917554626501",
         clips = listOf(
             dev.benfranklin.tether.core.features.ClipRecents.Entry("forms.gle/x7Tq2", now, false),
             dev.benfranklin.tether.core.features.ClipRecents.Entry("1 Market St, San Francisco", now - 60_000, true),
-            dev.benfranklin.tether.core.features.ClipRecents.Entry("See you at 6", now - 120_000, true),
         ),
-        mac = dev.benfranklin.tether.v7.MacStatusUi(
-            82, true, dev.benfranklin.tether.core.proto.MacMedia(true, "Nights", "Frank Ocean", "Music", false, 307_000, 102_000), now,
-        ),
+        mac = homeMac,
         photos = (1L..8L).map { dev.benfranklin.tether.v7.RecentPhoto(it, android.net.Uri.parse("content://demo/$it")) },
-        hotspotSsid = "Alex's Phone",
+        hotspotSsid = "Ben's Phone", hotspotState = "on", newPhotos = 2,
     )
 
     private val homeActions = object : dev.benfranklin.tether.ui.screens.HomeActions {
         override suspend fun photoThumb(p: dev.benfranklin.tether.v7.RecentPhoto) = fakePhoto(p.id.toInt())
+        override suspend fun shelfThumb(item: dev.benfranklin.tether.core.proto.ShelfItem) = fakePhoto(3)
     }
 
+    private fun recAgo(name: String, dir: Direction, size: Long, done: Long, status: TransferStatus, mime: String, agoMin: Long) =
+        rec(name, dir, size, done, status, Transport.WIFI).copy(
+            mime = mime, createdAt = now - agoMin * 60_000L, updatedAt = now - agoMin * 60_000L,
+        )
+
     private val linked = HomeModel(
-        title = "MacBook Air", subtitle = "Connected · Wi-Fi", connected = true, searching = false,
-        wifi = true, error = null, notice = null, mirroringOff = false, now = now + 60_000,
+        title = "Ben’s MacBook Air", subtitle = "Connected · Wi-Fi", connected = true, searching = false,
+        wifi = true, error = null, notice = null, mirroringOff = false, now = now,
         transfers = listOf(
-            rec("Screenshot_2026-10-11-08-41.png", Direction.OUT, 282_000, 282_000, TransferStatus.DONE, Transport.WIFI),
-            rec("Lecture_notes_unit4.pdf", Direction.IN, 1_400_000, 1_400_000, TransferStatus.DONE, Transport.WIFI),
-            rec("AdaFace_Summary.pdf", Direction.OUT, 20_000, 20_000, TransferStatus.DONE, Transport.WIFI),
+            recAgo("VID_20261011_0812.mp4", Direction.OUT, 61 * 1_048_576L, 38 * 1_048_576L, TransferStatus.ACTIVE, "video/mp4", 1),
+            recAgo("Screenshot_2026-10-11-08-41.png", Direction.OUT, 282_000, 282_000, TransferStatus.DONE, "image/png", 4),
+            recAgo("Lecture_notes_unit4.pdf", Direction.IN, 1_468_000, 1_468_000, TransferStatus.DONE, "application/pdf", 60),
         ),
     )
 
-    /** 0.5.3: Home as customizable panels (the default layout). */
-    @Test
-    fun home() = shot("home") {
-        HomeScreen(linked, dev.benfranklin.tether.core.features.HomeLayout.DEFAULT, homeActions, homeData())
-    }
+    private val sections = dev.benfranklin.tether.data.HomeSections.DEFAULT
 
-    /** 0.5.3: Home in edit mode: "−" badges, resize corners, + and Done. */
+    /** 0.5.4: the approved Option C. */
     @Test
-    fun homeEdit() = shot("home-edit") {
-        HomeScreen(linked, dev.benfranklin.tether.core.features.HomeLayout.DEFAULT, homeActions, homeData(), startEditing = true)
-    }
+    fun home() = shot("home") { HomeScreen(linked, sections, homeActions, homeData()) }
 
-    /** 0.5.3: the panel picker (sheet content on its own; the modal sheet needs a window). */
-    @Test
-    fun homeAddPanel() = shot("home-add-panel") {
-        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.sheetBackdrop()) {
-            dev.benfranklin.tether.ui.screens.AddPanelContent(
-                dev.benfranklin.tether.core.features.HomeLayout.DEFAULT.remove(dev.benfranklin.tether.core.features.PanelKind.SHELF)
-                    .remove(dev.benfranklin.tether.core.features.PanelKind.CLIPBOARD)
-                    .remove(dev.benfranklin.tether.core.features.PanelKind.TRANSFERS),
-                linked, homeData(), onAdd = { _, _ -> }, onClose = {},
-            )
-        }
-    }
-
-    /** 0.5.3: other sizes: wide Mac and clipboard, large Now playing, Hotspot. */
-    @Test
-    fun homeSizes() = shot("home-sizes") {
-        val l = dev.benfranklin.tether.core.features.HomeLayout(
-            listOf(
-                dev.benfranklin.tether.core.features.Panel(dev.benfranklin.tether.core.features.PanelKind.MAC, dev.benfranklin.tether.core.features.PanelSize.WIDE),
-                dev.benfranklin.tether.core.features.Panel(dev.benfranklin.tether.core.features.PanelKind.NOW_PLAYING, dev.benfranklin.tether.core.features.PanelSize.LARGE),
-                dev.benfranklin.tether.core.features.Panel(dev.benfranklin.tether.core.features.PanelKind.HOTSPOT, dev.benfranklin.tether.core.features.PanelSize.SMALL),
-                dev.benfranklin.tether.core.features.Panel(dev.benfranklin.tether.core.features.PanelKind.SEND_FILE, dev.benfranklin.tether.core.features.PanelSize.SMALL),
-                dev.benfranklin.tether.core.features.Panel(dev.benfranklin.tether.core.features.PanelKind.PHOTOS, dev.benfranklin.tether.core.features.PanelSize.LARGE),
-            ),
-        )
-        HomeScreen(linked, l, homeActions, homeData())
-    }
-
-    /**
-     * 0.5.3 fix check: Home as on Ben's phone with nothing in it: empty Shelf, nothing playing, no
-     * transfers, a phone number on the clipboard (never shown: "Tap to send"). Empty panels are compact.
-     */
+    /** Nothing playing on the Mac (calm idle tile), Bluetooth link, no new photos, hotspot off. */
     @Test
     fun homeIdle() = shot("home-idle") {
         HomeScreen(
-            linked.copy(transfers = emptyList()), dev.benfranklin.tether.core.features.HomeLayout.DEFAULT, homeActions,
-            dev.benfranklin.tether.ui.screens.HomeData(
-                clipboard = "+917554626501",
-                mac = dev.benfranklin.tether.v7.MacStatusUi(40, false, null, now),
-            ),
+            linked.copy(wifi = false), sections, homeActions,
+            homeData().copy(mac = homeMac.copy(media = null), hotspotState = null, newPhotos = 0),
         )
     }
+
+    /** Fresh install: empty sections are a heading and one grey line, never big empty cards. */
+    @Test
+    fun homeEmpty() = shot("home-empty") {
+        HomeScreen(
+            linked.copy(transfers = emptyList()), sections, homeActions,
+            dev.benfranklin.tether.ui.screens.HomeData(clipboard = "+917554626501", mac = homeMac.copy(media = null)),
+        )
+    }
+
+    /** Not connected: hollow dot, Reconnect, Mac-dependent controls dimmed. */
+    @Test
+    fun homeDisconnected() = shot("home-disconnected") {
+        HomeScreen(
+            linked.copy(connected = false, wifi = false, searching = true, canReconnect = true), sections, homeActions, homeData(),
+        )
+    }
+
+    /** Connecting: "Connecting…" with a (here still) pulsing dot. */
+    @Test
+    fun homeConnecting() = shot("home-connecting") {
+        HomeScreen(linked.copy(connected = false, wifi = false, connecting = true), sections, homeActions, homeData())
+    }
+
+    /** No Mac paired yet (Home normally isn't reachable then; it must still render calmly). */
+    @Test
+    fun homeNeverPaired() = shot("home-never-paired") {
+        HomeScreen(
+            HomeModel(
+                title = "Your Mac", subtitle = "", connected = false, searching = false, wifi = false, error = null, notice = null,
+                transfers = emptyList(), mirroringOff = false, now = now,
+            ),
+            sections, homeActions,
+        )
+    }
+
+    /** Bluetooth off: the reason follows "Not connected"; nothing to reconnect. */
+    @Test
+    fun homeBluetoothOff() = shot("home-bluetooth-off") {
+        HomeScreen(linked.copy(connected = false, wifi = false, reason = "Bluetooth off"), sections, homeActions, homeData())
+    }
+
+    /** Every optional section on, Quick controls and Now playing apart (separate blocks). */
+    @Test
+    fun homeAllSections() = shot("home-all-sections") {
+        val all = dev.benfranklin.tether.data.HomeSection.entries.fold(sections) { s, x -> s.set(x, true) }
+            .move(dev.benfranklin.tether.data.HomeSection.NOW_PLAYING, 3)
+        HomeScreen(
+            linked, all, homeActions,
+            homeData().copy(find = dev.benfranklin.tether.ui.screens.FindModel(false, null, false, null, available = true)),
+        )
+    }
+
+    /** 1.3× system font: nothing clipped (square labels stop growing at 1.15×). */
+    @Test
+    @Config(fontScale = 1.3f)
+    fun homeLargeFont() = shot("home-font130") { HomeScreen(linked, sections, homeActions, homeData()) }
+
+    /** 1.3× on a narrow phone with nothing playing (the tightest Now playing tile). */
+    @Test
+    @Config(fontScale = 1.3f, qualifiers = "w360dp-h740dp-night-xxhdpi")
+    fun homeLargeFontNarrow() = shot("home-font130-narrow") {
+        HomeScreen(linked, sections, homeActions, homeData().copy(mac = homeMac.copy(media = null)))
+    }
+
+    /** System light mode: Tether stays dark (pure mono), nothing renders black-on-black. */
+    @Test
+    @Config(qualifiers = "w400dp-h860dp-notnight-xxhdpi")
+    fun homeLight() = shot("home-light") { HomeScreen(linked, sections, homeActions, homeData()) }
+
+    /** The Edit Home sheet over Home (drawn in Home's own window). */
+    @Test
+    fun homeEditSheet() = shot("home-edit-sheet") { HomeScreen(linked, sections, homeActions, homeData(), startEditing = true) }
 
     private fun many(): List<TransferRecord> = listOf(
         rec("Screenshot_2026-10-11-08-41.jpg", Direction.OUT, 282_000, 282_000, TransferStatus.DONE, Transport.WIFI),
@@ -208,17 +252,6 @@ class ScreenshotTest {
                 override fun open(t: TransferRecord): String? = null
             },
             onBack = {}, now = now + 60_000, zone = zone,
-        )
-    }
-
-    @Test
-    fun homeSearching() = shot("home-searching") {
-        HomeScreen(
-            HomeModel(
-                title = "MacBook Air", subtitle = "Looking nearby…", connected = false, searching = true, wifi = false,
-                error = null, notice = null, transfers = emptyList(), mirroringOff = true,
-            ),
-            dev.benfranklin.tether.core.features.HomeLayout.DEFAULT, homeActions,
         )
     }
 

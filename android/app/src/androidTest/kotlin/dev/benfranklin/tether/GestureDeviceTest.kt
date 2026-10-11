@@ -36,9 +36,37 @@ class GestureDeviceTest {
     @Test fun holdAndDragWhileDisconnectedAndEmpty() =
         GestureScenarios.holdAndDrag(compose.also { GestureScenarios.home(it, connected = false, empty = true) })
 
-    @Test fun editModeDragResizeRemove() {
+    @Test fun editHomeSheetToggleAndReorder() {
         val saved = GestureScenarios.home(compose)
         GestureScenarios.editMode(compose, saved)
+    }
+
+    @Test fun editHomeListDragRapidAndMultiTouch() {
+        val saved = GestureScenarios.editContent(compose)
+        GestureScenarios.editSheetGestures(compose, saved)
+    }
+
+    @Test fun disconnectedControlsDimmedAndSafe() {
+        GestureScenarios.home(compose, connected = false)
+        GestureScenarios.disconnectedControls(compose)
+        GestureScenarios.holdAndDrag(compose)
+    }
+
+    @Test fun connectingHoldAndDrag() {
+        GestureScenarios.home(compose, connected = false, connecting = true)
+        GestureScenarios.holdAndDrag(compose)
+    }
+
+    @Test fun clipboardNeverShownOnHome() {
+        GestureScenarios.home(compose)
+        GestureScenarios.noClipboardText(compose)
+    }
+
+    @Test fun clipboardNeverShownWithEverySectionOn() {
+        val all = dev.benfranklin.tether.data.HomeSection.entries
+            .fold(dev.benfranklin.tether.data.HomeSections.DEFAULT) { s, x -> s.set(x, true) }
+        GestureScenarios.home(compose, start = all)
+        GestureScenarios.noClipboardText(compose)
     }
 
     @Test fun shelfRowsHoldAndDrag() = GestureScenarios.shelf(compose)

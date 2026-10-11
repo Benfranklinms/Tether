@@ -3,17 +3,12 @@ package dev.benfranklin.tether
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import dev.benfranklin.tether.core.features.HomeLayout
-import dev.benfranklin.tether.core.features.Panel
-import dev.benfranklin.tether.core.features.PanelKind
-import dev.benfranklin.tether.core.features.PanelSize
-import dev.benfranklin.tether.core.proto.ShelfItem
 import dev.benfranklin.tether.log.CrashLog
 import dev.benfranklin.tether.log.guarded
 import dev.benfranklin.tether.ui.clamp01
 import dev.benfranklin.tether.ui.screens.HomeData
 import dev.benfranklin.tether.ui.screens.HomeModel
-import dev.benfranklin.tether.ui.screens.panelCompact
+import dev.benfranklin.tether.ui.screens.nowPlaying
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -69,25 +64,21 @@ class CrashSafetyTest {
 
     private val model = HomeModel("Mac", "", true, false, true, null, null, emptyList(), false, now = 1_760_000_000_000L)
 
-    @Test fun emptyFullWidthPanelsAreCompact() {
-        val empty = HomeData()
-        assertTrue(panelCompact(Panel(PanelKind.SHELF, PanelSize.WIDE), model, empty))
-        assertTrue(panelCompact(Panel(PanelKind.SHELF, PanelSize.LARGE), model, empty))
-        assertTrue(panelCompact(Panel(PanelKind.NOW_PLAYING, PanelSize.WIDE), model, empty))
-        assertTrue(panelCompact(Panel(PanelKind.TRANSFERS, PanelSize.WIDE), model, empty))
-        // Half-width panels share a row height with their neighbour, so they never collapse.
-        assertFalse(panelCompact(Panel(PanelKind.CLIPBOARD, PanelSize.SMALL), model, empty))
-        assertFalse(panelCompact(Panel(PanelKind.PHOTOS, PanelSize.WIDE), model, empty))
-        val shelf = HomeData(shelf = listOf(ShelfItem("1", "text", "Note", "x", null, "phone", 1L, 1L, 0.0)))
-        assertFalse(panelCompact(Panel(PanelKind.SHELF, PanelSize.WIDE), model, shelf))
+    /** 0.5.4: Now playing is idle (calm state, no cut-off title) unless the linked Mac plays something. */
+    @Test fun nowPlayingIdleUnlessLinkedAndActive() {
+        assertNull(nowPlaying(model, HomeData()))
         val playing = HomeData(
             mac = dev.benfranklin.tether.v7.MacStatusUi(
                 50, false, dev.benfranklin.tether.core.proto.MacMedia(true, "Nights", "Frank Ocean", "Music", true, 300_000, 1_000), 1L,
             ),
         )
-        assertFalse(panelCompact(Panel(PanelKind.NOW_PLAYING, PanelSize.WIDE), model, playing))
+        assertNotNull(nowPlaying(model, playing))
         // Playing on the Mac but not linked: idle.
-        assertTrue(panelCompact(Panel(PanelKind.NOW_PLAYING, PanelSize.WIDE), model.copy(connected = false), playing))
-        assertEquals(8, HomeLayout.DEFAULT.panels.size)
+        assertNull(nowPlaying(model.copy(connected = false), playing))
+        assertFalse(nowPlaying(model, playing) == null)
+        assertEquals("Nights", nowPlaying(model, playing)?.title)
+        assertTrue(clampSanity())
     }
+
+    private fun clampSanity() = (-0.2f).clamp01() == 0f && 1.3f.clamp01() == 1f
 }

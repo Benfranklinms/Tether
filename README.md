@@ -127,8 +127,8 @@ Every release's changes are in [CHANGELOG.md](CHANGELOG.md).
 </table>
 
 <p align="center">
-  <img src="docs/screenshots/android/home.png" width="24%" alt="Tether on Android: Home made of panels: Send clipboard, Send file, Shelf, Mac battery, Clipboard, Now playing on the Mac, Recent transfers and Photos">
-  <img src="docs/screenshots/android/home-edit.png" width="24%" alt="Editing Home: panels wiggle with remove badges and resize corners, + adds a panel, Done saves">
+  <img src="docs/screenshots/android/home.png" width="24%" alt="Tether on Android: Home with the Mac and its battery, Clipboard, File, Hotspot and Photos buttons next to Now playing on the Mac, Recent transfers and the Shelf">
+  <img src="docs/screenshots/android/home-edit-sheet.png" width="24%" alt="Edit Home: drag sections into order and switch them on or off">
   <img src="docs/screenshots/android/transfers.png" width="24%" alt="The Transfers screen: All, Sent and Received filters, transfers grouped by day, Clear all">
   <img src="docs/screenshots/android/shelf.png" width="24%" alt="The Shelf on Android: thumbnails and document icons, friendly types, a link, a Wi-Fi network, a snippet and an address, grouped Today and Earlier">
 </p>

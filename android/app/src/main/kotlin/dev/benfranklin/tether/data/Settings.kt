@@ -97,7 +97,13 @@ data class AppSettings(
     /** Instant Hotspot: let Tether control (accessibility) open hotspot settings and tap the switch. */
     val hotspotAutomation: Boolean = true,
     /** 0.5.3 Home panels in order with their sizes; null = the default layout. */
+    @Serializable(with = LenientPanelSpecs::class)
     val homePanels: List<dev.benfranklin.tether.core.features.PanelSpec>? = null,
+    /** 0.5.4 Home sections in order with visibility; null = migrate [homePanels] or the default (see HomeSections.from). */
+    @Serializable(with = LenientSectionSpecs::class)
+    val homeSections: List<SectionSpec>? = null,
+    /** 0.5.4: newest MediaStore photo id seen when Photos was last opened (0 = not yet recorded). */
+    val homePhotosSeenId: Long = 0,
 )
 
 /** App settings as a hot flow, persisted atomically on every change. */

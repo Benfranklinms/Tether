@@ -29,26 +29,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.Notes
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.FastForward
+import androidx.compose.material.icons.outlined.FastRewind
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.LaptopMac
+import androidx.compose.material.icons.outlined.Laptop
+import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.MusicNote
-import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.SkipNext
-import androidx.compose.material.icons.outlined.SkipPrevious
-import androidx.compose.material.icons.outlined.SouthWest
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material.icons.outlined.WifiTethering
 import androidx.compose.material3.Icon
@@ -66,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -73,31 +74,35 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.benfranklin.tether.core.features.FileKinds
 import dev.benfranklin.tether.core.features.MacStatusPolicy
-import dev.benfranklin.tether.core.features.Panel
-import dev.benfranklin.tether.core.features.PanelKind
-import dev.benfranklin.tether.core.features.PanelSize
 import dev.benfranklin.tether.core.features.ShelfMeta
 import dev.benfranklin.tether.core.features.TransferList
 import dev.benfranklin.tether.core.features.TransferMeta
 import dev.benfranklin.tether.core.features.When
+import dev.benfranklin.tether.core.proto.FindActions
 import dev.benfranklin.tether.core.proto.MacMediaCmds
 import dev.benfranklin.tether.core.proto.ShelfKinds
 import dev.benfranklin.tether.core.transfer.Direction
+import dev.benfranklin.tether.core.transfer.TransferRecord
 import dev.benfranklin.tether.core.transfer.TransferStatus
+import dev.benfranklin.tether.data.ClipLabel
+import dev.benfranklin.tether.data.PhotoBadge
 import dev.benfranklin.tether.ui.Haptics
+import dev.benfranklin.tether.ui.clamp01
 import dev.benfranklin.tether.ui.pressScale
-import dev.benfranklin.tether.ui.sharedHero
 import dev.benfranklin.tether.ui.theme.LocalReduceMotion
 import dev.benfranklin.tether.ui.theme.Mono
 import dev.benfranklin.tether.ui.theme.MonoCode
@@ -106,409 +111,308 @@ import dev.benfranklin.tether.v7.RecentPhoto
 import kotlinx.coroutines.delay
 import java.time.ZoneId
 
-/** One panel's inside, by kind and size. In edit mode nothing inside reacts to taps. */
+// 0.5.4 Home sections ("Control Center"). Pure mono; every tap ticks; springs respect Reduce Motion.
+
+internal val BLOCK_RADIUS = 30.dp
+internal val TILE_RADIUS = 24.dp
+private val TILE_GAP = 10.dp
+private val BLOCK_PAD = 12.dp
+private val ROW_HEIGHT = 68.dp
+private val LEAD = 44.dp
+
+/** Alpha for Mac-dependent controls while the Mac isn't connected. */
+private const val DIM = 0.38f
+
+/** What Now playing shows: the Mac's active media while linked, else null (idle). */
+internal fun nowPlaying(m: HomeModel, data: HomeData) = data.mac?.media?.takeIf { it.active && m.connected }
+
+/** The transfers Home lists: running first, then the newest, at most three. */
+internal fun homeTransfers(m: HomeModel): List<TransferRecord> = TransferList.home(m.transfers, m.now)
+
+/** The rounded block that holds Quick controls and Now playing. */
 @Composable
-fun PanelContent(p: Panel, m: HomeModel, data: HomeData, a: HomeActions, editing: Boolean) {
-    when (p.kind) {
-        PanelKind.SEND_CLIPBOARD -> ActionPanel(
-            // Never the clipboard itself (0.5.3 fix: a copied phone number sat on Home for anyone to read).
-            "Send clipboard", "Tap to send", Icons.Outlined.ContentPaste,
-            p.size, enabled = m.connected && !editing, onClick = a::sendClipboard,
-        )
-        PanelKind.SEND_FILE -> ActionPanel("Send file", "Browse", Icons.Outlined.UploadFile, p.size, enabled = !editing,
-            onClick = a::sendFile)
-        PanelKind.SHELF -> ShelfPanel(p.size, m, data, a, editing)
-        PanelKind.MAC -> MacPanel(p.size, m, data)
-        PanelKind.CLIPBOARD -> ClipboardPanel(p.size, data, a, editing)
-        PanelKind.NOW_PLAYING -> NowPlayingPanel(p.size, m, data, a, editing)
-        PanelKind.TRANSFERS -> TransfersPanel(p.size, m, a, editing)
-        PanelKind.PHOTOS -> PhotosPanel(p.size, data, a, editing)
-        PanelKind.HOTSPOT -> HotspotPanel(p.size, data, a, editing)
+private fun Block(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(
+        modifier.fillMaxWidth().clip(RoundedCornerShape(BLOCK_RADIUS)).background(Mono.Surface)
+            .border(1.dp, Mono.Line, RoundedCornerShape(BLOCK_RADIUS)).padding(BLOCK_PAD),
+    ) { content() }
+}
+
+// ---------------- Quick controls + Now playing ----------------
+
+/** Quick controls (2×2) next to the Now playing tile: the approved Option C block. */
+@Composable
+internal fun ControlBlock(m: HomeModel, data: HomeData, a: HomeActions, editingOpen: Boolean) {
+    Block {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val col = (maxWidth - TILE_GAP) / 2
+            val b = (col - TILE_GAP) / 2
+            val h = b * 2 + TILE_GAP
+            Row(Modifier.fillMaxWidth().height(h), horizontalArrangement = Arrangement.spacedBy(TILE_GAP)) {
+                Column(Modifier.width(col), verticalArrangement = Arrangement.spacedBy(TILE_GAP)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(TILE_GAP)) {
+                        ClipboardButton(m, a, b, editingOpen)
+                        FileButton(m, a, b, editingOpen)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(TILE_GAP)) {
+                        HotspotButton(data, a, b, editingOpen)
+                        PhotosButton(data, a, b, editingOpen)
+                    }
+                }
+                NowPlayingTile(m, data, a, editingOpen, Modifier.width(col).fillMaxHeight())
+            }
+        }
     }
 }
 
-private val PAD = 16.dp
+/** Quick controls on their own (Now playing hidden or elsewhere): four squares in a row. */
+@Composable
+internal fun QuickRow(m: HomeModel, data: HomeData, a: HomeActions, editingOpen: Boolean) {
+    Block {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val b = (maxWidth - TILE_GAP * 3) / 4
+            Row(horizontalArrangement = Arrangement.spacedBy(TILE_GAP)) {
+                ClipboardButton(m, a, b, editingOpen)
+                FileButton(m, a, b, editingOpen)
+                HotspotButton(data, a, b, editingOpen)
+                PhotosButton(data, a, b, editingOpen)
+            }
+        }
+    }
+}
 
-/** What Now playing shows: the Mac's active media while linked, else null (idle). */
-private fun nowPlaying(m: HomeModel, data: HomeData) = data.mac?.media?.takeIf { it.active && m.connected }
+@Composable
+private fun ClipboardButton(m: HomeModel, a: HomeActions, size: Dp, blocked: Boolean) {
+    // Never the clipboard itself: the label is fixed ("Clipboard"), whatever was copied.
+    SquareButton(
+        "Clipboard", "Send clipboard", Icons.Outlined.ContentPaste, size,
+        enabled = m.connected && !blocked, dim = !m.connected, onClick = a::sendClipboard,
+    )
+}
 
-/** The transfers the Recent transfers panel lists at [size]. */
-private fun transfersShown(m: HomeModel, size: PanelSize): List<dev.benfranklin.tether.core.transfer.TransferRecord> {
-    val rows = if (size == PanelSize.LARGE) 7 else 3
-    return if (rows > TransferList.HOME_MAX) {
-        m.transfers.sortedByDescending { it.createdAt }.take(rows)
-    } else {
-        TransferList.home(m.transfers, m.now)
+@Composable
+private fun FileButton(m: HomeModel, a: HomeActions, size: Dp, blocked: Boolean) {
+    // Files picked while the Mac is away queue and resume on reconnect, so it stays tappable (dimmed).
+    SquareButton("File", "Send file", Icons.Outlined.UploadFile, size, enabled = !blocked, dim = !m.connected, onClick = a::sendFile)
+}
+
+@Composable
+private fun HotspotButton(data: HomeData, a: HomeActions, size: Dp, blocked: Boolean) {
+    val on = data.hotspotState == "on"
+    SquareButton(
+        "Hotspot", if (on) "Hotspot, on" else "Hotspot", Icons.Outlined.WifiTethering, size,
+        enabled = !blocked, filled = on, onClick = a::openHotspot,
+    )
+}
+
+@Composable
+private fun PhotosButton(data: HomeData, a: HomeActions, size: Dp, blocked: Boolean) {
+    val badge = PhotoBadge.label(data.newPhotos)
+    SquareButton(
+        "Photos", if (badge != null) "Photos, $badge new" else "Photos", Icons.Outlined.Image, size,
+        enabled = !blocked, badge = badge, onClick = a::pickPhotos,
+    )
+}
+
+/** One square of Quick controls: icon over label; [filled] = on (white with a dark icon). */
+@Composable
+private fun SquareButton(
+    label: String,
+    desc: String,
+    icon: ImageVector,
+    size: Dp,
+    enabled: Boolean,
+    dim: Boolean = false,
+    filled: Boolean = false,
+    badge: String? = null,
+    onClick: () -> Unit,
+) {
+    val reduce = LocalReduceMotion.current
+    val view = LocalView.current
+    val source = remember { MutableInteractionSource() }
+    val bg by animateColorAsState(if (filled) Mono.Text else Mono.SurfaceHigh, Motion.fade(reduce), label = "sqBg")
+    val fg by animateColorAsState(if (filled) Mono.Bg else Mono.Text, Motion.fade(reduce), label = "sqFg")
+    val alpha by animateFloatAsState(if (dim) DIM else 1f, Motion.fade(reduce), label = "sqDim")
+    Box(Modifier.size(size)) {
+        Column(
+            Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha.clamp01() }.pressScale(source)
+                .clip(RoundedCornerShape(TILE_RADIUS)).background(bg)
+                .border(1.dp, if (filled) Mono.Text else Mono.Line, RoundedCornerShape(TILE_RADIUS))
+                .clickable(source, ripple(), enabled = enabled, role = Role.Button) {
+                    Haptics.tick(view)
+                    onClick()
+                }
+                .semantics { contentDescription = desc },
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(if (size < 70.dp) 22.dp else 26.dp))
+            Spacer(Modifier.height(if (size < 70.dp) 6.dp else 10.dp))
+            Text(
+                label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = squareLabelSp(size, LocalDensity.current.fontScale)),
+                color = if (filled) Mono.Bg else Mono.Text.copy(alpha = 0.86f), maxLines = 1, softWrap = false,
+            )
+        }
+        if (badge != null) {
+            Box(
+                Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp).size(24.dp).clip(CircleShape).background(Mono.Text)
+                    .border(2.dp, Mono.Surface, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { Text(badge, fontFamily = MonoCode, fontSize = 11.sp, color = Mono.Bg, maxLines = 1) }
+        }
     }
 }
 
 /**
- * A full-width panel with nothing in it collapses to [PANEL_COMPACT_HEIGHT] (0.5.3 fix: an empty
- * Shelf or an idle Now playing was a tall card around one grey line). It grows back on a spring
- * as soon as something arrives.
+ * The square's label grows with the system font size up to 1.15× and no further: the square has a
+ * fixed size, and at 1.3× "Clipboard" no longer fit and was cut (0.5.4 font-scale check).
  */
-internal fun panelCompact(p: Panel, m: HomeModel, data: HomeData): Boolean = p.span == 2 && when (p.kind) {
-    PanelKind.SHELF -> data.shelf.isEmpty()
-    PanelKind.NOW_PLAYING -> nowPlaying(m, data) == null
-    PanelKind.TRANSFERS -> transfersShown(m, p.size).isEmpty()
-    else -> false
+internal fun squareLabelSp(size: Dp, fontScale: Float): androidx.compose.ui.unit.TextUnit {
+    val base = if (size < 74.dp) 13f else 15f
+    val scale = if (fontScale > 0f) fontScale else 1f
+    return (base * scale.coerceAtMost(MAX_LABEL_SCALE) / scale).sp
 }
 
-/** A whole-panel tap target with press scale + ripple + a tick. */
-@Composable
-private fun Modifier.panelClick(enabled: Boolean, desc: String? = null, onClick: () -> Unit): Modifier {
-    val source = remember { MutableInteractionSource() }
-    val view = LocalView.current
-    return this.pressScale(source).clickable(source, ripple(), enabled = enabled, role = Role.Button) {
-        Haptics.tick(view)
-        onClick()
-    }.then(if (desc != null) Modifier.semantics { contentDescription = desc } else Modifier)
-}
+private const val MAX_LABEL_SCALE = 1.15f
 
-/** Panel header: small icon, title, optional trailing count / action. */
+/** The Now playing tile inside the block: art, title, artist, progress, prev/play/next; or a calm idle state. */
 @Composable
-private fun PanelHeader(icon: ImageVector, title: String, modifier: Modifier = Modifier, trailing: @Composable () -> Unit = {}) {
-    Row(modifier.fillMaxWidth().heightIn(min = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, color = Mono.Text, maxLines = 1, modifier = Modifier.weight(1f))
-        trailing()
-    }
-}
-
-@Composable
-private fun Count(n: Int) {
+private fun NowPlayingTile(m: HomeModel, data: HomeData, a: HomeActions, blocked: Boolean, modifier: Modifier) {
     val reduce = LocalReduceMotion.current
-    AnimatedContent(
-        n, label = "count",
-        transitionSpec = {
-            if (reduce) {
-                fadeIn(Motion.fade(true)) togetherWith fadeOut(Motion.fade(true))
-            } else {
-                val up = targetState > initialState
-                (slideInVertically(Motion.spring(false)) { if (up) it else -it } + fadeIn()) togetherWith
-                    (slideOutVertically(Motion.spring(false)) { if (up) -it else it } + fadeOut())
+    val alpha by animateFloatAsState(if (m.connected) 1f else DIM, Motion.fade(reduce), label = "npDim")
+    val media = nowPlaying(m, data)
+    val s = data.mac
+    Box(
+        modifier.graphicsLayer { this.alpha = alpha.clamp01() }.clip(RoundedCornerShape(TILE_RADIUS)).background(Mono.SurfaceHigh)
+            .border(1.dp, Mono.Line, RoundedCornerShape(TILE_RADIUS)),
+    ) {
+        if (media == null || s == null) {
+            Column(Modifier.fillMaxSize().padding(14.dp).semantics(mergeDescendants = true) {}) {
+                // The glyph gives way first when space is short (large font on a narrow phone), never the text.
+                Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                    Box(Modifier.size(40.dp).clip(CircleShape).background(Mono.Surface), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.MusicNote, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(20.dp))
+                    }
+                }
+                // Wraps instead of cutting off ("Nothi…" in 0.5.3).
+                Text("Nothing playing", style = MaterialTheme.typography.titleMedium, color = Mono.Text, maxLines = 2)
+                Text(
+                    if (m.connected) "on your Mac" else "Mac not connected", style = MaterialTheme.typography.bodyMedium,
+                    color = Mono.Muted, maxLines = 2,
+                )
             }
-        },
-    ) { c -> Text("$c", style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, fontFamily = MonoCode) }
-}
-
-@Composable
-private fun IconCircle(icon: ImageVector, enabled: Boolean, size: Dp = 42.dp) {
-    Box(Modifier.size(size).clip(CircleShape).background(Mono.SurfaceHigh), contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription = null, tint = if (enabled) Mono.Text else Mono.Muted, modifier = Modifier.size(size * 0.48f))
-    }
-}
-
-// ---------------- Send clipboard / Send file ----------------
-
-@Composable
-private fun ActionPanel(title: String, subtitle: String, icon: ImageVector, size: PanelSize, enabled: Boolean, onClick: () -> Unit) {
-    val fg = if (enabled) Mono.Text else Mono.Muted
-    if (size == PanelSize.SMALL) {
-        Column(Modifier.fillMaxSize().panelClick(enabled, title, onClick).padding(PAD)) {
-            Row(Modifier.fillMaxWidth()) {
-                IconCircle(icon, enabled)
-                Spacer(Modifier.weight(1f))
-                Icon(Icons.Outlined.NorthEast, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(18.dp))
-            }
-            Spacer(Modifier.weight(1f))
-            Text(title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp), color = fg, maxLines = 1)
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            return@Box
         }
-    } else {
-        Row(Modifier.fillMaxSize().panelClick(enabled, title, onClick).padding(PAD), verticalAlignment = Alignment.CenterVertically) {
-            IconCircle(icon, enabled, 52.dp)
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleLarge, color = fg, maxLines = 1)
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1,
+        val progress = rememberProgress(media, s.at, m.now)
+        Column(Modifier.fillMaxSize().padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 8.dp)) {
+            Row(Modifier.weight(1f).fillMaxWidth()) {
+                Artwork(media.title, Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true))
+                Spacer(Modifier.weight(1f))
+                Icon(Icons.Outlined.Laptop, contentDescription = "On your Mac", tint = Mono.Muted, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(media.title.ifBlank { media.app }, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp), maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
+            if (media.artist.isNotBlank()) {
+                Text(media.artist, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1,
                     overflow = TextOverflow.Ellipsis)
             }
-            Icon(Icons.Outlined.NorthEast, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.height(8.dp))
+            Bar(progress)
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically) {
+                MediaButton(Icons.Outlined.FastRewind, "Previous", m.connected && !blocked) { a.mediaCommand(MacMediaCmds.PREV) }
+                PlayButton(media.playing, m.connected && !blocked, 38.dp) { a.mediaCommand(MacMediaCmds.TOGGLE) }
+                MediaButton(Icons.Outlined.FastForward, "Next", m.connected && !blocked) { a.mediaCommand(MacMediaCmds.NEXT) }
+            }
         }
     }
 }
 
-// ---------------- Shelf ----------------
-
+/** Now playing on its own row (Quick controls hidden or not next to it). */
 @Composable
-private fun ShelfPanel(size: PanelSize, m: HomeModel, data: HomeData, a: HomeActions, editing: Boolean) {
+internal fun PlayerRow(m: HomeModel, data: HomeData, a: HomeActions, blocked: Boolean) {
     val reduce = LocalReduceMotion.current
-    val rows = if (size == PanelSize.LARGE) 7 else 3
-    val zone = remember { ZoneId.systemDefault() }
-    Column(Modifier.fillMaxSize().padding(horizontal = PAD, vertical = 14.dp)) {
-        PanelHeader(
-            Icons.Outlined.Inbox, "Shelf",
-            Modifier.clip(RoundedCornerShape(8.dp)).clickable(enabled = !editing, onClick = a::openShelf).sharedHero("shelf-title", reduce),
-        ) {
-            Count(data.shelf.size)
-            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = "Open Shelf", tint = Mono.Muted,
-                modifier = Modifier.size(20.dp))
-        }
-        Spacer(Modifier.height(8.dp))
-        if (data.shelf.isEmpty()) {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.CenterStart) {
-                Text("Nothing pinned", style = MaterialTheme.typography.bodyMedium, color = Mono.Muted)
-            }
-        }
-        data.shelf.take(rows).forEach { item ->
-            Row(
-                Modifier.fillMaxWidth().height(28.dp).clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = !editing) { a.openShelfItem(item.id) },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ShelfLeading(item, 22.dp, thumbnail = { a.shelfThumb(it) })
-                Spacer(Modifier.width(10.dp))
-                val title = ShelfMeta.lines(item, ::formatBytes).first
-                Text(
-                    if (item.kind == ShelfKinds.FILE) TransferMeta.middle(title, 40) else title,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(When.short(item.created, m.now, zone), style = MaterialTheme.typography.bodySmall, color = Mono.Muted,
-                    fontFamily = MonoCode)
-            }
-        }
-    }
-}
-
-// ---------------- Mac status ----------------
-
-@Composable
-private fun MacPanel(size: PanelSize, m: HomeModel, data: HomeData) {
-    val reduce = LocalReduceMotion.current
-    val s = data.mac
-    val level = s?.battery?.takeIf { m.connected }
-    val sub = when {
-        !m.connected -> "Not connected"
-        !data.macSupported -> "Update Tether on your Mac"
-        s == null -> "Checking…"
-        s.battery == null -> "No battery"
-        s.charging == true -> if (s.battery >= FULL) "Charged" else "Charging"
-        else -> "On battery"
-    }
-    val fill by animateFloatAsState((level ?: 0) / 100f, Motion.spring(reduce, stiffness = Spring.StiffnessLow), label = "battery")
-    Column(
-        Modifier.fillMaxSize().padding(PAD).semantics(mergeDescendants = true) {
-            contentDescription = "Mac battery " + (level?.let { "$it percent, " } ?: "") + sub
-        },
-    ) {
-        PanelHeader(Icons.Outlined.LaptopMac, "Mac")
-        Spacer(Modifier.weight(1f))
-        Row(verticalAlignment = Alignment.Bottom) {
-            AnimatedContent(
-                level, label = "level",
-                transitionSpec = { fadeIn(Motion.fade(reduce)) togetherWith fadeOut(Motion.fade(reduce)) },
-            ) { l ->
-                Text(
-                    l?.toString() ?: "—", fontFamily = MonoCode, fontWeight = FontWeight.Normal,
-                    fontSize = if (size == PanelSize.SMALL) 36.sp else 44.sp,
-                    lineHeight = if (size == PanelSize.SMALL) 40.sp else 44.sp,
-                    color = if (l != null) Mono.Text else Mono.Muted,
-                )
-            }
-            if (level != null) {
-                Text("%", fontFamily = MonoCode, fontSize = 18.sp, color = Mono.Muted, modifier = Modifier.padding(start = 4.dp,
-                    bottom = 5.dp))
-            }
-            if (size == PanelSize.WIDE) {
-                Spacer(Modifier.weight(1f))
-                Text(sub, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, modifier = Modifier.padding(bottom = 6.dp))
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        LinearProgressIndicator(
-            progress = { fill }, modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
-            color = Mono.Accent, trackColor = Mono.Line, drawStopIndicator = {}, gapSize = 0.dp,
-        )
-        if (size == PanelSize.SMALL) {
-            Spacer(Modifier.height(6.dp))
-            Text(sub, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-private const val FULL = 100
-private const val CLIP_ROWS = 3
-
-// ---------------- Clipboard ----------------
-
-@Composable
-private fun ClipboardPanel(size: PanelSize, data: HomeData, a: HomeActions, editing: Boolean) {
-    val view = LocalView.current
-    Column(Modifier.fillMaxSize().padding(horizontal = PAD, vertical = 14.dp)) {
-        PanelHeader(Icons.AutoMirrored.Outlined.Notes, "Clipboard") { if (data.clips.isNotEmpty()) Count(data.clips.size) }
-        Spacer(Modifier.height(4.dp))
-        if (data.clips.isEmpty()) {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.CenterStart) {
-                Text("Copies show up here", style = MaterialTheme.typography.bodyMedium, color = Mono.Muted)
-            }
-        }
-        data.clips.take(CLIP_ROWS).forEachIndexed { i, c ->
-            if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Mono.Line))
-            var copied by remember(c.text) { mutableStateOf(false) }
-            LaunchedEffect(copied) {
-                if (copied) {
-                    delay(1_200)
-                    copied = false
-                }
-            }
-            Row(
-                Modifier.fillMaxWidth().height(30.dp).clickable(enabled = !editing) {
-                    a.copyClip(c.text)
-                    copied = true
-                    Haptics.confirm(view)
-                }.semantics { contentDescription = "Copy " + c.text.take(60) },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    dev.benfranklin.tether.core.features.ClipRecents.preview(c.text, 60),
-                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    color = if (i == 0) Mono.Text else Mono.Muted, modifier = Modifier.weight(1f),
-                )
-                if (size != PanelSize.SMALL && !copied) {
-                    Text(if (c.fromMac) "Mac" else "Phone", style = MaterialTheme.typography.bodySmall, color = Mono.Muted)
-                }
-                AnimatedContent(copied, label = "copied", transitionSpec = {
-                    (fadeIn() + scaleIn(Motion.bouncy(false), 0.5f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.5f))
-                }) { done ->
-                    if (done) Icon(Icons.Outlined.Check, contentDescription = null, tint = Mono.Text, modifier = Modifier.size(16.dp))
-                }
-            }
-        }
-    }
-}
-
-// ---------------- Now playing ----------------
-
-@Composable
-private fun NowPlayingPanel(size: PanelSize, m: HomeModel, data: HomeData, a: HomeActions, editing: Boolean) {
-    val reduce = LocalReduceMotion.current
-    val s = data.mac
+    val alpha by animateFloatAsState(if (m.connected) 1f else DIM, Motion.fade(reduce), label = "prDim")
     val media = nowPlaying(m, data)
-    if (media == null || s == null) {
-        NowPlayingIdle(m.connected)
-        return
+    val s = data.mac
+    Block(Modifier.graphicsLayer { this.alpha = alpha.clamp01() }) {
+        if (media == null || s == null) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).semantics(mergeDescendants = true) {},
+                verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(44.dp).clip(CircleShape).background(Mono.SurfaceHigh), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Outlined.MusicNote, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Nothing playing", style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    Text(if (m.connected) "on your Mac" else "Mac not connected", style = MaterialTheme.typography.bodyMedium,
+                        color = Mono.Muted, maxLines = 1)
+                }
+            }
+            return@Block
+        }
+        val progress = rememberProgress(media, s.at, m.now)
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Artwork(media.title, Modifier.size(56.dp))
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(media.title.ifBlank { media.app }, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(media.artist, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                }
+                MediaButton(Icons.Outlined.FastRewind, "Previous", m.connected && !blocked) { a.mediaCommand(MacMediaCmds.PREV) }
+                PlayButton(media.playing, m.connected && !blocked, 44.dp) { a.mediaCommand(MacMediaCmds.TOGGLE) }
+                MediaButton(Icons.Outlined.FastForward, "Next", m.connected && !blocked) { a.mediaCommand(MacMediaCmds.NEXT) }
+            }
+            Spacer(Modifier.height(10.dp))
+            Bar(progress)
+        }
     }
-    var tick by remember { mutableLongStateOf(m.now) }
-    LaunchedEffect(media?.playing, s?.at) {
-        while (media?.playing == true) {
+}
+
+@Composable
+private fun rememberProgress(media: dev.benfranklin.tether.core.proto.MacMedia, at: Long, now: Long): Float {
+    val reduce = LocalReduceMotion.current
+    var tick by remember { mutableLongStateOf(now) }
+    LaunchedEffect(media.playing, at) {
+        while (media.playing) {
             tick = System.currentTimeMillis()
             delay(1_000)
         }
     }
-    val pos = media?.let { MacStatusPolicy.position(it.positionMs, it.durationMs, it.playing, s.at, maxOf(tick, s.at)) } ?: 0L
-    val progress by animateFloatAsState(
-        if (media != null && media.durationMs > 0) pos.toFloat() / media.durationMs else 0f,
-        Motion.spring(reduce, stiffness = Spring.StiffnessLow), label = "np",
-    )
-    val title = media?.title?.ifBlank { media.app } ?: "Nothing playing"
-    val artist = media?.artist.orEmpty()
-    val controls: @Composable (Boolean) -> Unit = { big ->
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (big) MediaButton(Icons.Outlined.SkipPrevious, "Previous", media != null && !editing) { a.mediaCommand(MacMediaCmds.PREV) }
-            if (!big) MediaButton(Icons.Outlined.SkipNext, "Next", media != null && !editing) { a.mediaCommand(MacMediaCmds.NEXT) }
-            PlayButton(media?.playing == true, media != null && !editing, if (big) 60.dp else 52.dp) { a.mediaCommand(MacMediaCmds.TOGGLE) }
-            if (big) MediaButton(Icons.Outlined.SkipNext, "Next", media != null && !editing) { a.mediaCommand(MacMediaCmds.NEXT) }
-        }
-    }
-    val text: @Composable (Modifier) -> Unit = { mod ->
-        Column(mod) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.LaptopMac, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("On Mac", style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = Mono.Muted)
-            }
-            Spacer(Modifier.height(2.dp))
-            Text(title, style = MaterialTheme.typography.titleLarge, color = if (media != null) Mono.Text else Mono.Muted, maxLines = 1,
-                overflow = TextOverflow.Ellipsis)
-            if (artist.isNotEmpty()) {
-                Text(artist, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp), color = Mono.Muted, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-    val bar: @Composable () -> Unit = {
-        Column {
-            LinearProgressIndicator(
-                progress = { progress }, modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
-                color = Mono.Accent, trackColor = Mono.Line, drawStopIndicator = {}, gapSize = 0.dp,
-            )
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                Text(if (media != null) MacStatusPolicy.clock(pos) else "", style = MaterialTheme.typography.labelSmall, color = Mono.Muted,
-                    modifier = Modifier.weight(1f))
-                Text(if (media != null && media.durationMs > 0) MacStatusPolicy.clock(media.durationMs) else "",
-                    style = MaterialTheme.typography.labelSmall, color = Mono.Muted)
-            }
-        }
-    }
-    if (size == PanelSize.LARGE) {
-        Column(Modifier.fillMaxSize().padding(PAD)) {
-            Row(Modifier.weight(1f)) {
-                Artwork(media?.title.orEmpty(), Modifier.fillMaxHeight().aspectRatio(1f))
-                Spacer(Modifier.width(16.dp))
-                text(Modifier.weight(1f).padding(top = 4.dp))
-            }
-            Spacer(Modifier.height(12.dp))
-            bar()
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { controls(true) }
-        }
-    } else {
-        Row(Modifier.fillMaxSize().padding(PAD)) {
-            Artwork(media?.title.orEmpty(), Modifier.fillMaxHeight().aspectRatio(1f))
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f).fillMaxHeight()) {
-                Row {
-                    text(Modifier.weight(1f))
-                    controls(false)
-                }
-                Spacer(Modifier.weight(1f))
-                bar()
-            }
-        }
-    }
+    val pos = MacStatusPolicy.position(media.positionMs, media.durationMs, media.playing, at, maxOf(tick, at))
+    val target = if (media.durationMs > 0) (pos.toFloat() / media.durationMs).clamp01() else 0f
+    val p by animateFloatAsState(target, Motion.spring(reduce, stiffness = Spring.StiffnessLow, damping = 1f), label = "np")
+    return p.clamp01()
 }
 
-/**
- * Nothing playing (or no Mac): one calm line instead of an empty artwork box, disabled controls
- * and a title squeezed to "Nothi…" (0.5.3 fix). Home shows it at the compact height.
- */
 @Composable
-private fun NowPlayingIdle(connected: Boolean) {
-    Row(
-        Modifier.fillMaxSize().padding(horizontal = PAD).semantics(mergeDescendants = true) {},
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconCircle(Icons.Outlined.MusicNote, enabled = false)
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text("Now playing", style = MaterialTheme.typography.titleMedium, color = Mono.Text, maxLines = 1)
-            Text(
-                if (connected) "Nothing playing on your Mac" else "Your Mac isn't connected",
-                style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+private fun Bar(progress: Float, modifier: Modifier = Modifier) {
+    LinearProgressIndicator(
+        progress = { progress.clamp01() }, modifier = modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
+        color = Mono.Accent, trackColor = Mono.Line, drawStopIndicator = {}, gapSize = 0.dp,
+    )
 }
 
 /** No artwork travels from the Mac, so a calm mono glyph stands in (a moon over its reflection). */
 @Composable
 private fun Artwork(seed: String, modifier: Modifier) {
     Box(
-        modifier.clip(RoundedCornerShape(14.dp)).background(Brush.verticalGradient(listOf(Color(0xFF1F1F22), Color(0xFF0E0E10))))
+        modifier.clip(RoundedCornerShape(14.dp)).background(Brush.verticalGradient(listOf(Color(0xFF2A2A2D), Color(0xFF0E0E10))))
             .border(1.dp, Mono.Line, RoundedCornerShape(14.dp)),
         contentAlignment = Alignment.Center,
     ) {
         if (seed.isEmpty()) {
-            Icon(Icons.Outlined.MusicNote, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(28.dp))
+            Icon(Icons.Outlined.MusicNote, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(22.dp))
         } else {
             Canvas(Modifier.fillMaxSize()) {
                 val c = Offset(size.width / 2, size.height * 0.44f)
                 val r = size.minDimension * 0.24f
                 drawCircle(Brush.verticalGradient(listOf(Color(0xFFEDEDED), Color(0xFF9C9CA0)), c.y - r, c.y + r), r, c)
-                val horizon = size.height * 0.62f
+                val horizon = size.height * 0.6f
                 drawRect(Color(0xFF0B0B0D), Offset(0f, horizon), androidx.compose.ui.geometry.Size(size.width, size.height - horizon))
                 var y = horizon + size.height * 0.03f
                 var w = r * 1.5f
@@ -527,13 +431,13 @@ private fun MediaButton(icon: ImageVector, desc: String, enabled: Boolean, onCli
     val source = remember { MutableInteractionSource() }
     val view = LocalView.current
     Box(
-        Modifier.pressScale(source).size(40.dp).clip(CircleShape)
+        Modifier.pressScale(source).size(36.dp).clip(CircleShape)
             .clickable(source, ripple(), enabled = enabled, role = Role.Button) {
                 Haptics.tick(view)
                 onClick()
             }.semantics { contentDescription = desc },
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, contentDescription = null, tint = if (enabled) Mono.Text else Mono.Muted, modifier = Modifier.size(22.dp)) }
+    ) { Icon(icon, contentDescription = null, tint = if (enabled) Mono.Text else Mono.Muted, modifier = Modifier.size(20.dp)) }
 }
 
 @Composable
@@ -541,9 +445,8 @@ private fun PlayButton(playing: Boolean, enabled: Boolean, size: Dp, onClick: ()
     val reduce = LocalReduceMotion.current
     val source = remember { MutableInteractionSource() }
     val view = LocalView.current
-    val bg by animateColorAsState(if (enabled) Mono.Text else Mono.SurfaceHigh, Motion.fade(reduce), label = "playBg")
     Box(
-        Modifier.pressScale(source).size(size).clip(CircleShape).background(bg)
+        Modifier.pressScale(source).size(size).clip(CircleShape).background(Mono.Text)
             .clickable(source, null, enabled = enabled, role = Role.Button) {
                 Haptics.confirm(view)
                 onClick()
@@ -557,65 +460,273 @@ private fun PlayButton(playing: Boolean, enabled: Boolean, size: Dp, onClick: ()
                 (fadeIn() + scaleIn(Motion.bouncy(false), 0.4f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.4f))
             }
         }) { p ->
-            Icon(if (p) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, contentDescription = null,
-                tint = if (enabled) Mono.Bg else Mono.Muted, modifier = Modifier.size(size * 0.46f))
+            Icon(if (p) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, contentDescription = null, tint = Mono.Bg,
+                modifier = Modifier.size(size * 0.5f))
         }
     }
+}
+
+// ---------------- Section heading + empty line ----------------
+
+/** "Recent transfers ........ See all": a quiet heading with an optional count and trailing action. */
+@Composable
+internal fun SectionTitle(title: String, count: Int? = null, action: String? = null, actionDesc: String? = null,
+    actionIcon: ImageVector? = null, onAction: (() -> Unit)? = null) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 4.dp, top = 28.dp, bottom = 6.dp).heightIn(min = 32.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp), color = Mono.Muted, maxLines = 1,
+            modifier = Modifier.semantics { heading() })
+        if (count != null) {
+            Spacer(Modifier.width(10.dp))
+            Count(count)
+        }
+        Spacer(Modifier.weight(1f))
+        if (onAction != null && (action != null || actionIcon != null)) {
+            val view = LocalView.current
+            Box(
+                Modifier.clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button) {
+                    Haptics.tick(view)
+                    onAction()
+                }.padding(horizontal = 6.dp, vertical = 4.dp)
+                    .semantics { if (actionDesc != null) contentDescription = actionDesc },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (actionIcon != null) {
+                    Icon(actionIcon, contentDescription = null, tint = Mono.Text, modifier = Modifier.size(22.dp))
+                } else {
+                    Text(action.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = Mono.Text)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Count(n: Int) {
+    val reduce = LocalReduceMotion.current
+    AnimatedContent(
+        n, label = "count",
+        transitionSpec = {
+            if (reduce) {
+                fadeIn(Motion.fade(true)) togetherWith fadeOut(Motion.fade(true))
+            } else {
+                val up = targetState > initialState
+                (slideInVertically(Motion.spring(false)) { if (up) it else -it } + fadeIn()) togetherWith
+                    (slideOutVertically(Motion.spring(false)) { if (up) -it else it } + fadeOut())
+            }
+        },
+    ) { c -> Text("$c", style = MaterialTheme.typography.bodyLarge, color = Mono.Muted, fontFamily = MonoCode) }
+}
+
+/** An empty section: its heading plus one grey line, never a big empty card. */
+@Composable
+internal fun EmptyLine(text: String, onClick: (() -> Unit)? = null) {
+    Text(
+        text, style = MaterialTheme.typography.bodyLarge, color = Mono.Muted,
+        modifier = Modifier.fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .padding(start = 4.dp, top = 2.dp, bottom = 6.dp),
+    )
+}
+
+@Composable
+private fun RowDivider() {
+    Box(Modifier.fillMaxWidth().padding(start = LEAD + 16.dp).height(1.dp).background(Mono.Line))
 }
 
 // ---------------- Recent transfers ----------------
 
 @Composable
-private fun TransfersPanel(size: PanelSize, m: HomeModel, a: HomeActions, editing: Boolean) {
+internal fun TransfersSection(m: HomeModel, a: HomeActions) {
+    val list = remember(m.transfers, m.now) { homeTransfers(m) }
+    SectionTitle("Recent transfers", action = "See all", actionDesc = "See all transfers", onAction = a::seeAllTransfers)
+    if (list.isEmpty()) {
+        EmptyLine("None yet")
+        return
+    }
+    list.forEachIndexed { i, t ->
+        if (i > 0) RowDivider()
+        TransferRow(t, m.now, a)
+    }
+}
+
+@Composable
+private fun TransferRow(t: TransferRecord, now: Long, a: HomeActions) {
     val reduce = LocalReduceMotion.current
-    val list = remember(m.transfers, m.now, size) { transfersShown(m, size) }
-    Column(Modifier.fillMaxSize().padding(horizontal = PAD, vertical = 14.dp)) {
-        PanelHeader(Icons.Outlined.NorthEast, "Recent transfers", Modifier.sharedHero("transfers-title", reduce)) {
-            Text(
-                "See all", style = MaterialTheme.typography.bodyMedium, color = Mono.Text,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(enabled = !editing, onClick = a::seeAllTransfers)
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        if (list.isEmpty()) {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.CenterStart) {
-                Text("Nothing sent yet", style = MaterialTheme.typography.bodyMedium, color = Mono.Muted)
+    val zone = remember { ZoneId.systemDefault() }
+    val view = LocalView.current
+    val progress by animateFloatAsState(t.progress, Motion.spring(reduce, stiffness = Spring.StiffnessLow, damping = 1f), label = "p")
+    val running = !t.status.isFinal && t.status != TransferStatus.WAITING
+    Row(
+        Modifier.fillMaxWidth().height(ROW_HEIGHT).clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = t.status == TransferStatus.DONE) {
+                Haptics.tick(view)
+                a.openTransfer(t)
+            }
+            .semantics(mergeDescendants = true) {
+                contentDescription = (if (t.direction == Direction.OUT) "Sent " else "Received ") + t.name + ". " + statusLine(t)
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(LEAD)) {
+            FileLead(t.name, t.mime, LEAD)
+            Box(
+                Modifier.align(Alignment.BottomEnd).offset(x = 5.dp, y = 5.dp).size(20.dp).clip(CircleShape).background(Mono.Bg)
+                    .border(1.dp, Mono.Line, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (t.direction == Direction.OUT) Icons.Outlined.ArrowUpward else Icons.Outlined.ArrowDownward,
+                    contentDescription = null, tint = Mono.Text, modifier = Modifier.size(12.dp),
+                )
             }
         }
-        list.forEach { t ->
-            val progress by animateFloatAsState(t.progress, Motion.spring(reduce, stiffness = Spring.StiffnessLow), label = "p")
-            Row(
-                Modifier.fillMaxWidth().height(28.dp).clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = !editing && t.status == TransferStatus.DONE) { a.openTransfer(t) }
-                    .semantics(mergeDescendants = true) {
-                        contentDescription = (if (t.direction == Direction.OUT) "Sent " else "Received ") + t.name
-                    },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(22.dp).clip(CircleShape).background(Mono.SurfaceHigh), contentAlignment = Alignment.Center) {
-                    Icon(
-                        if (t.direction == Direction.OUT) Icons.Outlined.NorthEast else Icons.Outlined.SouthWest, contentDescription = null,
-                        tint = Mono.Text, modifier = Modifier.size(13.dp),
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(TransferMeta.middle(t.name, 36), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp), maxLines = 1,
-                        overflow = TextOverflow.Ellipsis)
-                    if (!t.status.isFinal) {
-                        LinearProgressIndicator(
-                            progress = { progress }, modifier = Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(1.dp)),
-                            color = Mono.Accent, trackColor = Mono.Line, drawStopIndicator = {}, gapSize = 0.dp,
-                        )
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(TransferMeta.middle(t.name, 32), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    TransferMeta.percent(t)
-                        ?: if (t.status == TransferStatus.DONE) formatBytes(t.size) else TransferMeta.subtitle(t, ::formatBytes),
-                    style = MaterialTheme.typography.bodySmall, color = Mono.Muted, fontFamily = MonoCode, maxLines = 1,
+                    if (t.status == TransferStatus.DONE) statusLine(t) else TransferMeta.subtitle(t, ::formatBytes),
+                    style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = if (running) Modifier else Modifier.weight(1f, fill = false),
                 )
+                if (running) {
+                    Spacer(Modifier.width(12.dp))
+                    Bar(progress, Modifier.weight(1f))
+                }
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            val pct = TransferMeta.percent(t)
+            if (pct != null) {
+                Text(pct, style = MaterialTheme.typography.bodyMedium, fontFamily = MonoCode, color = Mono.Text)
+                Text(if (t.direction == Direction.OUT) "Sending" else "Receiving", style = MaterialTheme.typography.bodyMedium,
+                    color = Mono.Muted)
+            } else {
+                Text(When.short(maxOf(t.createdAt, t.updatedAt), now, zone), style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = MonoCode, color = Mono.Muted)
+            }
+        }
+    }
+}
+
+/** A transfer's leading visual: picture / video glyph on a soft square, or the paper document with its type. */
+@Composable
+private fun FileLead(name: String, mime: String?, size: Dp) {
+    val shape = RoundedCornerShape(size * 0.24f)
+    when {
+        FileKinds.isImage(mime, name) -> GlyphSquare(Icons.Outlined.Image, size, shape)
+        isVideo(mime, name) -> GlyphSquare(Icons.Outlined.Movie, size, shape)
+        else -> DocIcon(ShelfMeta.badge(mime, name), size)
+    }
+}
+
+private val VIDEO = setOf("mp4", "mov", "mkv", "webm", "avi", "3gp")
+
+internal fun isVideo(mime: String?, name: String): Boolean =
+    mime?.startsWith("video/") == true || name.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT) in VIDEO
+
+@Composable
+private fun GlyphSquare(icon: ImageVector, size: Dp, shape: RoundedCornerShape) {
+    Box(
+        Modifier.size(size).clip(shape).background(Brush.verticalGradient(listOf(Color(0xFF3A3A3E), Color(0xFF18181B))))
+            .border(1.dp, Mono.Line, shape),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, contentDescription = null, tint = Mono.Text, modifier = Modifier.size(size * 0.46f)) }
+}
+
+// ---------------- Shelf ----------------
+
+@Composable
+internal fun ShelfSection(m: HomeModel, data: HomeData, a: HomeActions) {
+    val zone = remember { ZoneId.systemDefault() }
+    val view = LocalView.current
+    if (data.shelf.isEmpty()) {
+        SectionTitle("Shelf", actionIcon = Icons.Outlined.Add, actionDesc = "Open Shelf", onAction = a::openShelf)
+        EmptyLine("Empty")
+        return
+    }
+    SectionTitle("Shelf", count = data.shelf.size, action = "See all", actionDesc = "Open Shelf", onAction = a::openShelf)
+    data.shelf.take(SHELF_ROWS).forEachIndexed { i, item ->
+        if (i > 0) RowDivider()
+        val (title, sub) = ShelfMeta.lines(item, ::formatBytes)
+        Row(
+            Modifier.fillMaxWidth().height(ROW_HEIGHT).clip(RoundedCornerShape(12.dp))
+                .clickable {
+                    Haptics.tick(view)
+                    a.openShelfItem(item.id)
+                }
+                .semantics(mergeDescendants = true) { contentDescription = "$title, $sub" },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ShelfLeading(item, LEAD, thumbnail = { a.shelfThumb(it) })
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(if (item.kind == ShelfKinds.FILE) TransferMeta.middle(title, 34) else title,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(sub, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text(When.short(item.created, m.now, zone), style = MaterialTheme.typography.bodyMedium, fontFamily = MonoCode,
+                    color = Mono.Muted)
+                Text(ShelfMeta.source(item), style = MaterialTheme.typography.bodyMedium, color = Mono.Muted)
+            }
+        }
+    }
+}
+
+private const val SHELF_ROWS = 3
+private const val CLIP_ROWS = 3
+private const val PHOTO_CELLS = 4
+
+// ---------------- Clipboard history ----------------
+
+@Composable
+internal fun ClipboardSection(data: HomeData, a: HomeActions) {
+    val view = LocalView.current
+    SectionTitle("Clipboard history", count = data.clips.size.takeIf { it > 0 })
+    if (data.clips.isEmpty()) {
+        EmptyLine("Copies show up here")
+        return
+    }
+    data.clips.take(CLIP_ROWS).forEachIndexed { i, c ->
+        if (i > 0) Box(Modifier.fillMaxWidth().padding(start = 4.dp).height(1.dp).background(Mono.Line))
+        var copied by remember(c.text) { mutableStateOf(false) }
+        LaunchedEffect(copied) {
+            if (copied) {
+                delay(1_200)
+                copied = false
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(12.dp)).clickable {
+                a.copyClip(c.text)
+                copied = true
+                Haptics.confirm(view)
+            }.padding(horizontal = 4.dp).semantics {
+                contentDescription = "Copy " + ClipLabel.describe(c.text) + " from " + if (c.fromMac) "Mac" else "phone"
+            },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                ClipLabel.describe(c.text),
+                style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = if (i == 0) Mono.Text else Mono.Muted, modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            AnimatedContent(copied, label = "copied", transitionSpec = {
+                (fadeIn() + scaleIn(Motion.bouncy(false), 0.5f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.5f))
+            }) { done ->
+                if (done) {
+                    Icon(Icons.Outlined.Check, contentDescription = null, tint = Mono.Text, modifier = Modifier.size(18.dp))
+                } else {
+                    Text(if (c.fromMac) "Mac" else "Phone", style = MaterialTheme.typography.bodyMedium, color = Mono.Muted)
+                }
             }
         }
     }
@@ -624,73 +735,61 @@ private fun TransfersPanel(size: PanelSize, m: HomeModel, a: HomeActions, editin
 // ---------------- Photos ----------------
 
 @Composable
-private fun PhotosPanel(size: PanelSize, data: HomeData, a: HomeActions, editing: Boolean) {
+internal fun PhotosSection(data: HomeData, a: HomeActions) {
     val view = LocalView.current
     val reduce = LocalReduceMotion.current
-    val perRow = 4
-    val count = if (size == PanelSize.LARGE) perRow * 2 else perRow
     var picked by remember { mutableStateOf(setOf<Long>()) }
-    val shown = data.photos.take(count)
-    Column(Modifier.fillMaxSize().padding(horizontal = PAD, vertical = 12.dp)) {
-        PanelHeader(Icons.Outlined.Image, "Photos") {
-            AnimatedContent(picked.size, label = "send", transitionSpec = {
-                if (reduce) fadeIn(Motion.fade(true)) togetherWith fadeOut(Motion.fade(true))
-                else (fadeIn() + scaleIn(Motion.bouncy(false), 0.7f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.7f))
-            }) { n ->
-                if (n > 0) {
-                    val source = remember { MutableInteractionSource() }
-                    Box(
-                        Modifier.pressScale(source).clip(RoundedCornerShape(50)).background(Mono.Text)
-                            .clickable(source, null, enabled = !editing, role = Role.Button) {
-                                Haptics.confirm(view)
-                                a.sendPhotos(shown.filter { it.id in picked })
-                                picked = emptySet()
-                            }.heightIn(min = 32.dp).padding(horizontal = 16.dp),
-                        contentAlignment = Alignment.Center,
-                    ) { Text("Send $n", style = MaterialTheme.typography.labelLarge, color = Mono.Bg) }
-                } else {
-                    Spacer(Modifier.height(32.dp))
-                }
+    val shown = data.photos.take(PHOTO_CELLS)
+    val n = picked.count { id -> shown.any { it.id == id } }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { SectionTitle("Photos") }
+        AnimatedContent(n, label = "send", modifier = Modifier.padding(top = 22.dp), transitionSpec = {
+            if (reduce) fadeIn(Motion.fade(true)) togetherWith fadeOut(Motion.fade(true))
+            else (fadeIn() + scaleIn(Motion.bouncy(false), 0.7f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.7f))
+        }) { c ->
+            if (c > 0) {
+                val source = remember { MutableInteractionSource() }
+                Box(
+                    Modifier.pressScale(source).clip(RoundedCornerShape(50)).background(Mono.Text)
+                        .clickable(source, null, role = Role.Button) {
+                            Haptics.confirm(view)
+                            a.sendPhotos(shown.filter { it.id in picked })
+                            picked = emptySet()
+                        }.heightIn(min = 34.dp).padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text("Send $c", style = MaterialTheme.typography.labelLarge, color = Mono.Bg) }
+            } else {
+                Spacer(Modifier.height(34.dp))
             }
         }
-        Spacer(Modifier.height(10.dp))
-        if (!data.photosAllowed) {
-            Box(
-                Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(14.dp)).border(1.dp, Mono.Line, RoundedCornerShape(14.dp))
-                    .clickable(enabled = !editing, onClick = a::allowPhotos),
-                contentAlignment = Alignment.Center,
-            ) { Text("Allow photos", style = MaterialTheme.typography.labelLarge, color = Mono.Text) }
-            return@Column
-        }
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-            val gap = 8.dp
-            val cell = minOf((maxWidth - gap * (perRow - 1)) / perRow, if (size == PanelSize.LARGE) (maxHeight - gap) / 2 else maxHeight)
-            Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-                shown.chunked(perRow).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        row.forEach { ph ->
-                            PhotoCell(ph, cell, ph.id in picked, !editing, a) {
-                                picked = if (ph.id in picked) picked - ph.id else picked + ph.id
-                                Haptics.tick(view)
-                            }
-                        }
-                    }
+    }
+    when {
+        !data.photosAllowed -> EmptyLine("Allow photo access", onClick = a::allowPhotos)
+        shown.isEmpty() -> EmptyLine("No photos yet")
+        else -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(TILE_GAP)) {
+            shown.forEach { ph ->
+                PhotoCell(ph, ph.id in picked, a, Modifier.weight(1f)) {
+                    picked = if (ph.id in picked) picked - ph.id else picked + ph.id
+                    Haptics.tick(view)
                 }
-                if (shown.isEmpty()) Text("No photos yet", style = MaterialTheme.typography.bodyMedium, color = Mono.Muted)
             }
+            repeat(PHOTO_CELLS - shown.size) { Spacer(Modifier.weight(1f)) }
         }
     }
 }
 
 @Composable
-private fun PhotoCell(p: RecentPhoto, size: Dp, picked: Boolean, enabled: Boolean, a: HomeActions, onToggle: () -> Unit) {
+private fun PhotoCell(p: RecentPhoto, picked: Boolean, a: HomeActions, modifier: Modifier, onToggle: () -> Unit) {
     val reduce = LocalReduceMotion.current
     var bmp by remember(p.id) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(p.id) { bmp = a.photoThumb(p) }
     val scale by animateFloatAsState(if (picked) 0.9f else 1f, Motion.bouncy(reduce), label = "pick")
     Box(
-        Modifier.size(size).graphicsScale(scale).clip(RoundedCornerShape(12.dp)).background(Mono.SurfaceHigh)
-            .clickable(enabled = enabled, role = Role.Checkbox, onClick = onToggle)
+        modifier.aspectRatio(1f).graphicsLayer {
+            scaleX = scale.coerceIn(0.5f, 1.1f)
+            scaleY = scale.coerceIn(0.5f, 1.1f)
+        }.clip(RoundedCornerShape(16.dp)).background(Mono.SurfaceHigh)
+            .clickable(role = Role.Checkbox, onClick = onToggle)
             .semantics {
                 selected = picked
                 contentDescription = "Photo"
@@ -705,27 +804,28 @@ private fun PhotoCell(p: RecentPhoto, size: Dp, picked: Boolean, enabled: Boolea
     }
 }
 
-private fun Modifier.graphicsScale(s: Float) = this.then(
-    Modifier.graphicsLayer {
-        scaleX = s
-        scaleY = s
-    },
-)
-
-// ---------------- Hotspot ----------------
+// ---------------- Find my Mac ----------------
 
 @Composable
-private fun HotspotPanel(size: PanelSize, data: HomeData, a: HomeActions, editing: Boolean) {
-    val state = when (data.hotspotState) {
-        "on" -> "On"
-        "starting", "manual" -> "Starting"
-        else -> if (data.hotspotSsid != null) "Ready" else "Set up"
+internal fun FindSection(data: HomeData, a: HomeActions) {
+    SectionTitle("Find my Mac")
+    val f = data.find
+    if (f == null) {
+        EmptyLine("Pair a Mac to use it")
+        return
     }
-    Column(Modifier.fillMaxSize().panelClick(!editing, "Hotspot $state", a::openHotspot).padding(PAD)) {
-        PanelHeader(Icons.Outlined.WifiTethering, "Hotspot")
-        Spacer(Modifier.weight(1f))
-        Text(state, style = MaterialTheme.typography.headlineSmall.copy(fontSize = if (size == PanelSize.SMALL) 26.sp else 28.sp))
-        Text(data.hotspotSsid ?: "For your Mac", style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1,
-            overflow = TextOverflow.Ellipsis)
+    // FindMacCard pads itself for a full-width list; bleed it out to Home's own margins.
+    Box(Modifier.bleed(16.dp)) {
+        FindMacCard(f, onRing = { a.findMac(FindActions.RING) }, onStop = { a.findMac(FindActions.STOP) },
+            onLock = { a.findMac(FindActions.LOCK) })
     }
+}
+
+/** Widens content by [by] on each side (to undo a child's own horizontal padding). */
+private fun Modifier.bleed(by: Dp) = layout { measurable, c ->
+    val extra = (by * 2).roundToPx()
+    val max = if (c.hasBoundedWidth) c.maxWidth + extra else c.maxWidth
+    val p = measurable.measure(c.copy(minWidth = max, maxWidth = max))
+    val w = if (c.hasBoundedWidth) c.maxWidth else p.width
+    layout(w, p.height) { p.place(-by.roundToPx(), 0) }
 }

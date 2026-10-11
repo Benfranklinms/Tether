@@ -23,8 +23,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import dev.benfranklin.tether.core.features.ClipRecents
-import dev.benfranklin.tether.core.features.HomeLayout
-import dev.benfranklin.tether.core.features.PanelKind
+import dev.benfranklin.tether.core.proto.MacMedia
+import dev.benfranklin.tether.data.HomeSection
+import dev.benfranklin.tether.data.HomeSections
+import dev.benfranklin.tether.ui.screens.EDIT_ROW
+import dev.benfranklin.tether.ui.screens.EditHomeContent
+import dev.benfranklin.tether.v7.MacStatusUi
+import androidx.compose.ui.test.onNodeWithTag
 import dev.benfranklin.tether.core.proto.ShelfItem
 import dev.benfranklin.tether.core.transfer.Direction
 import dev.benfranklin.tether.core.transfer.TransferRecord
@@ -93,10 +98,10 @@ object GestureScenarios {
         ShelfItem("s3", "wifi", "Studio_5G", "", "pw", "phone", NOW - 3_600_000, NOW, -1.0),
     )
 
-    private fun model(connected: Boolean) = HomeModel(
-        title = "MacBook Air", subtitle = if (connected) "Connected · Wi-Fi" else "Looking nearby…", connected = connected,
+    private fun model(connected: Boolean, connecting: Boolean = false) = HomeModel(
+        title = "MacBook Air", subtitle = "", connected = connected, connecting = connecting,
         searching = !connected, wifi = connected, error = null, notice = null, mirroringOff = false, now = NOW,
-        transfers = transfers,
+        transfers = transfers, canReconnect = !connected && !connecting,
     )
 
     private fun data(empty: Boolean) = if (empty) {
@@ -104,23 +109,43 @@ object GestureScenarios {
     } else {
         HomeData(
             shelf = shelf, clipboard = "+91 98765 43210",
-            clips = listOf(ClipRecents.Entry("forms.gle/x7Tq2", NOW, false), ClipRecents.Entry("See you at 6", NOW - 60_000, true)),
+            clips = listOf(ClipRecents.Entry("Meet at 6:30 near gate", NOW, false), ClipRecents.Entry("See you at 6", NOW - 60_000, true)),
+            mac = MacStatusUi(82, false, MacMedia(true, "Nights", "Frank Ocean", "Music", true, 307_000, 102_000), NOW),
+            hotspotState = "on", newPhotos = 2,
         )
     }
 
-    /** Hosts Home; returns a getter for the last layout Home saved. */
-    fun home(rule: ComposeContentTestRule, connected: Boolean = true, empty: Boolean = false): () -> HomeLayout {
-        var saved = HomeLayout.DEFAULT
+    /** Taps that reached Home's actions (to check nothing fires when it shouldn't). */
+    var taps = mutableListOf<String>()
+
+    /** Hosts Home (0.5.4); returns a getter for the last sections Home saved. */
+    fun home(
+        rule: ComposeContentTestRule,
+        connected: Boolean = true,
+        empty: Boolean = false,
+        connecting: Boolean = false,
+        start: HomeSections = HomeSections.DEFAULT,
+    ): () -> HomeSections {
+        var saved = start
+        taps = mutableListOf()
         rule.setContent {
-            var layout by remember { mutableStateOf(HomeLayout.DEFAULT) }
+            var sections by remember { mutableStateOf(start) }
             Hosted {
                 HomeScreen(
-                    model(connected), layout,
+                    model(connected, connecting), sections,
                     object : HomeActions {
-                        override fun layoutChanged(layout2: HomeLayout) {
-                            saved = layout2
-                            layout = layout2
+                        override fun sectionsChanged(sections2: HomeSections) {
+                            saved = sections2
+                            sections = sections2
                         }
+                        override fun sendClipboard() { taps += "clipboard" }
+                        override fun sendFile() { taps += "file" }
+                        override fun openHotspot() { taps += "hotspot" }
+                        override fun pickPhotos() { taps += "photos" }
+                        override fun mediaCommand(cmd: String) { taps += "media:$cmd" }
+                        override fun reconnect() { taps += "reconnect" }
+                        override fun openShelf() { taps += "shelf" }
+                        override fun seeAllTransfers() { taps += "transfers" }
                     },
                     data(empty),
                 )
@@ -130,40 +155,44 @@ object GestureScenarios {
         return { saved }
     }
 
-    private fun ComposeContentTestRule.panel(desc: String) = onAllNodesWithContentDescription(desc, substring = true).onFirst()
+    private fun ComposeContentTestRule.node(desc: String) = onAllNodesWithContentDescription(desc, substring = true).onFirst()
 
-    /** Long-press (hold, no movement) on each kind of panel: enters edit mode, never crashes. */
+    private val homeControls = listOf("Send clipboard", "Send file", "Hotspot", "Photos", "Settings")
+
+    /** Hold (long-press) every Home control: Home has no long-press mode, so nothing appears or breaks. */
     fun holdEveryPanel(rule: ComposeContentTestRule) {
-        for (d in listOf("Send clipboard", "Send file", "Open Shelf", "Mac battery")) {
-            rule.panel(d).performTouchInput { longClick(durationMillis = 1_200) }
+        for (d in homeControls) {
+            rule.node(d).performTouchInput { longClick(durationMillis = 1_200) }
             rule.waitForIdle()
-            rule.onNodeWithText("Done").assertExists()
-            rule.onNodeWithText("Done").performClick()
-            rule.waitForIdle()
+            check(rule.onAllNodesWithText("Done").fetchSemanticsNodes().isEmpty()) { "a hold on $d opened an edit mode" }
         }
+        rule.onNodeWithText("Nights").assertExists()
     }
 
-    /** Hold then drag (the iOS gesture) without lifting, in both directions, far beyond the grid. */
+    /** Hold then drag far beyond the screen, in both directions, on controls and rows. */
     fun holdAndDrag(rule: ComposeContentTestRule) {
-        rule.panel("Send clipboard").performTouchInput {
-            down(center)
-            advanceEventTime(1_000)
-            for (i in 1..30) {
-                moveBy(Offset(12f, 40f))
-                advanceEventTime(16)
+        for (d in listOf("Send clipboard", "Photos")) {
+            rule.node(d).performTouchInput {
+                down(center)
+                advanceEventTime(1_000)
+                for (i in 1..30) {
+                    moveBy(Offset(12f, 40f))
+                    advanceEventTime(16)
+                }
+                for (i in 1..60) {
+                    moveBy(Offset(-8f, -60f))
+                    advanceEventTime(16)
+                }
+                up()
             }
-            for (i in 1..60) {
-                moveBy(Offset(-8f, -60f))
-                advanceEventTime(16)
-            }
-            up()
+            rule.waitForIdle()
         }
-        rule.waitForIdle()
-        rule.panel("Send file").performTouchInput {
+        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Edit Home"))
+        rule.onNodeWithText("Edit Home").performTouchInput {
             down(center)
-            advanceEventTime(1_000)
-            for (i in 1..80) {
-                moveBy(Offset(0f, 90f))
+            advanceEventTime(900)
+            repeat(40) {
+                moveBy(Offset(0f, -80f))
                 advanceEventTime(16)
             }
             up()
@@ -171,48 +200,131 @@ object GestureScenarios {
         rule.waitForIdle()
     }
 
-    /** In edit mode: drag every panel around, cancel a drag mid-way, resize and remove. */
-    fun editMode(rule: ComposeContentTestRule, saved: () -> HomeLayout) {
-        // Enter edit mode the way people do: hold a panel.
-        rule.panel("Send clipboard").performTouchInput { longClick(durationMillis = 1_200) }
+    /** Disconnected: Send clipboard is dimmed and inert, File still queues, Reconnect is offered. */
+    fun disconnectedControls(rule: ComposeContentTestRule) {
+        rule.onNodeWithText("Not connected", substring = true).assertExists()
+        rule.node("Send clipboard").performClick()
+        rule.node("Send file").performClick()
         rule.waitForIdle()
+        check("clipboard" !in taps) { "Send clipboard fired while disconnected" }
+        check("file" in taps) { "Send file should still queue while disconnected" }
+        rule.onNodeWithText("Mac not connected").assertExists()
+        rule.node("Reconnect").performClick()
+        rule.waitForIdle()
+        check("reconnect" in taps) { "Reconnect did nothing" }
+    }
+
+    /** Home never shows what's on the clipboard (a phone number sits on it in [data]). */
+    fun noClipboardText(rule: ComposeContentTestRule) {
+        // The phone clipboard and the clipboard history texts: none may appear as text or in semantics.
+        for (raw in listOf("98765", "Meet at 6:30", "See you at 6")) {
+            check(rule.onAllNodesWithText(raw, substring = true).fetchSemanticsNodes().isEmpty()) { "clipboard text \"$raw\" on Home" }
+            check(rule.onAllNodesWithContentDescription(raw, substring = true).fetchSemanticsNodes().isEmpty()) {
+                "clipboard text \"$raw\" in Home semantics"
+            }
+        }
+    }
+
+    /** Edit Home: open the sheet, toggle sections, drag-reorder (incl. rapid flicks and two fingers), Move up/down, Done. */
+    fun editMode(rule: ComposeContentTestRule, saved: () -> HomeSections) {
+        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Edit Home"))
+        rule.onNodeWithText("Edit Home").performClick()
+        settle(rule)
         rule.onNodeWithText("Done").assertExists()
-        rule.panel("Mac battery").performTouchInput {
+        editSheetGestures(rule, saved)
+        rule.onNodeWithText("Done").performClick()
+        settle(rule)
+        check(rule.onAllNodesWithText("Done").fetchSemanticsNodes().isEmpty()) { "Done did not close the sheet" }
+        // The toggled sections are on Home now.
+        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Clipboard history"))
+    }
+
+    /** Lets the sheet's spring finish (the test clock doesn't always run it to rest on waitForIdle). */
+    fun settle(rule: ComposeContentTestRule) {
+        rule.waitForIdle()
+        rule.mainClock.advanceTimeBy(SETTLE_MS)
+        rule.waitForIdle()
+    }
+
+    private const val SETTLE_MS = 1_500L
+
+    /** The Edit Home list on its own (no modal window), as the sheet hosts it. */
+    fun editContent(rule: ComposeContentTestRule): () -> HomeSections {
+        var saved = HomeSections.DEFAULT
+        rule.setContent {
+            var sections by remember { mutableStateOf(HomeSections.DEFAULT) }
+            Hosted {
+                EditHomeContent(sections, onChange = {
+                    saved = it
+                    sections = it
+                }, onDone = {})
+            }
+        }
+        rule.waitForIdle()
+        return { saved }
+    }
+
+    fun editSheetGestures(rule: ComposeContentTestRule, saved: () -> HomeSections) {
+        // Toggles.
+        rule.onNodeWithTag("edit-row-clipboard").performClick()
+        rule.waitForIdle()
+        check(saved().isOn(HomeSection.CLIPBOARD)) { "Clipboard history toggle did not save" }
+        rule.onNodeWithTag("edit-row-photos").performClick()
+        rule.onNodeWithTag("edit-row-photos").performClick()
+        rule.waitForIdle()
+        check(!saved().isOn(HomeSection.PHOTOS)) { "Photos double toggle should be off" }
+        // Drag Shelf (4th) to the top.
+        val rowPx = with(rule.density) { EDIT_ROW.toPx() }
+        rule.onNodeWithTag("edit-handle-shelf").performTouchInput {
             down(center)
-            advanceEventTime(1_000)
-            repeat(20) {
-                moveBy(Offset(0f, -50f))
+            repeat(30) {
+                moveBy(Offset(0f, -rowPx * 3 / 30f - 1f))
                 advanceEventTime(16)
             }
+            up()
+        }
+        rule.waitForIdle()
+        check(saved().order.first() == HomeSection.SHELF) { "drag did not move Shelf to the top: ${saved().order}" }
+        // Rapid flicks far past both ends: never out of range, every section still there once.
+        repeat(6) { n ->
+            rule.onNodeWithTag("edit-handle-transfers").performTouchInput {
+                down(center)
+                moveBy(Offset(0f, if (n % 2 == 0) 50_000f else -50_000f))
+                moveBy(Offset(0f, if (n % 2 == 0) -120_000f else 120_000f))
+                up()
+            }
+        }
+        rule.waitForIdle()
+        check(saved().order.toSet() == HomeSection.entries.toSet() && saved().order.size == HomeSection.entries.size) {
+            "flicks lost or duplicated a section: ${saved().order}"
+        }
+        // Two fingers on two handles at once: only the first drives; nothing crashes.
+        val before = saved().order
+        rule.onNodeWithTag("edit-handle-quick").performTouchInput {
+            down(0, center)
+            down(1, center + Offset(0f, rowPx * 2))
+            repeat(10) {
+                moveBy(0, Offset(0f, rowPx / 5))
+                moveBy(1, Offset(0f, -rowPx / 5))
+                advanceEventTime(16)
+            }
+            up(1)
+            up(0)
+        }
+        rule.waitForIdle()
+        check(saved().order.size == before.size) { "multi-touch broke the list" }
+        // A drag the system cancels ends cleanly: the list stays whole and the row isn't left lifted (toggles work below).
+        rule.onNodeWithTag("edit-handle-photos").performTouchInput {
+            down(center)
+            repeat(10) { moveBy(Offset(0f, -rowPx / 4)) }
             cancel()
         }
         rule.waitForIdle()
-        rule.onAllNodesWithContentDescription("Resize ", substring = true).onFirst().performTouchInput {
-            down(center)
-            repeat(10) { moveBy(Offset(20f, 20f)) }
-            repeat(20) { moveBy(Offset(-20f, -20f)) }
-            up()
-        }
+        check(saved().order.toSet().size == HomeSection.entries.size) { "a cancelled drag broke the list" }
+        // Toggling while nothing is dragged still works after all that.
+        rule.onNodeWithTag("edit-row-find_mac").performClick()
         rule.waitForIdle()
-        rule.onAllNodesWithContentDescription("Resize ", substring = true).onFirst().performClick()
-        rule.waitForIdle()
-        rule.onNodeWithContentDescription("Remove Send file").performClick()
-        rule.waitForIdle()
-        check(PanelKind.SEND_FILE !in saved()) { "remove did not save" }
-        // Hold-drag a panel while panels are removed under it.
-        rule.panel("Send clipboard").performTouchInput {
-            down(center)
-            advanceEventTime(1_000)
-            repeat(40) {
-                moveBy(Offset(30f, 70f))
-                advanceEventTime(16)
-            }
-            up()
-        }
-        rule.waitForIdle()
-        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Done"))
-        rule.onNodeWithText("Done").performClick()
-        rule.waitForIdle()
+        check(saved().isOn(HomeSection.FIND_MAC)) { "toggle after drags did not save" }
     }
 
     fun shelf(rule: ComposeContentTestRule) {

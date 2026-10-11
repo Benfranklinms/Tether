@@ -160,6 +160,13 @@ fun homeModel(s: UiState, transfers: List<TransferRecord>, mirroringOff: Boolean
         canReconnect = s.peer != null && !s.pairingMode &&
             (link is LinkState.Offline || link is LinkState.Handshaking) &&
             s.radio != BleCentral.RadioState.OFF && s.radio != BleCentral.RadioState.NO_PERMISSION,
+        connecting = link is LinkState.Handshaking || link is LinkState.Pairing,
+        reason = when {
+            link is LinkState.Connected -> null
+            s.radio == BleCentral.RadioState.OFF -> "Bluetooth off"
+            s.radio == BleCentral.RadioState.NO_PERMISSION -> "Allow Nearby devices"
+            else -> null
+        },
     )
 }
 
@@ -193,6 +200,10 @@ private fun TetherApp(rt: TetherRuntime) {
         if (qr == null) rt.note("That isn't a Tether pairing code") else rt.startPairing(qr)
     }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) rt.sendFiles(uris)
+    }
+    // 0.5.4 Home › Photos: the system photo picker (no permission needed); picked items go to the Mac.
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         if (uris.isNotEmpty()) rt.sendFiles(uris)
     }
     val shelfFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -372,17 +383,23 @@ private fun TetherApp(rt: TetherRuntime) {
                     dev.benfranklin.tether.v7.RecentPhotos.latest(ctx, HOME_PHOTOS)
                 }
             }
-            val homeLayout = remember(settings.homePanels) { dev.benfranklin.tether.core.features.HomeLayout.from(settings.homePanels) }
+            val homeSections = remember(settings.homeSections, settings.homePanels) {
+                dev.benfranklin.tether.data.HomeSections.from(settings.homeSections, settings.homePanels)
+            }
+            // First look at the photos: record the newest as seen, so the badge counts only what comes after.
+            LaunchedEffect(photos) {
+                val newest = photos.maxOfOrNull { it.id } ?: return@LaunchedEffect
+                if (settings.homePhotosSeenId <= 0L) rt.settings.update { it.copy(homePhotosSeenId = newest) }
+            }
             val hotspotSsid = remember(resumed) { dev.benfranklin.tether.v6.HotspotStore.ssid(ctx) }
             var inFront by remember { mutableStateOf(true) }
             LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { inFront = true }
             LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { inFront = false }
             val linked = state.link is LinkState.Connected
-            val wantsMedia = dev.benfranklin.tether.core.features.PanelKind.NOW_PLAYING in homeLayout
-            val wantsMac = wantsMedia || dev.benfranklin.tether.core.features.PanelKind.MAC in homeLayout
-            // Poll the Mac's status while Home shows the Mac / Now playing panel and the app is in front.
-            LaunchedEffect(inFront, linked, wantsMac, wantsMedia) {
-                if (!inFront || !linked || !wantsMac) return@LaunchedEffect
+            val wantsMedia = homeSections.isOn(dev.benfranklin.tether.data.HomeSection.NOW_PLAYING)
+            // Poll the Mac's status while Home is in front: the header shows its battery, Now playing its media.
+            LaunchedEffect(inFront, linked, wantsMedia) {
+                if (!inFront || !linked) return@LaunchedEffect
                 while (true) {
                     rt.feeds.request(wantsMedia)
                     kotlinx.coroutines.delay(dev.benfranklin.tether.core.features.MacStatusPolicy.POLL_MS)
@@ -390,13 +407,18 @@ private fun TetherApp(rt: TetherRuntime) {
             }
             HomeScreen(
                 m = homeModel(state, transfers, mirroringOff = settings.notifications.enabled && !listenerOn),
-                layout = homeLayout,
+                sections = homeSections,
                 data = dev.benfranklin.tether.ui.screens.HomeData(
                     shelf = shelf.ordered, clipboard = clipboard, clips = clips, mac = feedsMac,
                     macSupported = state.link !is LinkState.Connected ||
                         dev.benfranklin.tether.core.proto.Caps7.MAC_STATUS in state.peerCaps,
                     photos = photos, photosAllowed = photosAllowed, hotspotSsid = hotspotSsid, hotspotState = hotspot.state,
                     updateVersion = offered?.version?.takeIf { it != settings.skippedVersion },
+                    newPhotos = dev.benfranklin.tether.data.PhotoBadge.count(photos.map { it.id }, settings.homePhotosSeenId),
+                    find = FindModel(
+                        ringing = find.ringing, pending = find.pending, locked = find.locked, error = find.error,
+                        available = state.link is LinkState.Connected && Caps6.FIND_MAC in state.peerCaps,
+                    ).takeIf { state.peer != null },
                 ),
                 a = object : dev.benfranklin.tether.ui.screens.HomeActions {
                     override fun sendClipboard() = ctx.startActivity(dev.benfranklin.tether.clip.ClipSendActivity.intent(ctx))
@@ -420,8 +442,17 @@ private fun TetherApp(rt: TetherRuntime) {
                     override fun stopScreen() = rt.stopScreenSharing()
                     override fun fixMirroring() = grant("listener")
                     override fun noticeShown() = rt.clearNotice()
-                    override fun layoutChanged(layout: dev.benfranklin.tether.core.features.HomeLayout) =
-                        rt.settings.update { it.copy(homePanels = layout.specs()) }
+                    override fun sectionsChanged(sections: dev.benfranklin.tether.data.HomeSections) =
+                        rt.settings.update { it.copy(homeSections = sections.specs(), homePanels = null) }
+                    override fun pickPhotos() {
+                        photos.maxOfOrNull { it.id }?.let { newest -> rt.settings.update { it.copy(homePhotosSeenId = newest) } }
+                        photoPicker.launch(
+                            androidx.activity.result.PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageAndVideo,
+                            ),
+                        )
+                    }
+                    override fun findMac(action: String) = rt.v6.findMac(action)
                     override suspend fun photoThumb(p: dev.benfranklin.tether.v7.RecentPhoto): ImageBitmap? =
                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                             dev.benfranklin.tether.v7.RecentPhotos.thumbnail(ctx, p, PHOTO_THUMB_PX)

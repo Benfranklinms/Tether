@@ -5,6 +5,15 @@ CI copies the section whose heading matches the tag (`## 0.5.2` for `v0.5.2`) in
 release notes, and the apps show it in their update popup. A tag without a matching section
 fails the release.
 
+## 0.5.4
+
+- **A calmer Home on the phone.** Your Mac and its battery at the top ("Connected · Wi-Fi · 82%", "Connecting…" or "Not connected" with Reconnect), then one block with Clipboard, File, Hotspot and Photos next to what's playing on your Mac, your latest transfers with live progress, and the newest Shelf items. Empty sections are just one grey line.
+- **Edit Home** at the bottom of Home: drag sections into the order you like and switch Clipboard history, Photos or Find my Mac on. Changes show on Home right away and are kept after a restart. Your 0.5.3 layout carries over. (No more long-press wiggle mode, which could close the app.)
+- **Photos button**: pick photos and videos to send to your Mac; a badge counts the new ones.
+- **Home never shows what's on your clipboard**: Send clipboard just says Clipboard, and Clipboard history says what kind of thing was copied ("Phone number", "Link"), not the text.
+- **Home fits large text and every navigation style**: nothing is cut off at bigger font sizes, and nothing hides under the status bar or the three-button or gesture navigation bar.
+- **A broken saved Home layout can no longer reset all your settings**; Home just goes back to its default.
+
 ## 0.5.3
 
 - **Take Photo and Scan Document work from the Mac menu bar.** The phone now really opens the camera even when Tether is in the background (Android blocks that unless Tether is allowed to). If it can't, your phone shows a notification to tap, and the Mac tells you so instead of waiting silently.
