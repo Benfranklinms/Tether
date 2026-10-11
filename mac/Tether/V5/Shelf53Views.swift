@@ -84,7 +84,7 @@ struct ShelfLeading: View {
     }
 }
 
-/// A sheet of paper with a folded corner and its file type on a dark tab.
+/// A sheet of paper with a folded corner and its file type on a tab in the inverse tone.
 struct MacDocIcon: View {
     let badge: String
     let size: CGFloat
@@ -106,7 +106,7 @@ struct MacDocIcon: View {
             Text(badge).font(.system(size: max(7, size * 0.17), weight: .semibold, design: .monospaced)).foregroundColor(Mono.accent)
                 .lineLimit(1).fixedSize()
                 .padding(.horizontal, size * 0.06).padding(.vertical, 1)
-                .background(RoundedRectangle(cornerRadius: size * 0.05).fill(Color.black))
+                .background(RoundedRectangle(cornerRadius: size * 0.05).fill(Mono.bg)) // inverse of the paper in both appearances
                 .padding(.bottom, size * 0.14)
         }
         .frame(width: size, height: size)
