@@ -179,7 +179,7 @@ interface HomeActions {
 }
 
 /** Panel heights: small and wide share a row height; large is two rows plus the gap. */
-internal val PANEL_HEIGHT = 136.dp
+internal val PANEL_HEIGHT = 144.dp
 internal val PANEL_GAP = 12.dp
 internal val PANEL_RADIUS = 22.dp
 

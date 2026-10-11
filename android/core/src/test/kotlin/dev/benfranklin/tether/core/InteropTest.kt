@@ -208,7 +208,7 @@ class InteropTest {
         loop.runUntil(5_000) {
             peer.has(
                 "CAPS",
-                "battery,call,callctl,calllog,capture,clip,clipimg,continue,dial,dnd,file,findmac,fs,hotspot,media,notif,notifaccess," +
+                "battery,call,callctl,calllog,capture,clip,clipimg,continue,dial,dnd,file,findmac,fs,hotspot,macstatus,media,notif,notifaccess," +
                     "nowplaying,openurl,otp,photos,proximity,reply,ring,screen,shelf,sms,status,type",
             )
         }
@@ -224,6 +224,9 @@ class InteropTest {
                 "0|org.telegram.messenger|9|null|1", "org.telegram.messenger", "Telegram", "Asha", "Lunch? 🍜", 5,
                 listOf(NotifActionInfo("reply", "Reply", true), NotifActionInfo("1", "Mark as read")),
             ),
+            // revision 7 (0.5.3)
+            dev.benfranklin.tether.core.proto.MacStatusReq(media = true),
+            dev.benfranklin.tether.core.proto.MacMediaCmd("next"),
         )
         for (m in sent) {
             val before = phone.messages.size
@@ -245,6 +248,11 @@ class InteropTest {
             Ring(60), RingStop("user"), ScreenStart(1280, 60, 6_000_000), ScreenStop("user"),
             VideoFeedback(kbps = 5200, lagMs = 35, dropped = 1, keyframe = true),
             ScreenInput(InputKinds.TEXT, text = "héllo wörld"), ScreenInput(InputKinds.BACK),
+            dev.benfranklin.tether.core.proto.MacStatus(
+                battery = 82, charging = true,
+                media = dev.benfranklin.tether.core.proto.MacMedia(true, "Nights", "Frank Ocean", "Music", true, 307_000, 102_000), ts = 9,
+            ),
+            dev.benfranklin.tether.core.proto.MacStatus(ts = 10),
         )
         for (m in fromMac) {
             val before = phone.messages.size

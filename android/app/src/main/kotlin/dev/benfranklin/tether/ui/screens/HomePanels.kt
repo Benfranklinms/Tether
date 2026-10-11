@@ -279,8 +279,9 @@ private fun MacPanel(size: PanelSize, m: HomeModel, data: HomeData) {
             ) { l ->
                 Text(
                     l?.toString() ?: "—", fontFamily = MonoCode, fontWeight = FontWeight.Normal,
-                    fontSize = if (size == PanelSize.SMALL) 40.sp else 44.sp, lineHeight = 44.sp,
-                        color = if (l != null) Mono.Text else Mono.Muted,
+                    fontSize = if (size == PanelSize.SMALL) 36.sp else 44.sp,
+                    lineHeight = if (size == PanelSize.SMALL) 40.sp else 44.sp,
+                    color = if (l != null) Mono.Text else Mono.Muted,
                 )
             }
             if (level != null) {

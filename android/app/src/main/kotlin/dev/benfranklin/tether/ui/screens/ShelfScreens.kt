@@ -607,8 +607,8 @@ private fun ShelfRow(
                     Row(Modifier.padding(top = 16.dp, end = 20.dp), verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f)) {
                             Text(
-                                if (item.kind == ShelfKinds.FILE) TransferMeta.middle(title, 34) else title,
-                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1,
+                                if (item.kind == ShelfKinds.FILE) TransferMeta.middle(title, 28) else title,
+                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp), maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                             )
                             Text(

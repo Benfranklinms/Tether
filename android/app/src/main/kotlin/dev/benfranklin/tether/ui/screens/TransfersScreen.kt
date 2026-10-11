@@ -89,7 +89,6 @@ import dev.benfranklin.tether.ui.theme.MonoCode
 import dev.benfranklin.tether.ui.theme.Motion
 import kotlinx.coroutines.launch
 import java.time.ZoneId
-import java.util.Calendar
 
 /** What the Transfers screen can do (runtime-backed in the app, fakes in screenshot tests). */
 interface TransfersActions {
@@ -102,14 +101,9 @@ interface TransfersActions {
     fun open(t: TransferRecord): String?
 }
 
-/** Local midnight before [now]. */
-fun startOfDay(now: Long): Long = Calendar.getInstance().apply {
-    timeInMillis = now
-    set(Calendar.HOUR_OF_DAY, 0)
-    set(Calendar.MINUTE, 0)
-    set(Calendar.SECOND, 0)
-    set(Calendar.MILLISECOND, 0)
-}.timeInMillis
+/** Midnight before [now] in [zone] (the same zone the row labels use). */
+fun startOfDay(now: Long, zone: ZoneId = ZoneId.systemDefault()): Long =
+    java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
 
 /**
  * Every transfer (0.5.3 redesign), newest first, grouped Today / Earlier, filtered All / Sent /
@@ -130,7 +124,7 @@ fun TransfersScreen(
     val scope = rememberCoroutineScope()
     var filter by rememberSaveable { mutableStateOf(TransferList.Filter.ALL) }
     var confirmClear by remember { mutableStateOf(false) }
-    val sections = remember(transfers, filter, now) { TransferList.sections(transfers, filter, now, startOfDay(now)) }
+    val sections = remember(transfers, filter, now, zone) { TransferList.sections(transfers, filter, now, startOfDay(now, zone)) }
     val anyFinished = transfers.any { it.status.isFinal }
     Scaffold(
         containerColor = Mono.Bg,
