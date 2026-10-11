@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tether — Your Mac and your Android, finally on speaking terms</title>
+<meta name="description" content="Tether links your Android phone and your Mac directly over Bluetooth: texts, calls, clipboard, files, photos and notifications. No cloud, no account, end-to-end encrypted. Free and open source.">
+<meta name="theme-color" content="#F7F7F5">
+<meta name="color-scheme" content="light only">
+<link rel="canonical" href="https://benfranklinms.github.io/Tether/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Tether">
+<meta property="og:title" content="Tether — Your Mac and your Android. Finally on speaking terms.">
+<meta property="og:description" content="Texts, calls, clipboard, files and notifications, linked directly over Bluetooth. No cloud. No account. Free and open source.">
+<meta property="og:url" content="https://benfranklinms.github.io/Tether/">
+<meta property="og:image" content="https://benfranklinms.github.io/Tether/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Tether: a MacBook and an Android phone linked, on a light background">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Tether — Your Mac and your Android. Finally on speaking terms.">
+<meta name="twitter:description" content="Texts, calls, clipboard, files and notifications over Bluetooth. No cloud, no account. Free and open source.">
+<meta name="twitter:image" content="https://benfranklinms.github.io/Tether/assets/img/og.png">
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="preload" href="assets/fonts/manrope_extrabold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/manrope_medium.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/site.css">
+<script>
+  (function () {
+    var d = document.documentElement;
+    var rm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    d.classList.add(rm ? 'no-motion' : 'motion');
+    if (window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) d.classList.add('has-hover');
+    // never leave content hidden if the scripts fail to run
+    setTimeout(function () { if (!window.__tether) { d.classList.remove('motion'); d.classList.add('no-motion'); } }, 4000);
+  })();
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Tether","operatingSystem":"macOS 13+, Android 8+","applicationCategory":"UtilitiesApplication","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"license":"https://opensource.org/licenses/MIT","url":"https://benfranklinms.github.io/Tether/","downloadUrl":"https://github.com/Benfranklinms/Tether/releases/latest"}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="rings" viewBox="0 0 30 20"><circle cx="10" cy="10" r="7.6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="20" cy="10" r="7.6" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="apple" viewBox="0 0 24 24"><path fill="currentColor" d="M16.37 12.73c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.77-3.32-1.8-1.41-.14-2.76.83-3.47.83-.72 0-1.82-.81-2.99-.79-1.54.02-2.96.9-3.75 2.27-1.6 2.78-.41 6.89 1.15 9.14.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.78.74 2.99.72 1.24-.02 2.02-1.12 2.77-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.42-3.66zM14.1 5.98c.63-.77 1.06-1.83.94-2.89-.91.04-2.02.61-2.67 1.37-.58.67-1.1 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28z"/></symbol>
+    <symbol id="android" viewBox="0 0 24 24"><path fill="currentColor" d="M17.6 9.48l1.84-3.18a.38.38 0 10-.66-.38l-1.86 3.22A11.4 11.4 0 0012 8.1c-1.77 0-3.43.38-4.92 1.04L5.22 5.92a.38.38 0 10-.66.38L6.4 9.48A10.8 10.8 0 001 18h22a10.8 10.8 0 00-5.4-8.52zM7 15.25a1 1 0 110-2 1 1 0 010 2zm10 0a1 1 0 110-2 1 1 0 010 2z"/></symbol>
+    <symbol id="gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .5a11.5 11.5 0 00-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 015.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0012 .5z"/></symbol>
+    <symbol id="play" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4.5v15a1 1 0 001.5.86l12.6-7.5a1 1 0 000-1.72L8.5 3.64A1 1 0 007 4.5z"/></symbol>
+    <symbol id="pause" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15" rx="1.2" fill="currentColor"/><rect x="14" y="4.5" width="4" height="15" rx="1.2" fill="currentColor"/></symbol>
+    <symbol id="mute" viewBox="0 0 24 24"><path fill="currentColor" d="M4 9h3.5L12 5v14l-4.5-4H4z"/><path d="M16 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></symbol>
+    <symbol id="sound" viewBox="0 0 24 24"><path fill="currentColor" d="M4 9h3.5L12 5v14l-4.5-4H4z"/><path d="M15.5 8.5a5 5 0 010 7M18 6a8.5 8.5 0 010 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></symbol>
+    <symbol id="copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V6.5A2.5 2.5 0 0013.5 4h-7A2.5 2.5 0 004 6.5v7A2.5 2.5 0 006.5 16H8" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="dl" viewBox="0 0 24 24"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<div class="intro" aria-hidden="true">
+  <div class="intro-mark">
+    <svg class="intro-rings" viewBox="0 0 74 44"><circle class="ir-a" cx="22" cy="22" r="17" fill="none" stroke="#0C0C0D" stroke-width="3.6"/><circle class="ir-b" cx="52" cy="22" r="17" fill="none" stroke="#0C0C0D" stroke-width="3.6"/></svg>
+    <span class="intro-word"><span>Tether</span></span>
+  </div>
+  <div class="intro-count"><span class="ic-n">00</span></div>
+  <div class="intro-bar"></div>
+</div>
+
+<div class="glow" aria-hidden="true"></div>
+
+<header class="nav" id="nav">
+  <div class="nav-in">
+    <a class="brand" href="#top" aria-label="Tether, back to top"><svg aria-hidden="true"><use href="#rings"/></svg>Tether</a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#film">Film</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/Benfranklinms/Tether" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <div class="nav-right">
+      <span class="nav-ver" data-version-label>v0.5.5</span>
+      <a class="btn btn-ink btn-sm" href="#download" data-magnetic><span>Download</span></a>
+      <button class="nav-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav-sheet"><i></i><i></i></button>
+    </div>
+  </div>
+  <div class="nav-sheet" id="nav-sheet">
+    <a href="#features">Features</a>
+    <a href="#film">Film</a>
+    <a href="#privacy">Privacy</a>
+    <a href="#download">Download</a>
+    <a href="https://github.com/Benfranklinms/Tether" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</header>
+
+<main id="main">
+<span id="top"></span>
+
+<!-- ============================================================ HERO -->
+<section class="hero" aria-labelledby="hero-title">
+  <div class="wrap hero-copy">
+    <div class="label" data-fade>Free &nbsp;·&nbsp; Open source &nbsp;·&nbsp; Mac + Android</div>
+    <h1 class="h-xl" id="hero-title" data-split>
+      <span class="line">Your Mac and your Android.</span>
+      <span class="line grey">Finally on speaking terms.</span>
+    </h1>
+    <p class="lead" data-fade>Texts, calls, clipboard, files and notifications. Linked directly over Bluetooth. No cloud. No account.</p>
+    <div class="hero-cta" data-fade>
+      <a class="btn btn-ink" href="https://github.com/Benfranklinms/Tether/releases/download/v0.5.5/Tether-0.5.5.dmg" data-asset="dmg" data-magnetic><span><svg aria-hidden="true"><use href="#apple"/></svg>Download for Mac</span></a>
+      <a class="btn btn-line" href="https://github.com/Benfranklinms/Tether/releases/download/v0.5.5/Tether-0.5.5.apk" data-asset="apk" data-magnetic><span><svg aria-hidden="true"><use href="#android"/></svg>Get it for Android</span></a>
+    </div>
+    <div class="hero-meta" data-fade><span data-version-label>v0.5.5</span><i>·</i>macOS 13+<i>·</i>Android 8+</div>
+  </div>
+
+  <div class="stage-wrap" aria-hidden="true">
+    <div class="stage">
+      <div class="mac js-mac">
+        <div class="mac-shadow"></div>
+        <div class="mac-tilt js-lid">
+          <div class="mac-lid">
+            <div class="mac-screen">
+              <div class="mac-wall js-wall"></div>
+              <div class="mac-menubar"><b><svg><use href="#rings"/></svg>Tether</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span class="clock">Sun 11 Oct&nbsp; 9:41</span></div>
+              <div class="mac-notch"></div>
+              <div class="mac-window js-win">
+                <div class="win-bar"><i></i><i></i><i></i></div>
+                <img src="assets/img/mac-home.webp" width="1040" height="700" alt="" decoding="async" fetchpriority="high">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mac-base"></div>
+      </div>
+      <div class="phone js-phone">
+        <div class="phone-body"><div class="phone-glass"><div class="phone-screen"><img src="assets/img/android-home.webp" width="600" height="1290" alt="" decoding="async"></div></div></div>
+        <span class="phone-cam"></span>
+      </div>
+      <div class="chip chip-a js-chip"><div class="chip-in"><span class="chip-ic"><svg><use href="#rings"/></svg></span><span><b>Copied on Pixel 8</b><small>Ready to paste &nbsp;⌘V</small></span></div></div>
+      <div class="chip chip-b js-chip"><div class="chip-in"><span class="chip-ic"><svg><use href="#rings"/></svg></span><span><b>Code 482913</b><small>From Messages</small></span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ STRIP -->
+<section class="strip" aria-label="Tether in numbers">
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat" data-fade><span class="n"><span data-count="0">0</span></span><span class="t">Servers in between</span></div>
+      <div class="stat" data-fade><span class="n"><span data-count="0">0</span></span><span class="t">Accounts to make</span></div>
+      <div class="stat" data-fade><span class="n">~<span data-count="110">110</span><small>MB/s</small></span><span class="t">Wi-Fi fast path</span></div>
+      <div class="stat" data-fade><span class="n"><span data-count="4">4</span><small>GB</small></span><span class="t">Files, resumable</span></div>
+      <div class="stat" data-fade><span class="n"><span data-count="500">500</span></span><span class="t">Shelf items, synced</span></div>
+    </div>
+  </div>
+  <div class="marquee" aria-hidden="true">
+    <div class="mq-row" data-dir="-1"><span>Clipboard</span><span>Messages</span><span>Calls</span><span>Notifications</span><span>Photos</span><span>Files</span><span>Shelf</span><span>Find my Mac</span></div>
+    <div class="mq-row alt" data-dir="1"><span>Insert from Phone</span><span>Instant Hotspot</span><span>Phone screen</span><span>Media controls</span><span>Widgets</span><span>One-time codes</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ FILM -->
+<section class="sec" id="film" aria-labelledby="film-title">
+  <div class="wrap sec-head center">
+    <span class="label" data-fade>The film</span>
+    <h2 class="h-lg" id="film-title" data-split>Forty-six seconds. Every feature.</h2>
+  </div>
+  <div class="film-wrap">
+    <div class="film js-film" role="group" aria-label="Tether launch film">
+      <video class="js-film-video" muted playsinline preload="metadata" poster="assets/video/film-poster.jpg" aria-label="Tether launch film, 46 seconds">
+        <source data-src="assets/video/film.webm" type="video/webm">
+        <source data-src="assets/video/film.mp4" type="video/mp4">
+      </video>
+      <div class="film-shade"></div>
+      <button class="film-big js-film-big" type="button" aria-label="Play the film"><svg><use href="#play"/></svg></button>
+      <div class="film-ui">
+        <div class="film-cap js-cap" aria-live="polite"><span class="swap"><b class="js-cap-t">Your Mac and your Android</b><small class="js-cap-s">Intro</small></span></div>
+        <div class="film-ctrls">
+          <button class="fbtn fbtn-play js-play" type="button" aria-label="Play or pause"><svg class="off-play"><use href="#play"/></svg><svg class="on"><use href="#pause"/></svg></button>
+          <button class="fbtn fbtn-mute js-mute" type="button" aria-label="Unmute"><svg class="off"><use href="#mute"/></svg><svg class="on"><use href="#sound"/></svg></button>
+          <span class="fbtn fbtn-time js-time">0:46</span>
+        </div>
+        <div class="film-bar js-bar" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="46" aria-valuenow="0">
+          <div class="track"><div class="fill js-fill"></div></div>
+          <div class="ticks js-ticks"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ FEATURES -->
+<section class="sec" id="features" aria-labelledby="features-title">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="label" data-fade>Features</span>
+      <h2 class="h-lg" id="features-title" data-split>Everything between them.</h2>
+      <p class="lead" data-fade>Your phone, from your Mac. One tiny link.</p>
+    </div>
+    <div class="bento">
+      <article class="card wide js-card">
+        <span class="label">Messages &amp; codes</span>
+        <h3>Text from your Mac.</h3>
+        <p>Read and reply to SMS. One-time codes land on the clipboard, ready to paste.</p>
+        <div class="media"><img class="ken" src="assets/img/mac-messages.webp" width="1040" height="700" alt="Tether's Messages view on the Mac, light theme" loading="lazy" decoding="async">
+          <div class="toast"><span class="chip-ic"><svg><use href="#rings"/></svg></span><span><b>Code 482913 copied</b><small>From BANK-ALERT</small></span></div>
+        </div>
+      </article>
+      <article class="card mid js-card">
+        <span class="label">Photos &amp; files</span>
+        <h3>Your gallery, on your Mac.</h3>
+        <p>Drag a file across and it's there. Big ones jump to Wi-Fi on their own.</p>
+        <div class="media"><video class="js-loop" muted loop playsinline preload="none" poster="assets/video/loop-files.jpg" aria-label="A file dragged from the Mac lands on the phone"><source data-src="assets/video/loop-files.webm" type="video/webm"><source data-src="assets/video/loop-files.mp4" type="video/mp4"></video></div>
+      </article>
+      <article class="card half js-card">
+        <span class="label">Notifications</span>
+        <h3>Reply without reaching.</h3>
+        <div class="media r16"><video class="js-loop" muted loop playsinline preload="none" poster="assets/video/loop-notifications.jpg" aria-label="Replying to a WhatsApp notification on the Mac"><source data-src="assets/video/loop-notifications.webm" type="video/webm"><source data-src="assets/video/loop-notifications.mp4" type="video/mp4"></video></div>
+      </article>
+      <article class="card half js-card">
+        <span class="label">Shelf</span>
+        <h3>Pinned. On both.</h3>
+        <div class="media r16"><video class="js-loop" muted loop playsinline preload="none" poster="assets/video/loop-shelf.jpg" aria-label="Shelf items appearing on the Mac and the phone"><source data-src="assets/video/loop-shelf.webm" type="video/webm"><source data-src="assets/video/loop-shelf.mp4" type="video/mp4"></video></div>
+      </article>
+      <article class="card js-card">
+        <span class="label">Find my Mac</span>
+        <h3>Lost it? Ring it.</h3>
+        <div class="media r16"><video class="js-loop" muted loop playsinline preload="none" poster="assets/video/loop-find.jpg" aria-label="The Mac ringing from the phone"><source data-src="assets/video/loop-find.webm" type="video/webm"><source data-src="assets/video/loop-find.mp4" type="video/mp4"></video></div>
+      </article>
+    </div>
+    <div class="pills">
+      <span class="pill" data-pill><i></i>Clipboard sync</span>
+      <span class="pill" data-pill><i></i>Calls</span>
+      <span class="pill" data-pill><i></i>Insert from Phone</span>
+      <span class="pill" data-pill><i></i>Instant Hotspot</span>
+      <span class="pill" data-pill><i></i>Phone screen</span>
+      <span class="pill" data-pill><i></i>Media controls</span>
+      <span class="pill" data-pill><i></i>Widgets</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ STORY -->
+<section class="story js-story" aria-label="Features, one by one">
+  <div class="story-pin">
+    <div class="wrap">
+      <div class="story-grid">
+        <div class="story-copy">
+          <div class="story-count"><b class="js-count">01</b> / 08</div>
+          <div class="ch-texts">
+            <div class="ch-text on" data-ch="0">
+              <span class="num">01 / 08 · Clipboard</span>
+              <h3><span class="l1">Copy here.</span><br><span class="l2 grey">Paste there.</span></h3>
+              <p>Copy text or a photo on one device and paste it on the other. Codes from Messages are on the clipboard before you look.</p>
+              <div class="ch-mobile-media"></div>
+            </div>
+            <div class="ch-text" data-ch="1">
+              <span class="num">02 / 08 · Notifications</span>
+              <h3><span class="l1">Reply without</span><br><span class="l2 grey">reaching.</span></h3>
+              <p>Phone notifications show up on the Mac. Reply right from the banner and keep typing.</p>
+              <div class="ch-mobile-media"></div>
+            </div>
+            <div class="ch-text" data-ch="2">
+              <span class="num">03 / 08 · Calls &amp; SMS</span>
+              <h3><span class="l1">Pick up</span><br><span class="l2 grey">on your Mac.</span></h3>
+              <p>Answer, decline or silence calls from the Mac, and read and send texts without picking up the phone.</p>
+              <div class="ch-mobile-media"></div>
+            </div>
+            <div class="ch-text" data-ch="3">
+              <span class="num">04 / 08 · Files &amp; photos</span>
+              <h3><span class="l1">Drop it.</span><br><span class="l2 grey">It's there.</span></h3>
+              <p>Drag a file out of Finder and it lands in the phone's Downloads. Big ones jump to Wi-Fi automatically, up to ~110 MB/s.</p>
+              <div class="ch-mobile-media"></div>
+            </div>
+            <div class="ch-text" data-ch="4">
+              <span class="num">05 / 08 · Shelf</span>
+              <h3><span class="l1">Pinned.</span><br><span class="l2 grey">On both.</span></h3>
+              <p>A shared list for text, links, Wi-Fi networks and files, with folders and search. Kept offline, synced on reconnect.</p>
+              <div class="ch-mobile-media"></div>
+            </div>
+            <div class="ch-text" data-ch="5">
+              <span class="num">06 / 08 · Find my Mac</span>
+              <h3><span class="l1">Lost it?</span><br><span class="l2 grey">Ring it.</span></h3>
+              <p>Ring your Mac at full volume from the phone, even on mute. Press Found it to stop the sound.</p>
+              <div class="ch-mobile-media"></div>
+            </div>
+            <div class="ch-text" data-ch="6">
+              <span class="num">07 / 08 · Insert from Phone</span>
+              <h3><span class="l1">Shoot from</span><br><span class="l2 grey">your Mac.</span></h3>
+              <p>Right-click › Insert from Phone › Take Photo. The phone's camera opens, and the shot drops straight into your document.</p>
+              <div class="ch-mobile-media"></div>
+            </div>
+            <div class="ch-text" data-ch="7">
+              <span class="num">08 / 08 · And more</span>
+              <h3><span class="l1">Instant Hotspot.</span><br><span class="l2 grey">Phone screen.</span></h3>
+              <p>Join the phone's hotspot from the menu bar, mirror and control its screen, media controls and widgets.</p>
+              <div class="ch-mobile-media"></div>
+            </div>
+          </div>
+          <ol class="ch-index">
+            <li class="on"><span class="tick"></span><button type="button" data-go="0"><em>01</em>Clipboard</button></li>
+            <li><span class="tick"></span><button type="button" data-go="1"><em>02</em>Notifications</button></li>
+            <li><span class="tick"></span><button type="button" data-go="2"><em>03</em>Calls &amp; SMS</button></li>
+            <li><span class="tick"></span><button type="button" data-go="3"><em>04</em>Files &amp; photos</button></li>
+            <li><span class="tick"></span><button type="button" data-go="4"><em>05</em>Shelf</button></li>
+            <li><span class="tick"></span><button type="button" data-go="5"><em>06</em>Find my Mac</button></li>
+            <li><span class="tick"></span><button type="button" data-go="6"><em>07</em>Insert from Phone</button></li>
+            <li><span class="tick"></span><button type="button" data-go="7"><em>08</em>And more</button></li>
+          </ol>
+        </div>
+        <div class="story-side">
+          <div class="ch-stage js-ch-stage">
+            <div class="ch-media on" data-media="clipboard"></div>
+            <div class="ch-media" data-media="notifications"></div>
+            <div class="ch-media" data-media="calls"></div>
+            <div class="ch-media" data-media="files"></div>
+            <div class="ch-media" data-media="shelf"></div>
+            <div class="ch-media" data-media="find"></div>
+            <div class="ch-media" data-media="insert"></div>
+            <div class="ch-media" data-media="more"></div>
+          </div>
+          <div class="story-note">Pinned on scroll · the device stays, the story changes</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ PRIVACY -->
+<section class="sec privacy" id="privacy" aria-labelledby="privacy-title">
+  <div class="wrap">
+    <div class="sec-head center">
+      <span class="label" data-fade>Privacy</span>
+    </div>
+    <h2 class="h-xl js-words" id="privacy-title">
+      <span class="line">No cloud. No account.</span>
+      <span class="line grey">End-to-end encrypted.</span>
+    </h2>
+    <div class="hex" aria-hidden="true"><div class="hex-in js-hex"></div></div>
+    <div class="cols">
+      <div class="col" data-col>
+        <svg viewBox="0 0 34 34" aria-hidden="true"><path d="M11 10l12 13-6 5V6l6 5-12 13" fill="none" stroke="#0C0C0D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="label">Bluetooth LE</span>
+        <h3>Works without shared Wi-Fi.</h3>
+        <p>The link is direct. Wi-Fi only speeds things up.</p>
+      </div>
+      <div class="col" data-col>
+        <svg viewBox="0 0 34 34" aria-hidden="true"><rect x="8" y="15" width="18" height="13" rx="3" fill="none" stroke="#0C0C0D" stroke-width="2"/><path d="M12 15v-3.5a5 5 0 0110 0V15" fill="none" stroke="#0C0C0D" stroke-width="2"/></svg>
+        <span class="label">Noise protocol</span>
+        <h3>Encrypted both ways.</h3>
+        <p>Every byte, on Bluetooth and on Wi-Fi.</p>
+      </div>
+      <div class="col" data-col>
+        <svg viewBox="0 0 34 34" aria-hidden="true"><path d="M13 11l-6 6 6 6M21 11l6 6-6 6" fill="none" stroke="#0C0C0D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="label">MIT license</span>
+        <h3>Read every line.</h3>
+        <p>Free, open source, no telemetry.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ DOWNLOAD -->
+<section class="sec" id="download" aria-labelledby="download-title">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="label" data-fade>Download</span>
+      <h2 class="h-lg" id="download-title" data-split>Two apps. One link.</h2>
+    </div>
+    <div class="dl">
+      <article class="dl-card js-dl">
+        <div class="dl-top"><span class="dl-icon"><svg aria-hidden="true"><use href="#rings"/></svg></span><span class="dl-ver" data-version-label>v0.5.5</span></div>
+        <h3>Tether for Mac</h3>
+        <p class="sub">macOS 13 Ventura or later &nbsp;·&nbsp; Apple silicon &amp; Intel</p>
+        <div class="dl-btns">
+          <a class="btn btn-ink" href="https://github.com/Benfranklinms/Tether/releases/download/v0.5.5/Tether-0.5.5.dmg" data-asset="dmg" data-magnetic><span><svg aria-hidden="true"><use href="#dl"/></svg>Download .dmg</span></a>
+          <a class="btn btn-line" href="https://github.com/Benfranklinms/Tether/releases/download/v0.5.5/Tether-0.5.5.zip" data-asset="zip" data-magnetic><span>.zip</span></a>
+        </div>
+        <div class="note"><b>First launch:</b> Tether isn't notarized, so right-click it in Applications › <b>Open</b>, then Open again. On macOS 15 and later, open it once, then choose <b>Open Anyway</b> in System Settings › Privacy &amp; Security. <a href="https://github.com/Benfranklinms/Tether#installation" target="_blank" rel="noopener">Install guide</a></div>
+      </article>
+      <article class="dl-card js-dl">
+        <div class="dl-top"><span class="dl-icon"><svg aria-hidden="true"><use href="#rings"/></svg></span><span class="dl-ver" data-version-label>v0.5.5</span></div>
+        <h3>Tether for Android</h3>
+        <p class="sub">Android 8.0 or later &nbsp;·&nbsp; signed APK</p>
+        <div class="dl-btns">
+          <a class="btn btn-ink" href="https://github.com/Benfranklinms/Tether/releases/download/v0.5.5/Tether-0.5.5.apk" data-asset="apk" data-magnetic><span><svg aria-hidden="true"><use href="#dl"/></svg>Download .apk</span></a>
+          <a class="btn btn-line" href="#sha" data-magnetic><span>SHA-256</span></a>
+        </div>
+        <div class="sha" id="sha">
+          <span class="k">SIGNER</span>
+          <code class="js-sha" title="APK signing certificate SHA-256">609f5884cb833ca997667181767426b551f7e420bdebafcb7037f8ed01a4030a</code>
+          <button class="copy js-copy" type="button" aria-label="Copy the signer SHA-256"><svg class="i-copy" aria-hidden="true"><use href="#copy"/></svg><span>Copy</span></button>
+        </div>
+        <div class="note"><b>Android 13+:</b> sideloaded apps can't get some permissions until you allow them. Open Settings › Apps › Tether › ⋮ › <b>Allow restricted settings</b> once, then grant Notification access, SMS and Call log. <a href="https://github.com/Benfranklinms/Tether#first-time-setup-and-permissions" target="_blank" rel="noopener">Setup guide</a></div>
+      </article>
+    </div>
+    <div class="dl-all">Every build, with notes: <a href="https://github.com/Benfranklinms/Tether/releases" target="_blank" rel="noopener">GitHub Releases</a></div>
+  </div>
+</section>
+</main>
+
+<!-- ============================================================ FOOTER -->
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-row">
+      <a class="brand" href="#top"><svg aria-hidden="true"><use href="#rings"/></svg>Tether</a>
+      <p>Free and open source. Built on bitchat's BLE mesh, credited.</p>
+      <a class="btn btn-line btn-sm" href="https://github.com/Benfranklinms/Tether" target="_blank" rel="noopener" data-magnetic><span><svg aria-hidden="true"><use href="#gh"/></svg>github.com/Benfranklinms/Tether</span></a>
+    </div>
+    <div class="foot-links">
+      <a href="https://github.com/Benfranklinms/Tether" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/Benfranklinms/Tether/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+      <a href="https://github.com/Benfranklinms/Tether/blob/main/docs/PROTOCOL.md" target="_blank" rel="noopener">Protocol</a>
+      <a href="https://github.com/Benfranklinms/Tether/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/Benfranklinms/Tether/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+    </div>
+  </div>
+  <div class="wordmark js-wordmark" aria-hidden="true"><span>T</span><span>e</span><span>t</span><span>h</span><span>e</span><span>r</span></div>
+  <div class="wrap foot-legal"><span>© 2026 Tether contributors · MIT</span><span>No cookies. No analytics.</span></div>
+</footer>
+
+<script src="assets/js/gsap.min.js" defer></script>
+<script src="assets/js/ScrollTrigger.min.js" defer></script>
+<script src="assets/js/lenis.min.js" defer></script>
+<script src="assets/js/main.js" defer></script>
+</body>
+</html>

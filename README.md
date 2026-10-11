@@ -11,7 +11,7 @@
 [![Platforms](https://img.shields.io/badge/platform-macOS%2013%2B%20%7C%20Android%208.0%2B-lightgrey)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[Download](#installation) · [Features](#features) · [How it works](#how-it-works) · [Setup](#first-time-setup-and-permissions) · [Privacy](#privacy-and-security) · [Build](#building-from-source) · [Protocol](docs/PROTOCOL.md)
+[**Website**](https://benfranklinms.github.io/Tether/) · [Download](#installation) · [Features](#features) · [How it works](#how-it-works) · [Setup](#first-time-setup-and-permissions) · [Privacy](#privacy-and-security) · [Build](#building-from-source) · [Protocol](docs/PROTOCOL.md)
 
 </div>
 
