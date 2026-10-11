@@ -81,6 +81,7 @@ struct MacPage5: View {
                 }
             }
         }
+        ShelfOfflineSettings()
         unlock
     }
 

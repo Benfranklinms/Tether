@@ -28,12 +28,14 @@ object ShelfOffline {
         else -> "${cap / MB} MB"
     }
 
+    private const val KB = 1024L
+
     /** "312 MB of 1 GB" (or "312 MB · Off"). */
     fun usageLabel(used: Long, cap: Long): String {
         val u = when {
             used >= GB -> String.format(java.util.Locale.ROOT, "%.1f GB", used.toDouble() / GB).replace(".0 GB", " GB")
             used >= MB -> "${(used + MB / 2) / MB} MB"
-            used > 0 -> "${maxOf(1, (used + 512) / 1024)} KB"
+            used > 0 -> "${maxOf(1L, (used + KB / 2) / KB)} KB"
             else -> "0 MB"
         }
         return if (cap <= 0) "$u · Off" else "$u of ${capLabel(cap)}"

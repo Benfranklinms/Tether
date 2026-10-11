@@ -748,8 +748,8 @@ private fun ShelfRow(
         },
         positionalThreshold = { it * 0.4f },
     )
-    val missing = state == ShelfCache.State.NOT_DOWNLOADED
-    val (title, detail) = ShelfMeta.lines(item, ::formatBytes, missing)
+    // 0.5.4: no spelled-out "not downloaded" text; the quiet cloud glyph says it (Pure Mono, minimal text).
+    val (title, detail) = ShelfMeta.lines(item, ::formatBytes)
     SwipeToDismissBox(
         state = dismiss,
         enableDismissFromStartToEnd = false,
@@ -844,8 +844,8 @@ private fun ShelfRow(
                             )
                             Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                 // 0.5.4: a file without a copy here keeps its picture and details, plus a small cloud
-                                // ("Available when connected" spelled out while the Mac is away) or a ring while it downloads.
-                                if (item.file != null && state != ShelfCache.State.LOCAL) {
+                                // (only while the Mac is away; its label reads "Available when connected") or a ring while it downloads.
+                                if (item.file != null && (state == ShelfCache.State.NOT_DOWNLOADED || state == ShelfCache.State.FETCHING)) {
                                     OfflineGlyph(state, progress)
                                     Spacer(Modifier.width(6.dp))
                                 }

@@ -341,7 +341,7 @@ fun MoveSheet(
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = Mono.Surface, contentColor = Mono.Text) {
         Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-            val (title, detail) = ShelfMeta.lines(item, ::formatBytes, state == ShelfCache.State.NOT_DOWNLOADED)
+            val (title, detail) = ShelfMeta.lines(item, ::formatBytes)
             Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 ShelfLeading(item, 48.dp, state, thumbnail)
                 Spacer(Modifier.width(16.dp))
@@ -467,7 +467,7 @@ fun FolderNameSheet(title: String, action: String, initial: String, onDone: (Str
 
 /**
  * The small mono state glyph after a file row's detail: a cloud when the copy isn't on this phone
- * ("Available when connected" is spelled out when the Mac is away), a ring while it downloads.
+ * and the Mac is away (labelled "Available when connected"), a ring while it downloads.
  * Always the same size, so a row never jumps.
  */
 @Composable
@@ -481,9 +481,9 @@ fun OfflineGlyph(state: ShelfCache.State, progress: Float?) {
             } else {
                 CircularProgressIndicator(color = Mono.Muted, strokeWidth = 1.5.dp, modifier = Modifier.size(12.dp))
             }
-            ShelfCache.State.REMOTE, ShelfCache.State.NOT_DOWNLOADED ->
+            ShelfCache.State.NOT_DOWNLOADED ->
                 Icon(Icons.Outlined.CloudQueue, contentDescription = ShelfOffline.AWAY, tint = Mono.Muted, modifier = Modifier.size(14.dp))
-            ShelfCache.State.LOCAL -> Unit
+            ShelfCache.State.LOCAL, ShelfCache.State.REMOTE -> Unit
         }
     }
 }

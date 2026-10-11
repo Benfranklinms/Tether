@@ -57,12 +57,19 @@ extension AppModel {
         let used = peer != nil || d.object(forKey: MainPage.storeKey) != nil
         switch WhatsNewPolicy.decide(current: Engine.version, seen: d.string(forKey: Self.seenKey), usedBefore: used) {
         case .show:
+            // Recorded only when the sheet is dismissed (0.5.4): a launch that quits or crashes
+            // before the sheet is seen shows it again next time.
             windows?.show(.main)
             v5.whatsNew = true
         case .record, .none:
-            break
+            d.set(Engine.version, forKey: Self.seenKey)
         }
-        d.set(Engine.version, forKey: Self.seenKey)
+    }
+
+    /// The What's new sheet was dismissed (Continue, click outside, Esc): remember this version.
+    func dismissWhatsNew() {
+        UserDefaults.standard.set(Engine.version, forKey: Self.seenKey)
+        v5.whatsNew = false
     }
 }
 
@@ -131,18 +138,19 @@ struct UpdateSheet: View {
 
 /// The one-time "What's new in 0.5.2" sheet.
 struct WhatsNewSheet: View {
+    @EnvironmentObject var m: AppModel
     @ObservedObject var v5: V5State
     @State private var shown = false
     @Environment(\.accessibilityReduceMotion) private var reduce
 
     var body: some View {
-        SheetChrome(shown: shown, reduce: reduce, dismiss: { v5.whatsNew = false }, content: {
+        SheetChrome(shown: shown, reduce: reduce, dismiss: { m.dismissWhatsNew() }, content: {
             VStack(alignment: .leading, spacing: 14) {
                 Text("What's new in \(WhatsNew.version)").font(Typo.sans(22, .medium)).foregroundColor(Mono.text)
                 MarkdownNotes(text: WhatsNew.notes).frame(maxHeight: 440).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Spacer()
-                    MonoButton(title: "Continue") { v5.whatsNew = false }.frame(width: 140)
+                    MonoButton(title: "Continue") { m.dismissWhatsNew() }.frame(width: 140)
                 }
             }
         })

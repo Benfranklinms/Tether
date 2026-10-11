@@ -71,9 +71,8 @@ extension AppModel {
 
     static func pruneShelfThumbs(live: Set<String>) {
         let fm = FileManager.default
-        for f in (try? fm.contentsOfDirectory(at: shelfThumbStore, includingPropertiesForKeys: nil)) ?? [] {
-            if !live.contains(f.deletingPathExtension().lastPathComponent) { try? fm.removeItem(at: f) }
-        }
+        let all = (try? fm.contentsOfDirectory(at: shelfThumbStore, includingPropertiesForKeys: nil)) ?? []
+        for f in all where !live.contains(f.deletingPathExtension().lastPathComponent) { try? fm.removeItem(at: f) }
     }
 
     static func pruneShelfStore(live: Set<String>) {

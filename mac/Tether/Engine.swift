@@ -382,6 +382,7 @@ final class Engine: ControllerListener, PeripheralDelegate, WifiClientDelegate {
             wifi.close()
             return
         }
+        peripheral?.linkLost()
         let msg: String?
         switch reason {
         case .untrusted: msg = identity.peer == nil ? nil : "A phone that isn't paired tried to connect"
@@ -510,4 +511,9 @@ extension Engine {
             if let watcher { folderWatchers.append(watcher) }
         }
     }
+}
+
+extension Engine {
+    /// A Bluetooth session is up or the pairing window is open (Peripheral's stale-central check).
+    func linkBusy() -> Bool { (controller?.bleReady ?? false) || pairingToken != nil }
 }

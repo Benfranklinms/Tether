@@ -331,15 +331,19 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     private fun checkWatchdog() {
         val eligible = identity.peer != null && pairing == null && central.radioUsable()
-        if (watchdog.observe(SystemClock.elapsedRealtime(), controller.bleReady, eligible)) restartRadio("watchdog")
+        if (watchdog.observe(SystemClock.elapsedRealtime(), controller.bleReady, eligible, interactive())) restartRadio("watchdog")
     }
+
+    /** Screen on or Tether on screen: the watchdog backoff is capped at 60 s (0.5.4). */
+    private fun interactive(): Boolean =
+        foreground || (app.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive == true
 
     /** Tear down Bluetooth (and a Wi-Fi path that isn't carrying the session) and start over. */
     private fun restartRadio(reason: String) {
         radioRestarts++
         Log.w(
             "radio.restart", "reason" to reason, "attempt" to watchdog.attempts, "total" to radioRestarts,
-            "wifi" to controller.wifiReady, "stage" to state.value.diag.stage.name, "nextS" to watchdog.thresholdMs() / MS_PER_S,
+            "wifi" to controller.wifiReady, "stage" to state.value.diag.stage.name, "nextS" to watchdog.thresholdMs(interactive()) / MS_PER_S,
         )
         if (!controller.wifiReady) stopWifi()
         central.hardRestart(reason)

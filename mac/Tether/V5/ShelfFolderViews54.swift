@@ -191,7 +191,8 @@ struct ShelfOfflineSettings: View {
                               selection: Binding(get: { m.shelfOfflineCap }, set: { m.shelfOfflineCap = $0 }),
                               label: { ShelfOffline.capLabel($0) })
             }
-            Row(title: "Remove offline copies", detail: "Frees the space. Shelf items stay; files added on this Mac stay.", divider: false) {
+            Row(title: "Remove offline copies", detail: "Frees the space. Shelf items stay; files added on this Mac stay.",
+                divider: false) {
                 GhostButton(title: "Remove…") { confirm = true }
             }
         }

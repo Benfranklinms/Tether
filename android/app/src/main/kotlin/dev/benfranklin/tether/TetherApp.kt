@@ -22,7 +22,14 @@ class TetherApp : Application() {
         }
         // Writes the stack trace to files/last-crash.txt synchronously, then the handler above runs.
         CrashLog.install(this)
-        if (runtime.ui.value.peer != null) TetherService.start(this)
+        if (runtime.ui.value.peer != null) {
+            TetherService.start(this)
+            // A process restart (after a crash, or Android reclaiming memory) resumes the filtered
+            // scan for the paired Mac at once, even if Android refuses the foreground service from
+            // the background; the service takes over when it can (0.5.4).
+            Log.i("ble.resume_after_restart")
+            runtime.startLink()
+        }
     }
 
     private companion object {

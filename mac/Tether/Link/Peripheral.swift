@@ -31,6 +31,8 @@ protocol PeripheralDelegate: AnyObject {
     func radio(_ diag: RadioDiag)
     /// The current phone has a working secure session (a newer subscriber must not steal it).
     func linkEstablished() -> Bool
+    /// A session is up or pairing is open: a quiet central must not be treated as stale.
+    func linkBusy() -> Bool
 }
 
 /// The Mac's side of the Bluetooth link: a GATT peripheral that advertises Tether's service
@@ -59,6 +61,11 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
     private var serviceAdded = false
     private var advertiseRetry: DispatchWorkItem?
     private var shutDown = false
+    private var advWatchdog: DispatchSourceTimer?
+    /// Last time the current central wrote to us (ms since boot): a central that has gone quiet
+    /// while no secure session is up is stale (the phone crashed without a disconnect).
+    private var lastHeard: UInt64 = 0
+    private static let staleCentralMs: UInt64 = 45_000
     private var diag = RadioDiag() { didSet { if diag != oldValue { delegate?.radio(diag) } } }
 
     init(queue: DispatchQueue, delegate: PeripheralDelegate) {
@@ -66,6 +73,52 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
         self.delegate = delegate
         super.init()
         manager = CBPeripheralManager(delegate: self, queue: queue, options: [CBPeripheralManagerOptionShowPowerAlertKey: true])
+        startAdvertisingWatchdog()
+    }
+
+    private static func nowMs() -> UInt64 { DispatchTime.now().uptimeNanoseconds / 1_000_000 }
+
+    /// Every 10 s: advertising that should be on but isn't is started again, and a central that
+    /// has been silent for 45 s without a secure session is dropped (0.5.4: after a phone crash the
+    /// Mac kept the dead connection, stopped advertising, and the phone couldn't find it for minutes).
+    private func startAdvertisingWatchdog() {
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        t.schedule(deadline: .now() + .seconds(10), repeating: .seconds(10), leeway: .seconds(2))
+        t.setEventHandler { [weak self] in self?.advertisingWatchdogTick() }
+        t.resume()
+        advWatchdog = t
+    }
+
+    private func advertisingWatchdogTick() {
+        guard !shutDown, manager.state == .poweredOn, serviceAdded else { return }
+        if central != nil, !(delegate?.linkBusy() ?? true), Self.nowMs() - lastHeard > Self.staleCentralMs {
+            Log.warn("ble.stale_central_dropped")
+            dropCentral()
+            return
+        }
+        if wantAdvertising && !manager.isAdvertising {
+            Log.warn("ble.adv_watchdog_restart", ["linked": "\(central != nil)"])
+            diag.advertising = false
+            applyAdvertising()
+        }
+    }
+
+    /// The secure session over Bluetooth ended (timeout, protocol error, the phone went away).
+    /// If no new session is up shortly, forget the central and advertise again from scratch so
+    /// the phone can find this Mac at once instead of waiting on a dead connection.
+    func linkLost() {
+        queue.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self, !self.shutDown, !(self.delegate?.linkEstablished() ?? false) else { return }
+            if self.central != nil {
+                Log.info("ble.link_lost_reset")
+                self.central = nil
+                self.outbox.removeAll()
+                self.diag.subscribed = false
+                self.republish()
+            } else {
+                self.refreshAdvertising()
+            }
+        }
     }
 
     /// Advertise while paired or pairing; idle otherwise so nearby phones don't connect for nothing.
@@ -87,6 +140,8 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
     func shutdown() {
         shutDown = true
         advertiseRetry?.cancel()
+        advWatchdog?.cancel()
+        advWatchdog = nil
         if manager.isAdvertising { manager.stopAdvertising() }
         manager.removeAllServices()
         manager.delegate = nil
@@ -198,6 +253,7 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
             break
         }
         central = c
+        lastHeard = Self.nowMs()
         outbox.removeAll()
         p.setDesiredConnectionLatency(.low, for: c)
         let maxFragment = min(c.maximumUpdateValueLength, Self.maxNotify)
@@ -218,12 +274,14 @@ final class Peripheral: NSObject, CBPeripheralManagerDelegate {
         diag.subscribed = false
         Log.info("ble.unsubscribed")
         delegate?.linkDown()
+        refreshAdvertising()
     }
 
     func peripheralManager(_ p: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         for r in requests where r.characteristic.uuid == charUUID {
             guard let v = r.value else { continue }
             if let current = central, r.central.identifier == current.identifier {
+                lastHeard = Self.nowMs()
                 delegate?.fragment(v)
             } else {
                 // Not subscribed yet (or the subscription callback hasn't arrived): hold it.
