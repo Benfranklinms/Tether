@@ -12,14 +12,13 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.benfranklin.tether.data.HomeSection
 import dev.benfranklin.tether.data.HomeSections
 import dev.benfranklin.tether.data.SettingsRepository
-import dev.benfranklin.tether.ui.screens.EDIT_ROW
 import dev.benfranklin.tether.ui.screens.HomeActions
 import dev.benfranklin.tether.ui.screens.HomeData
 import dev.benfranklin.tether.ui.screens.HomeModel
@@ -97,20 +96,14 @@ class HomePersistenceTest {
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Edit Home"))
         compose.onNodeWithText("Edit Home").performClick()
         GestureScenarios.settle(compose)
-        compose.onNodeWithTag("edit-row-clipboard").performClick() // add
-        compose.onNodeWithTag("edit-row-shelf").performClick() // remove
-        val rowPx = with(compose.density) { EDIT_ROW.toPx() }
-        compose.onNodeWithTag("edit-handle-transfers").performTouchInput { // reorder: Transfers to the top
-            down(center)
-            repeat(20) {
-                moveBy(Offset(0f, -rowPx * 2.2f / 20))
-                advanceEventTime(16)
-            }
-            up()
-        }
+        // Driven through semantics (Robolectric doesn't hit-test the animated sheet; the emulator
+        // GestureDeviceTest does the same with real touches).
+        compose.onNodeWithTag("edit-row-clipboard").performSemanticsAction(SemanticsActions.OnClick) // add
+        compose.onNodeWithTag("edit-row-shelf").performSemanticsAction(SemanticsActions.OnClick) // remove
+        repeat(2) { GestureScenarios.customAction(compose, "Move Recent transfers up") } // reorder: Transfers to the top
         compose.waitForIdle()
         assertTrue(sectionsOf(repo).isOn(HomeSection.CLIPBOARD))
-        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithText("Done").performSemanticsAction(SemanticsActions.OnClick)
         GestureScenarios.settle(compose)
         // On Home immediately, without leaving the screen.
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Clipboard history"))

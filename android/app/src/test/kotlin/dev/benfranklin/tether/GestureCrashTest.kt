@@ -29,7 +29,7 @@ class GestureCrashTest {
 
     @Test fun editHomeSheetToggleAndReorder() {
         val saved = GestureScenarios.home(compose)
-        GestureScenarios.editMode(compose, saved)
+        GestureScenarios.editMode(compose, saved, touch = false)
     }
 
     @Test fun editHomeListDragRapidAndMultiTouch() {

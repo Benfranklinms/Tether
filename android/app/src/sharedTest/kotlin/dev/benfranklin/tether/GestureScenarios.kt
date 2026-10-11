@@ -30,6 +30,11 @@ import dev.benfranklin.tether.ui.screens.EDIT_ROW
 import dev.benfranklin.tether.ui.screens.EditHomeContent
 import dev.benfranklin.tether.v7.MacStatusUi
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.onAllNodes
+import androidx.compose.ui.test.performSemanticsAction
 import dev.benfranklin.tether.core.proto.ShelfItem
 import dev.benfranklin.tether.core.transfer.Direction
 import dev.benfranklin.tether.core.transfer.TransferRecord
@@ -172,6 +177,8 @@ object GestureScenarios {
     /** Hold then drag far beyond the screen, in both directions, on controls and rows. */
     fun holdAndDrag(rule: ComposeContentTestRule) {
         for (d in listOf("Send clipboard", "Photos")) {
+            // A drag on a button scrolls the list; bring the control back before holding it (small emulator screens).
+            rule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription(d, substring = true))
             rule.node(d).performTouchInput {
                 down(center)
                 advanceEventTime(1_000)
@@ -226,17 +233,58 @@ object GestureScenarios {
     }
 
     /** Edit Home: open the sheet, toggle sections, drag-reorder (incl. rapid flicks and two fingers), Move up/down, Done. */
-    fun editMode(rule: ComposeContentTestRule, saved: () -> HomeSections) {
+    /**
+     * [touch] = real touches inside the sheet (the emulator). Robolectric doesn't hit-test the sheet
+     * reliably while it animates in (taps landed on the scrim behind it although the same test passes
+     * on the emulator), so on the JVM the sheet is driven through its semantics actions instead: the
+     * same toggles and the Move up / Move down actions; touch reordering on the JVM is covered by
+     * [editContent] + [editSheetGestures] on the list itself.
+     */
+    fun editMode(rule: ComposeContentTestRule, saved: () -> HomeSections, touch: Boolean = true) {
         rule.onNode(hasScrollAction()).performScrollToNode(hasText("Edit Home"))
         rule.onNodeWithText("Edit Home").performClick()
         settle(rule)
         rule.onNodeWithText("Done").assertExists()
-        editSheetGestures(rule, saved)
-        rule.onNodeWithText("Done").performClick()
+        if (touch) {
+            editSheetGestures(rule, saved)
+        } else {
+            editSheetBySemantics(rule, saved)
+        }
+        val done = rule.onNodeWithText("Done")
+        if (touch) done.performClick() else done.performSemanticsAction(SemanticsActions.OnClick)
         settle(rule)
         check(rule.onAllNodesWithText("Done").fetchSemanticsNodes().isEmpty()) { "Done did not close the sheet" }
-        // The toggled sections are on Home now.
+        // The toggled sections are on Home now, without leaving the screen.
         rule.onNode(hasScrollAction()).performScrollToNode(hasText("Clipboard history"))
+        rule.onNodeWithText("Clipboard history").assertExists()
+    }
+
+    /** Toggle and reorder through the sheet's semantics (what TalkBack uses). */
+    fun editSheetBySemantics(rule: ComposeContentTestRule, saved: () -> HomeSections) {
+        rule.onNodeWithTag("edit-row-clipboard").performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        check(saved().isOn(HomeSection.CLIPBOARD)) { "Clipboard history toggle did not save" }
+        rule.onNodeWithTag("edit-row-photos").performSemanticsAction(SemanticsActions.OnClick)
+        rule.onNodeWithTag("edit-row-photos").performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        check(!saved().isOn(HomeSection.PHOTOS)) { "Photos double toggle should be off" }
+        repeat(3) { customAction(rule, "Move Shelf up") }
+        check(saved().order.first() == HomeSection.SHELF) { "Move up did not move Shelf to the top: ${saved().order}" }
+        // Past the top: no-op, never out of range.
+        customAction(rule, "Move Shelf up")
+        customAction(rule, "Move Find my Mac down")
+        check(saved().order.size == HomeSection.entries.size) { "moves broke the list" }
+    }
+
+    /** Runs the accessibility custom action labelled [label] on the first node that has it. */
+    fun customAction(rule: ComposeContentTestRule, label: String) {
+        val matcher = SemanticsMatcher("has custom action \"$label\"") { n ->
+            n.config.getOrNull(SemanticsActions.CustomActions)?.any { it.label == label } == true
+        }
+        val node = rule.onAllNodes(matcher, useUnmergedTree = true).onFirst().fetchSemanticsNode()
+        val action = node.config[SemanticsActions.CustomActions].first { it.label == label }
+        rule.runOnIdle { action.action() }
+        rule.waitForIdle()
     }
 
     /** Lets the sheet's spring finish (the test clock doesn't always run it to rest on waitForIdle). */
