@@ -53,7 +53,12 @@ Tether brings your Android phone to your Mac: texts, calls, notifications you ca
 - **Reconnects faster.** The Mac restarts Bluetooth advertising when a link is lost and checks it regularly, so the phone finds it right away after a crash or restart; the phone retries at least once a minute while you're using it, and picks the Mac back up as soon as Tether restarts. A phone reconnecting to a Mac that still had the old session no longer fails with a protocol error.
 - **Snippet cards** no longer repeat their title in the detail line.
 - **What's new** shows reliably after updating, and on the Mac it stays until you close it.
-- **New Home** on the phone.
+- **A calmer Home on the phone.** Your Mac and its battery at the top ("Connected · Wi-Fi · 82%", "Connecting…" or "Not connected" with Reconnect), then one block with Clipboard, File, Hotspot and Photos next to what's playing on your Mac, your latest transfers with live progress, and the newest Shelf items. Empty sections are just one grey line.
+- **Edit Home** at the bottom of Home: drag sections into the order you like and switch Clipboard history, Photos or Find my Mac on. Changes show on Home right away and are kept after a restart. Your 0.5.3 layout carries over. (No more long-press wiggle mode, which could close the app.)
+- **Photos button**: pick photos and videos to send to your Mac; a badge counts the new ones.
+- **Home never shows what's on your clipboard**: Send clipboard just says Clipboard, and Clipboard history says what kind of thing was copied ("Phone number", "Link"), not the text.
+- **Home fits large text and every navigation style**: nothing is cut off at bigger font sizes, and nothing hides under the status bar or the three-button or gesture navigation bar.
+- **A broken saved Home layout can no longer reset all your settings**; Home just goes back to its default.
 
 Every release's changes are in [CHANGELOG.md](CHANGELOG.md).
 
