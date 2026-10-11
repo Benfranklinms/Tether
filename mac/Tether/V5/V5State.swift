@@ -111,6 +111,8 @@ final class V5State: ObservableObject {
     // 0.5.4: the folder page that is open (nil = the Shelf), the folder chip a dragged card is over,
     // offline-copy pins (local), space used, and download progress per item.
     @Published var shelfFolder: String?
+    /// Screenshots only (--demo): which Shelf items have a copy on this Mac; nil = all of them.
+    @Published var demoShelfLocal: Set<String>?
     @Published var shelfChipHover: String?
     @Published var shelfPins = ShelfOffline.Pins()
     @Published var shelfOfflineUsed: Int64 = 0

@@ -331,7 +331,8 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
 
     private fun checkWatchdog() {
         val eligible = identity.peer != null && pairing == null && central.radioUsable()
-        if (watchdog.observe(SystemClock.elapsedRealtime(), controller.bleReady, eligible, interactive())) restartRadio("watchdog")
+        val now = SystemClock.elapsedRealtime()
+        if (watchdog.observe(now, controller.bleReady, eligible, interactive())) restartRadio("watchdog")
     }
 
     /** Screen on or Tether on screen: the watchdog backoff is capped at 60 s (0.5.4). */

@@ -63,4 +63,23 @@ class GestureCrashTest {
     @Test fun shelfRowsHoldAndDrag() = GestureScenarios.shelf(compose)
 
     @Test fun transfersRowsHold() = GestureScenarios.transfers(compose)
+
+    // 0.5.4 Shelf folders
+    @Test fun shelfDragOntoFolderChip() {
+        ShelfGestureScenarios.dragOntoChip(compose)
+    }
+
+    @Test fun shelfMoveToSheet() {
+        ShelfGestureScenarios.moveSheet(compose)
+    }
+
+    @Test fun shelfDeleteFolderFromChip() {
+        ShelfGestureScenarios.deleteFolder(compose)
+    }
+
+    @Test fun shelfDeleteFolderFromItsPage() {
+        ShelfGestureScenarios.deleteFolderFromItsPage(compose)
+    }
+
+    @Test fun shelfAddSheetInsideAppSharedScope() = ShelfGestureScenarios.toggleAddSheet(compose)
 }

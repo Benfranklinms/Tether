@@ -251,6 +251,24 @@ enum Screenshots {
             })
         },
         Shot(name: "main-whats-new", scene: .connected) { AnyView(MainShot(page: .home) { m in m.v5.whatsNew = true }) },
+        // 0.5.4 Shelf folders + offline copies
+        Shot(name: "main-shelf-folders", scene: .connected) { AnyView(MainShot(page: .shelf)) },
+        Shot(name: "main-shelf-in-folder", scene: .connected) {
+            AnyView(MainShot(page: .shelf) { m in m.v5.shelfFolder = "demo-folder-0" })
+        },
+        Shot(name: "main-shelf-offline", scene: .connected) {
+            AnyView(MainShot(page: .shelf) { m in
+                m.link = .offline
+                m.v5.demoShelfLocal = ["demo-file-1", "demo-file-2"]
+            })
+        },
+        Shot(name: "shelf-new-folder", scene: .connected) {
+            AnyView(FolderNameCard(naming: .new(nil), done: { _ in }).frame(width: 360).padding(24).background(Mono.bg))
+        },
+        Shot(name: "settings-shelf-offline", scene: .connected) {
+            AnyView(VStack(alignment: .leading, spacing: 0) { ShelfOfflineSettings() }
+                .padding(24).frame(width: 640).background(Mono.bg))
+        },
     ]
 
     /// The main window on one page (the model's V5State is swapped in by `next`).

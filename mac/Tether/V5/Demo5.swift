@@ -32,6 +32,19 @@ enum Demo5 {
         return all.sorted { $0.created < $1.created }.reduce(ShelfState()) { $0.add($1) }
     }
 
+    /// 0.5.4: three folders, a few items filed in them (the rest stay loose, as in the mockup).
+    static func demoFolders(_ start: ShelfState, now t: Int64) -> ShelfState {
+        var s = start
+        for (i, name) in ["Work", "Receipts", "Trip"].enumerated() {
+            s = s.createFolder(id: "demo-folder-\(i)", name: name, now: t - Int64(10 - i) * 60_000) ?? s
+        }
+        let filed: [(String, String)] = [
+            ("demo-file-4", "demo-folder-0"), ("demo-0", "demo-folder-0"), ("demo-file-3", "demo-folder-1"), ("demo-1", "demo-folder-2"),
+        ]
+        for (item, folder) in filed { s = s.moveTo(item, folder: folder, now: t) ?? s }
+        return s
+    }
+
     /// Thumbnails for the demo's picture files (there is no encrypted local copy in demo mode).
     static let shelfThumbs: [String: NSImage] = ["demo-file-2": image(0.62), "demo-file-3": image(0.42)]
 
@@ -52,7 +65,7 @@ enum Demo5 {
         for (i, s) in samples.enumerated() {
             shelf = shelf.add(ShelfState.item(from: s.0, id: "demo-\(i)", from: s.1, now: t - s.2))
         }
-        v.shelf = demoShelfFiles(shelf, now: t)
+        v.shelf = demoFolders(demoShelfFiles(shelf, now: t), now: t)
         v.otp = OtpPayload(code: "482913", app: "Messages", src: "sms", ts: t - 20_000)
         _ = v.continueCards.add(ContinuePayload(id: "p1", kind: ContinueKinds.photo, title: "IMG_20261010_163210.jpg",
                                                 subtitle: "Just now · 3.1 MB", root: FsRoots.dcim, path: "Camera/IMG_20261010_163210.jpg",

@@ -7,6 +7,15 @@ fails the release.
 
 ## 0.5.4
 
+- **Shelf folders.** Group Shelf items into folders on both devices. Folders sit as chips above your Shelf: tap one to open it, drag an item onto a chip to file it, or use **Move to…**. Rename, delete (items go back to your Shelf, nothing is removed) or keep a whole folder offline from its menu.
+- **The Shelf holds up to 500 items** (was 50), and large Shelves sync in small pieces so nothing stalls.
+- **Offline copies with a limit you choose.** Shelf files are kept on each device so they open, copy and save while the other one is away, inside folders too. Settings › Shelf sets the space they may use (500 MB, 1 GB, 2 GB, 5 GB or Off; 1 GB on the phone, 2 GB on the Mac by default). The least recently opened go first; items you keep offline and files you added on that device always stay.
+- **Works without a connection.** Browse, open and copy what is on the device, and create, rename, delete and move folders; changes sync when the devices reconnect. Items not on this device yet show a small cloud.
+- **No more Keychain password prompts on the Mac** for the Shelf after an update.
+- **Fixed a crash when opening Tether** on the phone ("layouts are not part of the same hierarchy").
+- **Reconnects faster.** The Mac restarts Bluetooth advertising when a link is lost and checks it regularly, so the phone finds it right away after a crash or restart; the phone retries at least once a minute while you're using it, and picks the Mac back up as soon as Tether restarts. A phone reconnecting to a Mac that still had the old session no longer fails with a protocol error.
+- **Snippet cards** no longer repeat their title in the detail line.
+- **What's new** shows reliably after updating, and on the Mac it stays until you close it.
 - **A calmer Home on the phone.** Your Mac and its battery at the top ("Connected · Wi-Fi · 82%", "Connecting…" or "Not connected" with Reconnect), then one block with Clipboard, File, Hotspot and Photos next to what's playing on your Mac, your latest transfers with live progress, and the newest Shelf items. Empty sections are just one grey line.
 - **Edit Home** at the bottom of Home: drag sections into the order you like and switch Clipboard history, Photos or Find my Mac on. Changes show on Home right away and are kept after a restart. Your 0.5.3 layout carries over. (No more long-press wiggle mode, which could close the app.)
 - **Photos button**: pick photos and videos to send to your Mac; a badge counts the new ones.

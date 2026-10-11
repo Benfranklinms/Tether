@@ -25,7 +25,7 @@ Tether brings your Android phone to your Mac: texts, calls, notifications you ca
 
 ## Contents
 
-- [What's new in 0.5.3](#whats-new-in-053)
+- [What's new in 0.5.4](#whats-new-in-054)
 - [Screenshots](#screenshots)
 - [Features](#features)
 - [How it works](#how-it-works)
@@ -42,26 +42,18 @@ Tether brings your Android phone to your Mac: texts, calls, notifications you ca
 - [Credits](#credits)
 - [License](#license)
 
-## What's new in 0.5.3
+## What's new in 0.5.4
 
-- **Take Photo and Scan Document work from the Mac menu bar.** The phone now really opens the camera even when Tether is in the background (Android blocks that unless Tether is allowed to). If it can't, your phone shows a notification to tap, and the Mac tells you so instead of waiting silently.
-- **Copy on a Shelf photo or file copies the file itself.** Paste in Finder, Mail or Messages gives you the picture or the document, not a line of text.
-- **Shelf files open even when the other device is away.** Every Shelf file up to 100 MB is copied to both devices in the background (encrypted, like the rest of the Shelf).
-- **Rename Shelf items** on both devices (right-click › Rename or double-click the title on the Mac; long-press or the detail screen on the phone). The new name is used when you open or copy the file.
-- **Search the Shelf**: ⌘F on the Mac, the search bar on the phone. Searches titles, contents, file names and types.
-- **Shelf cards say "Word document" or "PDF"** instead of long technical types, and image files show a thumbnail.
-- **Transfers on the phone stay tidy**: Home shows the latest three with **See all**, a full list grouped by day with Sent / Received filters, swipe to delete and Clear all. Finished transfers fold away after a day.
-- **Nothing scrolls under the phone's status bar or navigation bar** any more, on any screen, and the clock and battery icons stay readable in light mode too.
-- **Find my Mac moved to Settings** on the phone, so Home stays short.
-- **Shelf snippet cards** no longer repeat their title in the preview.
-- **Continue on Mac cards** wait until a new photo is fully saved, so the thumbnail and size are right (no more black thumbnails).
-- **What's new** now shows after every update, including updates from 0.5.1 and older.
-- **A new Home on the phone, made of panels.** Send clipboard, Send file, Shelf, Mac battery, Clipboard, Now playing on your Mac, Recent transfers, Photos and Hotspot. Long-press or tap Edit to rearrange: drag to move, − to remove, the corner to resize, + to add from the panel picker. Your layout is saved.
-- **See and control your Mac from the phone**: the Mac panel shows its battery, Now playing shows what Music or Spotify is playing on the Mac with play/pause and skip.
-- **Send recent photos from Home**: pick a few in the Photos panel and tap Send.
-- **Redesigned Shelf on both devices**: real thumbnails, a document icon with its type (PDF, DOC, ZIP), one calm line of detail ("PDF · 454 KB", "forms.gle", "Snippet · 2 lines"), where it came from and when, grouped Today and Earlier. On the Mac, hover a card for Copy, Open, Rename and More; Rename selects the name without its extension.
-- **Transfers redesigned on the phone**: a large title, All / Sent / Received pills, the time of each transfer, and a percentage while it moves. Long-press a row to cancel, retry or remove.
-- **Clear all notifications on the Mac**, in the main window and the menu-bar panel. It also clears their banners, and with Dismiss on both on, dismisses them on your phone too. It asks first only when there are many.
+- **Shelf folders.** Group Shelf items into folders on both devices. Folders sit as chips above your Shelf: tap one to open it, drag an item onto a chip to file it, or use **Move to…**. Rename, delete (items go back to your Shelf, nothing is removed) or keep a whole folder offline from its menu.
+- **The Shelf holds up to 500 items** (was 50), and large Shelves sync in small pieces so nothing stalls.
+- **Offline copies with a limit you choose.** Shelf files are kept on each device so they open, copy and save while the other one is away, inside folders too. Settings › Shelf sets the space they may use (500 MB, 1 GB, 2 GB, 5 GB or Off; 1 GB on the phone, 2 GB on the Mac by default). The least recently opened go first; items you keep offline and files you added on that device always stay.
+- **Works without a connection.** Browse, open and copy what is on the device, and create, rename, delete and move folders; changes sync when the devices reconnect. Items not on this device yet show a small cloud.
+- **No more Keychain password prompts on the Mac** for the Shelf after an update.
+- **Fixed a crash when opening Tether** on the phone ("layouts are not part of the same hierarchy").
+- **Reconnects faster.** The Mac restarts Bluetooth advertising when a link is lost and checks it regularly, so the phone finds it right away after a crash or restart; the phone retries at least once a minute while you're using it, and picks the Mac back up as soon as Tether restarts. A phone reconnecting to a Mac that still had the old session no longer fails with a protocol error.
+- **Snippet cards** no longer repeat their title in the detail line.
+- **What's new** shows reliably after updating, and on the Mac it stays until you close it.
+- **New Home** on the phone.
 
 Every release's changes are in [CHANGELOG.md](CHANGELOG.md).
 
@@ -163,7 +155,7 @@ All screenshots are generated by CI from demo data on every build ([`docs/screen
 | **Transfers** | On the phone, the *Recent transfers* panel shows the latest three with *See all*; the Transfers screen groups everything by day with *All* / *Sent* / *Received* pills, the time of each transfer, a percentage while it moves, swipe to delete, long-press to cancel or retry, and *Clear all*. Finished transfers fold away after a day. |
 | **Home panels** | The phone's Home is made of panels you arrange: Send clipboard, Send file, Shelf, Mac (battery), Clipboard (recent copies), Now playing on the Mac (play/pause, skip), Recent transfers, Photos (pick recent photos and send) and Hotspot. Long-press or *Edit*: drag to reorder, − to remove, the corner to resize (small, wide, large), + to add from the picker. The layout is saved. |
 | **Clipboard** | Copy on one device, paste on the other, text and images. History of the last 20 items. Password-manager items are skipped. |
-| **Shelf** | A pinned list shared by both devices: text, links, Wi-Fi networks (password hidden until you ask), addresses, code snippets and files. Add from either side, from the clipboard history or the Share menu; drag to reorder; up to 50 items. **Rename** any item (double-click or right-click › Rename on the Mac; long-press or the detail screen on the phone). **Search** titles, contents, file names and types (<kbd>⌘</kbd><kbd>F</kbd> on the Mac, the search bar on the phone). **Offline files:** every Shelf file up to 100 MB is copied, encrypted, to both devices in the background, so it opens even when the other device is away. Rows show real thumbnails or a document icon with its type, one line of detail ("PDF · 454 KB", "forms.gle"), where and when it was added, grouped *Today* and *Earlier*; on the Mac, hover a card for Copy, Open, Rename and More. *Copy* puts the file or picture itself on the clipboard. |
+| **Shelf** | A pinned list shared by both devices: text, links, Wi-Fi networks (password hidden until you ask), addresses, code snippets and files. Add from either side, from the clipboard history or the Share menu; drag to reorder; up to 500 items. **Folders** sit as chips above the list: tap to open, drag an item onto a chip or use *Move to…*; rename, delete (items go back to the Shelf) or keep a folder offline. **Rename** any item (double-click or right-click › Rename on the Mac; long-press or the detail screen on the phone). **Search** titles, contents, file names and types (<kbd>⌘</kbd><kbd>F</kbd> on the Mac, the search bar on the phone). **Offline files:** Shelf files up to 100 MB are kept, encrypted, on each device within a limit you set in Settings › Shelf (500 MB to 5 GB, or Off; least recently opened go first, pinned items and your own files stay), so they open, copy and save while the other device is away. Folder changes made offline sync on reconnect. Rows show real thumbnails or a document icon with its type, one line of detail ("PDF · 454 KB", "forms.gle"), where and when it was added; on the Mac, hover a card for Copy, Open, Rename and More. *Copy* puts the file or picture itself on the clipboard. |
 | **Insert from Phone** | *Take Photo* or *Scan Document* on the Mac (app or menu bar) opens the phone's camera or document scanner, even when Tether is in the background; the result is pasted into the app you were using (or saved to the Desktop and copied when Tether may not paste). If the phone can't open the camera by itself, it shows a notification to tap and the Mac tells you so. Turn it on or off in the phone's Settings › Insert from Phone. |
 | **Continue on Mac** | A new photo, a finished download, a copied or shared link, the song that is playing or the current browser tab appear as cards with one click to open them on the Mac. |
 | **Open on phone** | Send a link or text from any Mac app (Services menu, Share menu or `tether://send`) to open on the phone. |
