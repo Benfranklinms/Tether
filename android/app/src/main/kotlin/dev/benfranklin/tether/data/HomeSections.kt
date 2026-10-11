@@ -101,7 +101,6 @@ data class HomeSections(val order: List<HomeSection>, val hidden: Set<HomeSectio
     }
 
     companion object {
-        /** A fresh install: the approved mockup (Quick controls + Now playing, Transfers, Shelf). */
         /** 0.5.5 (approved Home v2): the Shelf carousel sits above Recent transfers. Saved layouts keep their order. */
         val DEFAULT = HomeSections(
             listOf(
@@ -162,7 +161,8 @@ data class HomeSections(val order: List<HomeSection>, val hidden: Set<HomeSectio
         }
 
         private fun complete(order: MutableList<HomeSection>, hidden: MutableSet<HomeSection>): HomeSections {
-            HomeSection.entries.filterNot { it in order }.forEach {
+            // Missing sections go in at their default place (0.5.5 default order: Shelf before Transfers).
+            DEFAULT.order.filterNot { it in order }.forEach {
                 order += it
                 if (!it.defaultOn) hidden += it
             }
