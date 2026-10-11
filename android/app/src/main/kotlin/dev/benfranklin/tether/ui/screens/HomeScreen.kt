@@ -51,7 +51,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.DragHandle
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Laptop
 import androidx.compose.material.icons.outlined.Settings
@@ -357,7 +357,8 @@ private fun Header(m: HomeModel, data: HomeData, a: HomeActions) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         LinkDot(dot)
                         Spacer(Modifier.width(8.dp))
-                        Text(text, style = MaterialTheme.typography.bodyLarge, color = Mono.Muted, maxLines = 1,
+                        // Two lines at most: at large font sizes the battery wraps instead of being cut off.
+                        Text(text, style = MaterialTheme.typography.bodyLarge, color = Mono.Muted, maxLines = 2,
                             overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     }
                 }
@@ -384,7 +385,7 @@ private fun Header(m: HomeModel, data: HomeData, a: HomeActions) {
             line.reconnect, enter = fadeIn(Motion.fade(reduce)) + expandVertically(Motion.spring(reduce)),
             exit = fadeOut(Motion.fade(reduce)) + shrinkVertically(Motion.spring(reduce)),
         ) {
-            Row(Modifier.padding(start = 62.dp, top = 6.dp)) {
+            Row(Modifier.padding(start = 62.dp, top = 8.dp)) {
                 val source = remember { MutableInteractionSource() }
                 Text(
                     "Reconnect", style = MaterialTheme.typography.labelLarge, color = Mono.Text,
@@ -713,7 +714,7 @@ private fun EditRow(
                 Modifier.size(width = 64.dp, height = EDIT_ROW).then(if (enabled) handle else Modifier).testTag("edit-handle-${section.id}")
                     .semantics { contentDescription = "Reorder ${section.title}" },
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Outlined.DragHandle, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(22.dp)) }
+            ) { Icon(Icons.Outlined.Menu, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(22.dp)) }
             Row(
                 Modifier.weight(1f).fillMaxSize().testTag("edit-row-${section.id}")
                     .toggleable(value = on, enabled = enabled, role = Role.Switch, onValueChange = onToggle)

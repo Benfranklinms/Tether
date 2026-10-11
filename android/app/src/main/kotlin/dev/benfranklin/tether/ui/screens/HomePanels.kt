@@ -249,7 +249,7 @@ private fun SquareButton(
             Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(if (size < 70.dp) 22.dp else 26.dp))
             Spacer(Modifier.height(if (size < 70.dp) 6.dp else 10.dp))
             Text(
-                label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = squareLabelSp(size, LocalDensity.current.fontScale)),
+                label, style = fitLabel(label, size),
                 color = if (filled) Mono.Bg else Mono.Text.copy(alpha = 0.86f), maxLines = 1, softWrap = false,
             )
         }
@@ -274,6 +274,25 @@ internal fun squareLabelSp(size: Dp, fontScale: Float): androidx.compose.ui.unit
 }
 
 private const val MAX_LABEL_SCALE = 1.15f
+private const val MIN_LABEL_SP = 10f
+
+/** The label style at [squareLabelSp], stepped down until the label fits inside the square with a margin. */
+@Composable
+private fun fitLabel(label: String, size: Dp): androidx.compose.ui.text.TextStyle {
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val density = LocalDensity.current
+    val base = MaterialTheme.typography.bodyMedium
+    return remember(label, size, density) {
+        val room = with(density) { (size - 14.dp).roundToPx() }.coerceAtLeast(1)
+        var sp = squareLabelSp(size, density.fontScale).value
+        var style = base.copy(fontSize = sp.sp)
+        while (sp > MIN_LABEL_SP && measurer.measure(label, style, maxLines = 1, softWrap = false).size.width > room) {
+            sp -= 0.5f
+            style = base.copy(fontSize = sp.sp)
+        }
+        style
+    }
+}
 
 /** The Now playing tile inside the block: art, title, artist, progress, prev/play/next; or a calm idle state. */
 @Composable
@@ -376,10 +395,13 @@ internal fun PlayerRow(m: HomeModel, data: HomeData, a: HomeActions, blocked: Bo
 @Composable
 private fun rememberProgress(media: dev.benfranklin.tether.core.proto.MacMedia, at: Long, now: Long): Float {
     val reduce = LocalReduceMotion.current
+    // Advance from Home's "now" by real elapsed time (not the wall clock directly), so a fixed "now"
+    // (screenshots, tests) shows the real position instead of a bar run to the end.
+    val started = remember { System.currentTimeMillis() }
     var tick by remember { mutableLongStateOf(now) }
     LaunchedEffect(media.playing, at) {
         while (media.playing) {
-            tick = System.currentTimeMillis()
+            tick = now + (System.currentTimeMillis() - started)
             delay(1_000)
         }
     }
@@ -560,7 +582,7 @@ private fun TransferRow(t: TransferRecord, now: Long, a: HomeActions) {
     val progress by animateFloatAsState(t.progress, Motion.spring(reduce, stiffness = Spring.StiffnessLow, damping = 1f), label = "p")
     val running = !t.status.isFinal && t.status != TransferStatus.WAITING
     Row(
-        Modifier.fillMaxWidth().height(ROW_HEIGHT).clip(RoundedCornerShape(12.dp))
+        Modifier.fillMaxWidth().heightIn(min = ROW_HEIGHT).clip(RoundedCornerShape(12.dp))
             .clickable(enabled = t.status == TransferStatus.DONE) {
                 Haptics.tick(view)
                 a.openTransfer(t)
@@ -655,7 +677,7 @@ internal fun ShelfSection(m: HomeModel, data: HomeData, a: HomeActions) {
         if (i > 0) RowDivider()
         val (title, sub) = ShelfMeta.lines(item, ::formatBytes)
         Row(
-            Modifier.fillMaxWidth().height(ROW_HEIGHT).clip(RoundedCornerShape(12.dp))
+            Modifier.fillMaxWidth().heightIn(min = ROW_HEIGHT).clip(RoundedCornerShape(12.dp))
                 .clickable {
                     Haptics.tick(view)
                     a.openShelfItem(item.id)
