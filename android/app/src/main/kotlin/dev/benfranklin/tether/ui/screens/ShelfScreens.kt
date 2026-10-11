@@ -91,7 +91,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -642,7 +641,8 @@ private fun ShelfRow(
 private fun ShelfThumb(item: ShelfItem, state: ShelfCache.State, a: ShelfActions) {
     val f = item.file ?: return
     if (!FileKinds.isImage(f.mime, f.name) || state != ShelfCache.State.LOCAL) return
-    val bmp by produceState<ImageBitmap?>(null, item.id, f.sha256, state) { value = a.thumbnail(item) }
+    var bmp by remember(item.id, f.sha256) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(item.id, f.sha256) { bmp = a.thumbnail(item) }
     val reduce = LocalReduceMotion.current
     AnimatedVisibility(bmp != null, enter = Motion.enter(reduce, from = 0.85f)) {
         bmp?.let {

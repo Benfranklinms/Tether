@@ -229,7 +229,13 @@ enum ThumbCheck {
             return true
         }
         guard drawn else { return true }
-        let luma = (0..<(n * n)).map { i in (Int(px[i * 4]) * 299 + Int(px[i * 4 + 1]) * 587 + Int(px[i * 4 + 2]) * 114) / 1000 }
+        var luma = [Int](repeating: 0, count: n * n)
+        for i in 0..<(n * n) {
+            let r = Int(px[i * 4]) * 299
+            let g = Int(px[i * 4 + 1]) * 587
+            let b = Int(px[i * 4 + 2]) * 114
+            luma[i] = (r + g + b) / 1000
+        }
         return MediaReady.isBlank(luma)
     }
 }
