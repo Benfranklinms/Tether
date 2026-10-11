@@ -205,7 +205,10 @@ private fun FolderChip(
     ) {
         Icon(Icons.Filled.Folder, contentDescription = null, tint = if (hovered) Mono.Bg else Mono.Muted, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
-        Text(f.name, color = fg, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium), maxLines = 1)
+        Text(
+            f.name, color = fg, maxLines = 1,
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+        )
         Spacer(Modifier.width(8.dp))
         Text("$count", color = if (hovered) Mono.Bg.copy(alpha = 0.7f) else Mono.Muted, style = MaterialTheme.typography.bodyMedium)
     }
@@ -343,12 +346,21 @@ fun MoveSheet(
                 ShelfLeading(item, 48.dp, state, thumbnail)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(detail, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        title, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        detail, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             Box(Modifier.padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth().height(1.dp).background(Mono.Line))
-            Text("Move to", style = MaterialTheme.typography.bodyLarge, color = Mono.Muted, modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 8.dp))
+            Text(
+                "Move to", style = MaterialTheme.typography.bodyLarge, color = Mono.Muted,
+                modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 8.dp),
+            )
             MoveRow(Icons.Outlined.Inbox, "Loose", null, current == null, divider = true) { onPick(null) }
             folders.forEach { f ->
                 MoveRow(Icons.Filled.Folder, f.name, counts[f.id] ?: 0, current == f.id, divider = true) { onPick(f.id) }
@@ -369,7 +381,12 @@ fun MoveSheet(
 
 @Composable
 private fun MoveRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector, name: String, count: Int?, selected: Boolean, divider: Boolean, onClick: () -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    name: String,
+    count: Int?,
+    selected: Boolean,
+    divider: Boolean,
+    onClick: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick)
@@ -381,7 +398,9 @@ private fun MoveRow(
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Row(Modifier.height(64.dp).padding(end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(name, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                Text(
+                    name, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f))
                 if (selected) {
                     Icon(Icons.Outlined.Check, contentDescription = null, tint = Mono.Text)
@@ -456,7 +475,8 @@ fun OfflineGlyph(state: ShelfCache.State, progress: Float?) {
     Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
         when (state) {
             ShelfCache.State.FETCHING -> if (progress != null && progress > 0f) {
-                CircularProgressIndicator(progress = { progress.clamp01() }, color = Mono.Muted, strokeWidth = 1.5.dp, trackColor = Mono.Line,
+                CircularProgressIndicator(
+                    progress = { progress.clamp01() }, color = Mono.Muted, strokeWidth = 1.5.dp, trackColor = Mono.Line,
                     modifier = Modifier.size(12.dp))
             } else {
                 CircularProgressIndicator(color = Mono.Muted, strokeWidth = 1.5.dp, modifier = Modifier.size(12.dp))

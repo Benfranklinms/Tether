@@ -14,17 +14,15 @@ extension AppModel {
             self?.v5.lastOtherApp = app.processIdentifier
         }
         if !demo {
-            loadShelf()
-            setUpShelfFiles()
+            // 0.5.4: the Shelf is read and decrypted off the main thread; files are set up once it is in.
+            loadShelf { [weak self] in self?.setUpShelfFiles() }
         }
         Self.cleanVideoCache()
     }
 
     func linkChanged6(wasConnected: Bool) {
         linkChanged7(wasConnected: wasConnected)
-        if isConnected && !wasConnected && supports(Caps6.shelf) {
-            engine?.send(.shelfSync(v5.shelf.snapshot()))
-        }
+        if isConnected && !wasConnected { sendShelf(v5.shelf.snapshot()) }
         // 0.5.3: fetch missing Shelf files (and bigger ones once the Wi-Fi fast path is up).
         shelfLinkChanged()
         if !isConnected {
@@ -292,22 +290,40 @@ extension AppModel {
 
     // MARK: - Shelf
 
-    private static let shelfKeyService = "in.benfranklin.tether.shelf-key"
-    private static var shelfURL: URL { Paths.support.appendingPathComponent("shelf.sealed") }
+    static var shelfURL: URL { Paths.support.appendingPathComponent("shelf.sealed") }
 
-    func shelfKey() -> Data? {
-        if let s = Keychain.read(Self.shelfKeyService), let d = Data(base64Encoded: s) { return d }
-        let k = ShelfVault.newKey()
-        return Keychain.write(Self.shelfKeyService, k.base64EncodedString()) ? k : nil
+    /// The Shelf key (0.5.4: a 0600 file, so ad-hoc-signed updates never ask for the Keychain password).
+    func shelfKey() -> Data? { ShelfKeyStore.key() }
+
+    /// Reads and decrypts the Shelf on a background queue, then publishes it on the main thread
+    /// (merged with anything that synced in meanwhile) and calls `done`.
+    func loadShelf(done: (() -> Void)? = nil) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var loaded: ShelfState?
+            if let key = ShelfKeyStore.key(), let data = try? Data(contentsOf: Self.shelfURL) {
+                do {
+                    loaded = try ShelfVault.open(data, key: key)
+                } catch {
+                    Log.error("shelf.open_failed", error)
+                }
+            }
+            let pins = ShelfOfflineStore.load()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let loaded { self.v5.shelf = loaded.merge(self.v5.shelf.snapshot()) }
+                self.v5.shelfPins = pins
+                if loaded != nil && self.isConnected { self.sendShelf(self.v5.shelf.snapshot()) }
+                done?()
+            }
+        }
     }
 
-    func loadShelf() {
-        guard let key = shelfKey(), let data = try? Data(contentsOf: Self.shelfURL) else { return }
-        do {
-            v5.shelf = try ShelfVault.open(data, key: key)
-        } catch {
-            Log.error("shelf.open_failed", error)
-        }
+    /// Sends a Shelf change: without folder fields to a 0.5.3 phone, and a big snapshot as pages
+    /// that each fit a Bluetooth record.
+    func sendShelf(_ sync: ShelfSyncPayload) {
+        guard supports(Caps6.shelf) else { return }
+        let s = ShelfFolders.forPeer(sync, folders: supports(Caps8.shelfFolders))
+        for page in ShelfFolders.pages(s, size: ShelfFolders.jsonSize) { engine?.send(.shelfSync(page)) }
     }
 
     private func saveShelf() {
@@ -326,21 +342,24 @@ extension AppModel {
         let before = Set(v5.shelf.items.map(\.id))
         v5.shelf = new.pruned(now: Self.nowMs)
         saveShelf()
-        if let sync, supports(Caps6.shelf) { engine?.send(.shelfSync(sync)) }
+        if let sync { sendShelf(sync) }
         shelfItemsChanged(removed: before.subtracting(v5.shelf.items.map(\.id)))
     }
 
-    func addToShelf(text: String) {
+    /// Adds text (0.5.4: into the folder page that is open, else loose).
+    func addToShelf(text: String, folder: String? = nil) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        let item = ShelfState.item(from: t, id: UUID().uuidString.lowercased(), from: "mac", now: Self.nowMs)
+        let target = (folder ?? v5.shelfFolder).flatMap { f in v5.shelf.folders.contains { $0.id == f } ? f : nil }
+        let item = ShelfState.item(from: t, id: UUID().uuidString.lowercased(), from: "mac", now: Self.nowMs, folderId: target)
         let new = v5.shelf.add(item)
         commitShelf(new, sync: ShelfSyncPayload(items: new.items.filter { $0.id == item.id }))
     }
 
-    func addToShelf(file url: URL) {
+    func addToShelf(file url: URL, folder: String? = nil) {
         let id = UUID().uuidString.lowercased()
         let key = shelfKey()
+        let wanted = folder ?? v5.shelfFolder
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // Hash while streaming, then keep only the encrypted copy (0.5.3: encrypted at rest).
             guard let key, let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize,
@@ -359,7 +378,8 @@ extension AppModel {
             let file = ShelfFile(name: url.lastPathComponent, size: Int64(size), mime: mime, sha256: sha, owner: "mac")
             DispatchQueue.main.async {
                 guard let self else { return }
-                let item = ShelfState.fileItem(file, id: id, from: "mac", now: Self.nowMs)
+                let target = wanted.flatMap { f in self.v5.shelf.folders.contains { $0.id == f } ? f : nil }
+                let item = ShelfState.fileItem(file, id: id, from: "mac", now: Self.nowMs, folderId: target)
                 let new = self.v5.shelf.add(item)
                 self.commitShelf(new, sync: ShelfSyncPayload(items: new.items.filter { $0.id == id }))
             }

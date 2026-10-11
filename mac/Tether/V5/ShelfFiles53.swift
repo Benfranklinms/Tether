@@ -39,7 +39,11 @@ extension AppModel {
             try? FileManager.default.removeItem(at: Self.shelfOpenRoot)
             if let key { Self.migratePlainShelfFiles(key: key) }
             Self.pruneShelfStore(live: live)
-            DispatchQueue.main.async { self?.refreshShelfLocal() }
+            Self.pruneShelfThumbs(live: live)
+            DispatchQueue.main.async {
+                self?.refreshShelfLocal()
+                self?.syncShelfFiles()
+            }
         }
     }
 
@@ -63,6 +67,13 @@ extension AppModel {
             try? fm.removeItem(at: dir)
         }
         try? fm.removeItem(at: old)
+    }
+
+    static func pruneShelfThumbs(live: Set<String>) {
+        let fm = FileManager.default
+        for f in (try? fm.contentsOfDirectory(at: shelfThumbStore, includingPropertiesForKeys: nil)) ?? [] {
+            if !live.contains(f.deletingPathExtension().lastPathComponent) { try? fm.removeItem(at: f) }
+        }
     }
 
     static func pruneShelfStore(live: Set<String>) {
@@ -119,12 +130,14 @@ extension AppModel {
     func refreshShelfLocal() {
         let ids = Set(v5.shelf.items.filter { $0.file != nil && shelfHasLocal($0.id) }.map(\.id))
         if ids != v5.shelfLocal { v5.shelfLocal = ids }
+        measureShelfOffline()
     }
 
     /// After any change to the list: drop copies of removed items, then fetch what's missing.
     func shelfItemsChanged(removed: Set<String>) {
         for id in removed {
             try? FileManager.default.removeItem(at: Self.shelfBlob(id))
+            try? FileManager.default.removeItem(at: Self.shelfThumbBlob(id))
             try? FileManager.default.removeItem(at: Self.shelfOpenRoot.appendingPathComponent(id, isDirectory: true))
             v5.shelfFetching.remove(id)
             v5.shelfInFlight[id] = nil
@@ -142,14 +155,18 @@ extension AppModel {
         syncShelfFiles()
     }
 
-    /// Ask the phone for every Shelf file we don't have yet (≤100 MB; over Bluetooth only small ones).
+    /// 0.5.4: keep copies within the cap (LRU, pinned and own files never dropped), then ask the
+    /// phone for the copies the plan keeps (≤100 MB; over Bluetooth only small ones).
     func syncShelfFiles() {
+        guard !demo else { return }
+        let fetch = planShelfOffline()
         guard isConnected, supports(Caps6.shelf) else { return }
         let now = Date()
         v5.shelfInFlight = v5.shelfInFlight.filter { now.timeIntervalSince($0.value) < 600 }
-        for item in v5.shelf.items {
+        let byId = Dictionary(v5.shelf.items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for item in fetch.compactMap({ byId[$0] }) {
             guard let f = item.file else { continue }
-            if ShelfCache.shouldFetch(f, haveLocal: shelfHasLocal(item.id), inFlight: v5.shelfInFlight[item.id] != nil,
+            if ShelfCache.shouldFetch(f, haveLocal: false, inFlight: v5.shelfInFlight[item.id] != nil,
                                       connected: isConnected, wifi: onWifi) {
                 requestShelfFile(item)
             }
@@ -179,14 +196,15 @@ extension AppModel {
             perform(want, on: item)
             return
         }
-        guard isConnected, supports(Caps6.shelf) else { return toast("Not downloaded yet · connect your phone to get \(item.title)") }
+        guard isConnected, supports(Caps6.shelf) else { return toast("\(ShelfOffline.away) · connect your phone to get \(item.title)") }
         v5.shelfWants[item.id] = want
         v5.shelfFetching.insert(item.id)
         requestShelfFile(item)
     }
 
     private func perform(_ want: ShelfWant, on item: ShelfItem) {
-        guard let key = shelfKey() else { return toast("Couldn't read the Shelf key from the Keychain") }
+        guard let key = shelfKey() else { return toast("Couldn't read the Shelf key") }
+        markShelfOpened(item.id)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let url = Self.materializeShelfFile(item, key: key)
             DispatchQueue.main.async {
@@ -261,12 +279,21 @@ extension AppModel {
     /// A small picture of an image file, decoded from the encrypted copy off the main thread.
     func shelfThumbnail(_ item: ShelfItem, done: @escaping (NSImage?) -> Void) {
         if demo, let img = Demo5.shelfThumbs[item.id] { return done(img) }
-        guard let f = item.file, FileKinds.isImage(mime: f.mime, name: f.name), shelfHasLocal(item.id), let key = shelfKey() else {
+        guard let f = item.file, FileKinds.isImage(mime: f.mime, name: f.name), let key = shelfKey() else {
             return done(nil)
         }
         let cacheKey = "shelf/\(item.id)/\(f.sha256)"
         if let hit = ShelfThumbs.cache.object(forKey: cacheKey as NSString) { return done(hit) }
+        let local = shelfHasLocal(item.id)
         DispatchQueue.global(qos: .utility).async {
+            // 0.5.4: an evicted copy keeps its saved (sealed) thumbnail.
+            if !local || FileManager.default.fileExists(atPath: Self.shelfThumbBlob(item.id).path),
+               let saved = Self.loadShelfThumb(id: item.id, key: key) {
+                ShelfThumbs.cache.setObject(saved, forKey: cacheKey as NSString)
+                DispatchQueue.main.async { done(saved) }
+                return
+            }
+            guard local else { return DispatchQueue.main.async { done(nil) } }
             var img: NSImage?
             if let data = try? ChunkSeal.decrypt(Data(contentsOf: Self.shelfBlob(item.id)), key: key),
                let src = CGImageSourceCreateWithData(data as CFData, nil),
@@ -276,6 +303,7 @@ extension AppModel {
                ] as CFDictionary) {
                 img = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
                 if let img { ShelfThumbs.cache.setObject(img, forKey: cacheKey as NSString) }
+                Self.saveShelfThumb(cg, id: item.id, key: key)
             }
             DispatchQueue.main.async { done(img) }
         }

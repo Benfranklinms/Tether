@@ -15,8 +15,9 @@ import kotlinx.serialization.Serializable
 object ShelfOffline {
     const val MB = 1024L * 1024
     const val GB = 1024L * MB
+    private const val HALF_GB = 500L * MB
     /** Settings › Shelf › Offline files. 0 = Off (no automatic copies). */
-    val CAP_OPTIONS: List<Long> = listOf(500 * MB, GB, 2 * GB, 5 * GB, 0L)
+    val CAP_OPTIONS: List<Long> = listOf(HALF_GB, GB, 2 * GB, 5 * GB, 0L)
     const val PHONE_DEFAULT = GB
     const val MAC_DEFAULT = 2 * GB
     const val AWAY = "Available when connected"
@@ -39,7 +40,8 @@ object ShelfOffline {
     }
 
     /** True when [item] is pinned itself or its (live) folder is. */
-    fun pinned(item: ShelfItem, folderId: String?, pins: Pins): Boolean = item.id in pins.items || (folderId != null && folderId in pins.folders)
+    fun pinned(item: ShelfItem, folderId: String?, pins: Pins): Boolean =
+        item.id in pins.items || (folderId != null && folderId in pins.folders)
 
     /**
      * What to keep: the pinned and own copies always, then the most recently used others while
@@ -72,7 +74,11 @@ object ShelfOffline {
 
     /** "Keep offline" pins and last-open times; stored on this device only. */
     @Serializable
-    data class Pins(val items: Set<String> = emptySet(), val folders: Set<String> = emptySet(), val opened: Map<String, Long> = emptyMap()) {
+    data class Pins(
+        val items: Set<String> = emptySet(),
+        val folders: Set<String> = emptySet(),
+        val opened: Map<String, Long> = emptyMap(),
+    ) {
         fun toggleItem(id: String) = copy(items = if (id in items) items - id else items + id)
         fun toggleFolder(id: String) = copy(folders = if (id in folders) folders - id else folders + id)
         fun opened(id: String, now: Long) = copy(opened = opened + (id to now))

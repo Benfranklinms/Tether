@@ -142,6 +142,7 @@ class ShelfFiles(private val app: Context) {
             val bytes = out.toByteArray()
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         } catch (e: Exception) {
+            Log.w("shelf.thumb_saved_bad", "error" to e.javaClass.simpleName)
             t.delete()
             null
         }
@@ -186,7 +187,9 @@ class ShelfFiles(private val app: Context) {
             val id = f.name.removeSuffix(".tmp").removeSuffix(".tsf")
             if (id !in live || f.name.endsWith(".tmp")) f.delete()
         }
-        thumbDir.listFiles()?.forEach { f -> if (f.name.removeSuffix(".tmp").removeSuffix(".tsf") !in live || f.name.endsWith(".tmp")) f.delete() }
+        thumbDir.listFiles()?.forEach { f ->
+            if (f.name.removeSuffix(".tmp").removeSuffix(".tsf") !in live || f.name.endsWith(".tmp")) f.delete()
+        }
     }
 
     fun clearOpened() {

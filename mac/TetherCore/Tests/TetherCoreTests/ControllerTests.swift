@@ -348,4 +348,41 @@ extension ControllerTests {
         loop.drain()
         XCTAssertTrue(isPairing(mac.state))
     }
+
+    /// 0.5.4 (Ben's log: "link.closed PROTOCOL_ERROR remote=true" while handshaking): the phone
+    /// restarts its handshake while the Mac still holds the old, established session on the same
+    /// link. The Mac must start over, not close.
+    func testStaleEstablishedSessionRestartsWhenPhoneHandshakesAgain() {
+        let (phone, mac) = pairedSides(loop)
+        let link = LoopbackBle(loop, phone, mac, mtu: 185)
+        link.connect()
+        loop.drain()
+        XCTAssertEqual(mac.state, .connected(peerName: "Pixel", wifi: false))
+        link.phoneRestartsHandshake()
+        loop.drain()
+        XCTAssertEqual(phone.state, .connected(peerName: "MacBook", wifi: false))
+        XCTAssertEqual(mac.state, .connected(peerName: "Pixel", wifi: false))
+        XCTAssertEqual(mac.controller.staleHandshakeRestarts, 1)
+        XCTAssertFalse(phone.closes.contains { $0.0 == .protocolError }, "\(phone.closes)")
+        XCTAssertFalse(mac.closes.contains { $0.0 == .protocolError }, "\(mac.closes)")
+        // And the restarted session carries traffic.
+        _ = phone.controller.send(.clip(id: "c1", ts: 1, text: "hello"))
+        loop.drain()
+        XCTAssertTrue(mac.messages.contains(.clip(id: "c1", ts: 1, text: "hello")))
+    }
+
+    /// Two restarts in a row (a flapping phone) still end connected, never PROTOCOL_ERROR.
+    func testRepeatedStaleHandshakesConverge() {
+        let (phone, mac) = pairedSides(loop)
+        let link = LoopbackBle(loop, phone, mac, mtu: 185)
+        link.connect()
+        loop.drain()
+        link.phoneRestartsHandshake()
+        loop.step(3)
+        link.phoneRestartsHandshake()
+        loop.drain()
+        XCTAssertEqual(phone.state, .connected(peerName: "MacBook", wifi: false))
+        XCTAssertEqual(mac.state, .connected(peerName: "Pixel", wifi: false))
+        XCTAssertFalse(phone.closes.contains { $0.0 == .protocolError })
+    }
 }

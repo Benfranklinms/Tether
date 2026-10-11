@@ -108,6 +108,13 @@ final class V5State: ObservableObject {
     @Published var shelfQuery = ""
     @Published var shelfSearchFocus = 0
     @Published var shelfRenaming: String?
+    // 0.5.4: the folder page that is open (nil = the Shelf), the folder chip a dragged card is over,
+    // offline-copy pins (local), space used, and download progress per item.
+    @Published var shelfFolder: String?
+    @Published var shelfChipHover: String?
+    @Published var shelfPins = ShelfOffline.Pins()
+    @Published var shelfOfflineUsed: Int64 = 0
+    @Published var shelfProgress: [String: Double] = [:]
     @Published var updateSheet = false
     @Published var whatsNew = false
     /// The last app other than Tether that was frontmost (where Insert from Phone pastes).

@@ -64,7 +64,10 @@ fun ShelfSettingsScreen(
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(pad)) {
             item {
                 Card(Modifier.padding(top = 16.dp)) {
-                    NavRow("Open Shelf", null, subtitle = "Links, Wi-Fi, addresses, notes and files, synced with your Mac", onClick = onOpenShelf)
+                    NavRow(
+                        "Open Shelf", null, subtitle = "Links, Wi-Fi, addresses, notes and files, synced with your Mac",
+                        onClick = onOpenShelf,
+                    )
                 }
             }
             item { SectionHeader("Offline files") }
@@ -105,7 +108,8 @@ fun ShelfSettingsScreen(
             item {
                 Card(Modifier.padding(top = 16.dp)) {
                     Row(
-                        Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(role = Role.Button) { confirm = true }.padding(horizontal = 16.dp),
+                        Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(role = Role.Button) { confirm = true }
+                            .padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("Remove offline copies", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))

@@ -229,7 +229,10 @@ data class ShelfState(
         val n = ShelfFolders.cleanName(name) ?: return null
         if (folders.size >= FOLDER_LIMIT) return null
         val order = (folders.maxOfOrNull { it.order } ?: 0.0) + 1.0
-        return copy(folders = folders.filter { it.id != id } + ShelfFolder(id, n, order, now), folderTombs = folderTombs.filter { it.id != id })
+        return copy(
+            folders = folders.filter { it.id != id } + ShelfFolder(id, n, order, now),
+            folderTombs = folderTombs.filter { it.id != id },
+        )
     }
 
     /** Null when the folder is gone, [name] is blank or nothing changes. */
@@ -354,7 +357,11 @@ object ShelfFolders {
 
     /** What a peer without the "shelffolders" cap gets: no folder fields at all (it sees every item as loose). */
     fun forPeer(sync: ShelfSync, folders: Boolean): ShelfSync =
-        if (folders) sync else sync.copy(items = sync.items.map { it.copy(folderId = null) }, folders = emptyList(), removedFolders = emptyList())
+        if (folders) {
+            sync
+        } else {
+            sync.copy(items = sync.items.map { it.copy(folderId = null) }, folders = emptyList(), removedFolders = emptyList())
+        }
 
     /**
      * Splits a (full) sync into messages of at most about [budget] bytes of JSON, so a 500-item

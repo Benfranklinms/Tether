@@ -106,7 +106,8 @@ controller = TetherController(role: .responder, identity: mem,
                                       : v04 ? Caps.current.filter { !Caps5.all.contains($0) }
                                       : v053 ? Caps.current.filter { !Caps8.all.contains($0) } : Caps.current
                                   var h = Hello(name: "Alex’s MacBook Air", platform: "macos",
-                                                app: legacy ? "0.1.1" : v03 ? "0.3.1" : v04 ? "0.4.3" : v053 ? "0.5.3" : "0.5.4", caps: caps)
+                                                app: legacy ? "0.1.1" : v03 ? "0.3.1" : v04 ? "0.4.3" : v053 ? "0.5.3" : "0.5.4",
+                                                caps: caps)
                                   if future { h.v = 2 }
                                   return h
                               },

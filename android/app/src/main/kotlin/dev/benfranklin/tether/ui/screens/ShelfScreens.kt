@@ -388,7 +388,8 @@ fun ShelfScreen(
                                         onMenu = { f -> folderMenu = f },
                                     )
                                     FolderMenu(
-                                        folderMenu, folderMenu?.let { a.folderKeptOffline(it.id) } == true, onDismiss = { folderMenu = null },
+                                        folderMenu, folderMenu?.let { a.folderKeptOffline(it.id) } == true,
+                                        onDismiss = { folderMenu = null },
                                         onRename = { folderMenu?.let { naming = FolderNaming.Rename(it) } },
                                         onKeep = { folderMenu?.let { a.keepFolderOffline(it.id) } },
                                         onDelete = { deleting = folderMenu },
@@ -406,8 +407,12 @@ fun ShelfScreen(
                         } else if (!searching && shown.isEmpty()) {
                             item(key = "pageempty") {
                                 Text(
-                                    if (folderId != null) "Nothing in this folder yet. Hold an item on your Shelf and choose Move to, or drag it onto the folder."
-                                    else "Everything is in folders.",
+                                    if (folderId != null) {
+                                        "Nothing in this folder yet. Hold an item on your Shelf and choose Move to, " +
+                                            "or drag it onto the folder."
+                                    } else {
+                                        "Everything is in folders."
+                                    },
                                     style = MaterialTheme.typography.bodyMedium, color = Mono.Muted,
                                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp).animateItem(),
                                 )
@@ -446,7 +451,9 @@ fun ShelfScreen(
                                         dragDx += amount.x
                                         pointer += amount
                                         // Over a chip: highlight it and leave the order alone.
-                                        val over = if (folderId == null) chipBounds.entries.firstOrNull { it.value.contains(pointer) }?.key else null
+                                        val over = if (folderId != null) null else {
+                                            chipBounds.entries.firstOrNull { it.value.contains(pointer) }?.key
+                                        }
                                         if (over != hover) {
                                             hover = over
                                             if (over != null) Haptics.tick(view)

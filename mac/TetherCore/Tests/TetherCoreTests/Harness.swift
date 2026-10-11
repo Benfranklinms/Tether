@@ -208,6 +208,13 @@ final class LoopbackBle {
         }
     }
 
+    /// The phone lost its end and starts a new handshake on the same link; the Mac never hears a
+    /// disconnect (an app crash / restart that CoreBluetooth didn't report as an unsubscribe).
+    func phoneRestartsHandshake(phonePairing: PairingContext = .closed) {
+        let gen = generation
+        phone.controller.bleConnected(maxFragment: mtu, writer: { f in self.deliver(gen, f, toMac: true) }, pairing: phonePairing)
+    }
+
     func disconnect() {
         guard up else { return }
         up = false

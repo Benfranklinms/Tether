@@ -25,7 +25,8 @@ final class ShelfKeyFileTests: XCTestCase {
         XCTAssertEqual(k, old)
         XCTAssertEqual(src, .migrated)
         XCTAssertEqual(mode(url) & 0o777, 0o600)
-        let (k2, src2) = try ShelfKeyFile.resolve(url: url, hadOldData: true, legacy: { asked += 1; return nil }, newKey: { Data(count: 32) })
+        let (k2, src2) = try ShelfKeyFile.resolve(url: url, hadOldData: true, legacy: { asked += 1; return nil },
+                                                  newKey: { Data(count: 32) })
         XCTAssertEqual(k2, old)
         XCTAssertEqual(src2, .file)
         XCTAssertEqual(asked, 1, "the Keychain is never asked again once the file exists")

@@ -693,8 +693,7 @@ class Features6(
         synchronized(inFlight) { inFlight.entries.removeAll { now - it.value > FETCH_TIMEOUT_MS } }
         _fetching.value = synchronized(inFlight) { inFlight.keys.toSet() }
         val byId = s.items.associateBy { it.id }
-        for (id in plan.fetch) {
-            val item = byId[id] ?: continue
+        for (item in plan.fetch.mapNotNull { byId[it] }) {
             val f = item.file ?: continue
             val busy = synchronized(inFlight) { item.id in inFlight }
             if (ShelfCache.shouldFetch(f, false, busy, connected, wifi)) request(item, force = false)
@@ -769,9 +768,11 @@ class Features6(
 /** Reads what still reads from a damaged Shelf file (0.5.4): each item, tombstone and folder on its own. */
 internal object ShelfDiskSalvage {
     fun salvage(json: Json, text: String): ShelfState {
-        val root = runCatching { json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject }.getOrNull() ?: return ShelfState()
+        val root = runCatching { json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject }.getOrNull()
+            ?: return ShelfState()
         fun <T> list(key: String, s: kotlinx.serialization.KSerializer<T>): List<T> =
-            (root[key] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { e -> runCatching { json.decodeFromJsonElement(s, e) }.getOrNull() }
+            (root[key] as? kotlinx.serialization.json.JsonArray)
+                ?.mapNotNull { e -> runCatching { json.decodeFromJsonElement(s, e) }.getOrNull() }
                 ?: emptyList()
         return ShelfState(
             list("items", ShelfItem.serializer()), list("tombs", ShelfTomb.serializer()),

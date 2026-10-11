@@ -4,7 +4,9 @@ import TetherCore
 import UniformTypeIdentifiers
 
 /// Shelf (0.5.2): a pinned list synced with the phone — text, links, Wi-Fi, addresses, snippets
-/// and files. Up to 50 items; they stay until removed. Motion: new cards spring in from the top
+/// and files. Up to 500 items (0.5.4; 50 before); they stay until removed. 0.5.4 adds folders: a
+/// chip row above the cards ("+" first), a page per folder, drag a card onto a chip to move it,
+/// "Move to" in the context menu, and rename / keep offline / delete on a chip. Motion: new cards spring in from the top
 /// (synced ones too), removed ones collapse and slide away with an undo bar that springs up,
 /// a dragged card lifts and its neighbours glide, a card opens into its detail as a hero, and
 /// dragging a file over the page lights the drop target.
@@ -23,20 +25,39 @@ struct ShelfPage: View {
     static let dragPrefix = "tether-shelf-item:"
     /// 0.5.3: ⌘F search over title, content, file name and type.
     private var searching: Bool { !v5.shelfQuery.trimmingCharacters(in: .whitespaces).isEmpty }
-    private var items: [ShelfItem] { searching ? ShelfSearch.filter(v5.shelf.ordered, query: v5.shelfQuery) : v5.shelf.ordered }
+    /// The folder page that is open (nil = the Shelf), if that folder still exists.
+    private var folder: ShelfFolder? { v5.shelfFolder.flatMap { id in v5.shelf.folders.first { $0.id == id } } }
+    /// This page's cards: the loose items, or one folder's. Search covers the whole Shelf on the
+    /// Shelf page and only the folder on a folder page.
+    private var pageItems: [ShelfItem] { v5.shelf.items(in: folder?.id) }
+    private var items: [ShelfItem] {
+        guard searching else { return pageItems }
+        return ShelfSearch.filter(folder == nil ? v5.shelf.ordered : pageItems, query: v5.shelfQuery)
+    }
 
     @State private var adding = false
+    @State private var naming: FolderNaming?
+    @State private var deleting: ShelfFolder?
 
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
-                    if adding || v5.shelf.items.isEmpty {
+                    if folder == nil && !(v5.shelf.items.isEmpty && v5.shelf.folders.isEmpty) {
+                        ShelfChipRow(v5: v5, onNew: { naming = .new(nil) }, onRename: { naming = .rename($0) },
+                                     onDelete: { deleting = $0 })
+                    }
+                    if adding || (v5.shelf.items.isEmpty && folder == nil) {
                         addBar.transition(reduce ? .opacity : .move(edge: .top).combined(with: .opacity))
                     }
-                    if v5.shelf.items.isEmpty {
+                    if v5.shelf.items.isEmpty && folder == nil {
                         empty
+                    } else if pageItems.isEmpty && !searching {
+                        Text(folder == nil ? "Everything is in folders."
+                             : "Nothing in this folder yet. Drag a card onto its chip, or choose Move to on a card.")
+                            .font(Typo.sans(13)).foregroundColor(Mono.muted).padding(.vertical, 30).frame(maxWidth: .infinity)
+                            .transition(.opacity)
                     } else if items.isEmpty {
                         Text("No match for “\(v5.shelfQuery.trimmingCharacters(in: .whitespaces))”")
                             .font(Typo.sans(13)).foregroundColor(Mono.muted).padding(.vertical, 30).frame(maxWidth: .infinity)
@@ -61,6 +82,19 @@ struct ShelfPage: View {
         }
         .overlay { dropGlow }
         .overlay { detail }
+        .overlay { folderNameSheet }
+        .alert(item: $deleting) { f in
+            let n = v5.shelf.counts()[f.id] ?? 0
+            return Alert(title: Text("Delete “\(f.name)”?"),
+                         message: Text(n == 0 ? "The folder is empty. This removes it on both devices."
+                                       : "Its \(n) item\(n == 1 ? "" : "s") move back to your Shelf. Nothing is removed."),
+                         primaryButton: .destructive(Text("Delete folder")) { m.deleteShelfFolder(f.id) },
+                         secondaryButton: .cancel())
+        }
+        .onChange(of: v5.shelf.folders) { fs in
+            // The open folder was deleted (here or on the phone): back to the Shelf.
+            if let id = v5.shelfFolder, !fs.contains(where: { $0.id == id }) { v5.shelfFolder = nil }
+        }
         .onDrop(of: [UTType.fileURL, UTType.utf8PlainText, UTType.url], isTargeted: $targeted, perform: drop)
         .animation(reduce ? Motion.reducedFade : .spring(response: 0.34, dampingFraction: 0.62), value: targeted)
         .animation(reduce ? Motion.reducedFade : .spring(response: 0.42, dampingFraction: 0.72), value: v5.shelfUndo?.id)
@@ -96,15 +130,31 @@ struct ShelfPage: View {
     private var header: some View {
         VStack(spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text("Shelf").font(Typo.sans(28, .medium)).foregroundColor(Mono.text)
-                    if !v5.shelf.items.isEmpty {
-                        Text("\(v5.shelf.items.count)").font(Typo.mono(14)).foregroundColor(Mono.muted)
-                            .contentTransition(.numericText()).animation(Motion.snappy(reduce), value: v5.shelf.items.count)
+                if let f = folder {
+                    Button {
+                        withAnimation(Motion.snappy(reduce)) { v5.shelfFolder = nil }
+                    } label: {
+                        Image(systemName: "chevron.left").font(.system(size: 13, weight: .semibold)).foregroundColor(Mono.text)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(PressStyle()).help("Back to Shelf").accessibilityLabel("Back to Shelf")
+                    Image(systemName: "folder.fill").font(.system(size: 18)).foregroundColor(Mono.text)
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(f.name).font(Typo.sans(28, .medium)).foregroundColor(Mono.text).lineLimit(1)
+                        Text("\(pageItems.count)").font(Typo.mono(14)).foregroundColor(Mono.muted)
+                    }
+                    .contextMenu { folderMenu(f) }
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text("Shelf").font(Typo.sans(28, .medium)).foregroundColor(Mono.text)
+                        if !v5.shelf.items.isEmpty {
+                            Text("\(v5.shelf.items.count)").font(Typo.mono(14)).foregroundColor(Mono.muted)
+                                .contentTransition(.numericText()).animation(Motion.snappy(reduce), value: v5.shelf.items.count)
+                        }
                     }
                 }
                 Spacer(minLength: 12)
-                if !v5.shelf.items.isEmpty { searchBar.frame(maxWidth: 300) }
+                if !v5.shelf.items.isEmpty || folder != nil { searchBar.frame(maxWidth: 300) }
                 Button {
                     withAnimation(Motion.snappy(reduce)) { adding.toggle() }
                 } label: {
@@ -147,7 +197,7 @@ struct ShelfPage: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundColor(Mono.muted)
-            TextField("Search", text: $v5.shelfQuery)
+            TextField(folder.map { "Search \($0.name)" } ?? "Search", text: $v5.shelfQuery)
                 .textFieldStyle(.plain).font(Typo.sans(13)).foregroundColor(Mono.text)
                 .focused($searchFocused)
                 .onExitCommand { v5.shelfQuery = "" }
@@ -203,13 +253,25 @@ struct ShelfPage: View {
             .onDrop(of: [UTType.utf8PlainText],
                     delegate: ShelfReorder(target: item.id, items: { items }, dragging: $dragging, move: { id, to in
                 guard !searching else { return } // reordering a filtered list would be ambiguous
-                withAnimation(reduce ? Motion.reducedFade : .spring(response: 0.38, dampingFraction: 0.8)) { m.moveShelf(id, to: to) }
+                withAnimation(reduce ? Motion.reducedFade : .spring(response: 0.38, dampingFraction: 0.8)) { m.moveShelfWithin(id, to: to) }
             }))
             .contextMenu {
                 Button(ShelfDetect.action(item.kind)) { m.shelfPrimary(item) }
                 Button("Copy") { m.copyShelf(item) }
                 Button("Rename") { v5.shelfRenaming = item.id }
                 Button("Open details") { open(item) }
+                Menu("Move to") {
+                    let here = v5.shelf.folderOf(item)
+                    Button(here == nil ? "✓ Shelf" : "Shelf") { m.moveShelfItem(item.id, toFolder: nil) }.disabled(here == nil)
+                    ForEach(v5.shelf.orderedFolders) { f in
+                        Button(here == f.id ? "✓ \(f.name)" : f.name) { m.moveShelfItem(item.id, toFolder: f.id) }.disabled(here == f.id)
+                    }
+                    Divider()
+                    Button("New folder…") { naming = .new(item.id) }
+                }
+                if item.file != nil {
+                    Button(m.shelfKept(item) ? "✓ Keep offline" : "Keep offline") { m.toggleKeepOffline(item: item.id) }
+                }
                 Divider()
                 Button("Remove") { remove(item.id) }
             }
@@ -293,6 +355,33 @@ struct ShelfPage: View {
         withAnimation(Motion.hero(reduce)) { v5.shelfDetail = nil }
     }
 
+    @ViewBuilder func folderMenu(_ f: ShelfFolder) -> some View {
+        Button("Rename") { naming = .rename(f) }
+        Button(v5.shelfPins.folders.contains(f.id) ? "✓ Keep offline" : "Keep offline") { m.toggleKeepOffline(folder: f.id) }
+        Divider()
+        Button("Delete folder…") { deleting = f }
+    }
+
+    @ViewBuilder private var folderNameSheet: some View {
+        if let n = naming {
+            ZStack {
+                Mono.bg.opacity(0.72).ignoresSafeArea().onTapGesture { naming = nil }.transition(.opacity)
+                FolderNameCard(naming: n, done: { name in
+                    naming = nil
+                    guard let name else { return }
+                    switch n {
+                    case .new(let moveId):
+                        if let id = m.createShelfFolder(name), let moveId { m.moveShelfItem(moveId, toFolder: id) }
+                    case .rename(let f):
+                        m.renameShelfFolder(f.id, to: name)
+                    }
+                })
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+            .zIndex(6)
+        }
+    }
+
     /// ⌫ removes the selected card, Space opens it — but never while typing in a text field.
     private func watchKeys() {
         guard keyMonitor == nil else { return }
@@ -320,13 +409,13 @@ struct ShelfPage: View {
             if p.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                 handled = true
                 _ = p.loadObject(ofClass: URL.self) { url, _ in
-                    if let url, url.isFileURL { DispatchQueue.main.async { m.addToShelf(file: url) } }
+                    if let url, url.isFileURL { DispatchQueue.main.async { m.addToShelf(file: url, folder: v5.shelfFolder) } }
                 }
             } else if p.canLoadObject(ofClass: NSString.self) {
                 handled = true
                 _ = p.loadObject(ofClass: NSString.self) { s, _ in
                     guard let text = s as? String, !text.hasPrefix(Self.dragPrefix) else { return }
-                    DispatchQueue.main.async { m.addToShelf(text: text) }
+                    DispatchQueue.main.async { m.addToShelf(text: text, folder: v5.shelfFolder) }
                 }
             }
         }
@@ -397,7 +486,19 @@ struct ShelfCard: View {
                 // Detail and the trailing "Phone · 1h" share one row, so a long detail truncates
                 // before the meta instead of running into it.
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text(lines.detail).font(Typo.sans(13)).foregroundColor(Mono.muted).lineLimit(1).truncationMode(.tail)
+                    HStack(spacing: 5) {
+                        // 0.5.4: no copy on this Mac: a small cloud ("Available when connected" spelled out
+                        // while the phone is away), or a spinner while it downloads.
+                        if item.file != nil && m.shelfState(item) != .local {
+                            if m.shelfState(item) == .fetching {
+                                ProgressView().controlSize(.mini).frame(width: 12, height: 12)
+                            } else {
+                                Image(systemName: "icloud").font(.system(size: 10)).foregroundColor(Mono.muted)
+                                    .help(ShelfOffline.away).accessibilityLabel(ShelfOffline.away)
+                            }
+                        }
+                        Text(lines.detail).font(Typo.sans(13)).foregroundColor(Mono.muted).lineLimit(1).truncationMode(.tail)
+                    }
                     Spacer(minLength: 0)
                     trailingMeta.transition(.opacity)
                 }
@@ -530,7 +631,8 @@ struct ShelfDetail: View {
                 }
                 .buttonStyle(PressStyle()).accessibilityLabel("Close")
             }
-            Text(item.title).font(Typo.sans(22, .medium)).foregroundColor(Mono.text).textSelection(.enabled)
+            // 0.5.4 fix: a snippet titled from its own first line no longer shows that line twice.
+            Text(ShelfCardText.detail(item).title).font(Typo.sans(22, .medium)).foregroundColor(Mono.text).textSelection(.enabled)
                 .hero("s-title-\(item.id)", in: hero)
             Group {
                 if item.kind == ShelfKinds.wifi {
@@ -540,9 +642,10 @@ struct ShelfDetail: View {
                         Spacer()
                         GhostButton(title: reveal ? "Hide" : "Show") { withAnimation(Motion.snappy(false)) { reveal.toggle() } }
                     }
-                } else if !item.body.isEmpty {
+                } else if !ShelfCardText.detail(item).preview.isEmpty {
                     ScrollView {
-                        Text(item.body).font(item.kind == ShelfKinds.snippet ? Typo.mono(13) : Typo.sans(14)).foregroundColor(Mono.text)
+                        Text(ShelfCardText.detail(item).preview).font(item.kind == ShelfKinds.snippet ? Typo.mono(13) : Typo.sans(14))
+                            .foregroundColor(Mono.text)
                             .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(maxHeight: 260)

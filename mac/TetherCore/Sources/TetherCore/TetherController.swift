@@ -184,6 +184,9 @@ public final class TetherController {
     /// Fragment size actually used for a reported ATT MTU - 3: never above 512 (GATT value limit).
     public static func clampFragment(_ n: Int) -> Int { min(max(n, defaultFragment), Fragmentation.maxBleFragment) }
 
+    /// Handshakes the phone restarted over a session this side still thought was live (diagnostics, tests).
+    public private(set) var staleHandshakeRestarts = 0
+
     public func bleFragment(_ fragment: Data) {
         guard bleLinkUp else { return }
         // Any fragment proves the radio path is alive, even mid-way through a long record.
@@ -195,8 +198,15 @@ public final class TetherController {
             // timed out here must not wedge the link, so begin a fresh session for it.
             let cur = ble
             let fresh = cur?.state == .handshaking && !bleFirstSeen && !blePairingChanged
+            // 0.5.4: also when this side still holds an established (or pairing) session. The phone
+            // only sends message 1 after it lost its end (app restart, crash, a Bluetooth reconnect
+            // CoreBluetooth never reported as an unsubscribe), so the old session is stale. It used
+            // to answer PROTOCOL_ERROR and drop the link ("link.closed PROTOCOL_ERROR remote=true"
+            // while handshaking on the phone); now it starts over cleanly on the same link.
             let restartable = cur == nil || cur?.state == .handshaking || cur?.state == .closed
+                || cur?.state == .established || cur?.state == .verifying
             if !fresh && restartable {
+                if let st = cur?.state, st == .established || st == .verifying { staleHandshakeRestarts += 1 }
                 bleHandshakeRetries += 1
                 startBleSession()
             }

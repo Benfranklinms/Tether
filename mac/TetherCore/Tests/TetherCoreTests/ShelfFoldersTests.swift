@@ -22,7 +22,8 @@ final class ShelfFoldersTests: XCTestCase {
 
     func testOldFormatDecodesAsLoose() throws {
         // A 0.5.3 peer's SHELF_SYNC: no folders, no folderId.
-        let json = #"{"items":[{"id":"a","kind":"text","title":"t","from":"phone","created":1,"updated":1,"order":0}],"removed":[],"full":true}"#
+        let json = #"{"items":[{"id":"a","kind":"text","title":"t","from":"phone","created":1,"updated":1,"order":0}],"# +
+            #""removed":[],"full":true}"#
         let p = try JSONDecoder().decode(ShelfSyncPayload.self, from: Data(json.utf8))
         XCTAssertNil(p.items[0].folderId)
         XCTAssertEqual(p.folders, [])
@@ -30,7 +31,8 @@ final class ShelfFoldersTests: XCTestCase {
     }
 
     func testDamagedFolderFieldsNeverFailTheSync() throws {
-        let json = #"{"items":[{"id":"a","kind":"text","title":"t","from":"phone","created":1,"updated":1,"order":0,"folderId":7,"file":"x"}],"folders":"bad"}"#
+        let json = #"{"items":[{"id":"a","kind":"text","title":"t","from":"phone","created":1,"updated":1,"order":0,"# +
+            #""folderId":7,"file":"x"}],"folders":"bad"}"#
         let p = try JSONDecoder().decode(ShelfSyncPayload.self, from: Data(json.utf8))
         XCTAssertEqual(p.items.count, 1)
         XCTAssertNil(p.items[0].folderId)
@@ -147,7 +149,7 @@ final class ShelfFoldersTests: XCTestCase {
         let stripped = ShelfFolders.forPeer(s.snapshot(), folders: false)
         XCTAssertNil(stripped.items[0].folderId)
         XCTAssertTrue(stripped.folders.isEmpty)
-        let json = String(decoding: try JSONEncoder().encode(stripped.items[0]), as: UTF8.self)
+        let json = String(bytes: try JSONEncoder().encode(stripped.items[0]), encoding: .utf8) ?? ""
         XCTAssertFalse(json.contains("folderId"))
         XCTAssertEqual(ShelfFolders.forPeer(s.snapshot(), folders: true), s.snapshot())
     }
@@ -170,7 +172,8 @@ final class ShelfFoldersTests: XCTestCase {
 
     // MARK: offline copies
 
-    private func e(_ id: String, _ mb: Int64, local: Bool = true, used: Int64, pinned: Bool = false, own: Bool = false) -> ShelfOffline.Entry {
+    private func e(_ id: String, _ mb: Int64, local: Bool = true, used: Int64, pinned: Bool = false,
+                   own: Bool = false) -> ShelfOffline.Entry {
         ShelfOffline.Entry(id: id, size: mb * ShelfOffline.mb, local: local, lastUsed: used, pinned: pinned, own: own)
     }
 
@@ -233,7 +236,8 @@ final class ShelfDetailTextTests: XCTestCase {
         XCTAssertEqual(d.title, "adb mdns services")
         XCTAssertFalse(d.preview.hasPrefix("adb mdns services"), d.preview)
         XCTAssertTrue(d.preview.contains("adb connect"))
-        let wifi = ShelfItem(id: "w", kind: ShelfKinds.wifi, title: "Lab", body: "Lab", secret: "pw", from: "mac", created: 1, updated: 1, order: 0)
+        let wifi = ShelfItem(id: "w", kind: ShelfKinds.wifi, title: "Lab", body: "Lab", secret: "pw", from: "mac", created: 1,
+                             updated: 1, order: 0)
         XCTAssertEqual(ShelfCardText.detail(wifi).title, "Lab")
         let renamed = ShelfItem(id: "r", kind: ShelfKinds.snippet, title: "Deploy", body: "git push\nfly deploy", from: "mac", created: 1,
                                 updated: 1, order: 0)
