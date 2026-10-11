@@ -25,7 +25,7 @@ Tether brings your Android phone to your Mac: texts, calls, notifications you ca
 
 ## Contents
 
-- [What's new in 0.5.4](#whats-new-in-054)
+- [What's new in 0.5.5](#whats-new-in-055)
 - [Screenshots](#screenshots)
 - [Features](#features)
 - [How it works](#how-it-works)
@@ -42,25 +42,15 @@ Tether brings your Android phone to your Mac: texts, calls, notifications you ca
 - [Credits](#credits)
 - [License](#license)
 
-## What's new in 0.5.4
+## What's new in 0.5.5
 
-- **Shelf folders.** Group Shelf items into folders on both devices. Folders sit as chips above your Shelf: tap one to open it, drag an item onto a chip to file it, or use **Move to…**. Rename, delete (items go back to your Shelf, nothing is removed) or keep a whole folder offline from its menu.
-- **The Shelf holds up to 500 items** (was 50), and large Shelves sync in small pieces so nothing stalls.
-- **Offline copies with a limit you choose.** Shelf files are kept on each device so they open, copy and save while the other one is away, inside folders too. Settings › Shelf sets the space they may use (500 MB, 1 GB, 2 GB, 5 GB or Off; 1 GB on the phone, 2 GB on the Mac by default). The least recently opened go first; items you keep offline and files you added on that device always stay.
-- **Works without a connection.** Browse, open and copy what is on the device, and create, rename, delete and move folders; changes sync when the devices reconnect. Items not on this device yet show a small cloud.
-- **No more Keychain password prompts on the Mac** for the Shelf after an update.
-- **Fixed a crash when opening Tether** on the phone ("layouts are not part of the same hierarchy").
-- **Reconnects faster.** The Mac restarts Bluetooth advertising when a link is lost and checks it regularly, so the phone finds it right away after a crash or restart; the phone retries at least once a minute while you're using it, and picks the Mac back up as soon as Tether restarts. A phone reconnecting to a Mac that still had the old session no longer fails with a protocol error.
-- **Snippet cards** no longer repeat their title in the detail line.
-- **What's new** shows reliably after updating, and on the Mac it stays until you close it.
-- **A calmer Home on the phone.** Your Mac and its battery at the top ("Connected · Wi-Fi · 82%", "Connecting…" or "Not connected" with Reconnect), then one block with Clipboard, File, Hotspot and Photos next to what's playing on your Mac, your latest transfers with live progress, and the newest Shelf items. Empty sections are just one grey line.
-- **Edit Home** at the bottom of Home: drag sections into the order you like and switch Clipboard history, Photos or Find my Mac on. Changes show on Home right away and are kept after a restart. Your 0.5.3 layout carries over. (No more long-press wiggle mode, which could close the app.)
-- **Photos button**: pick photos and videos to send to your Mac; a badge counts the new ones.
-- **Home never shows what's on your clipboard**: Send clipboard just says Clipboard, and Clipboard history says what kind of thing was copied ("Phone number", "Link"), not the text.
-- **Home fits large text and every navigation style**: nothing is cut off at bigger font sizes, and nothing hides under the status bar or the three-button or gesture navigation bar.
-- **A broken saved Home layout can no longer reset all your settings**; Home just goes back to its default.
-
-Every release's changes are in [CHANGELOG.md](CHANGELOG.md).
+- **18 themes on the phone.** Settings › Appearance has 9 dark themes (Mono, OLED Black, Midnight, Sand, Violet, Ocean, Rose, Slate, Mocha) and 9 light ones (Light, Ice, Lilac, Snow, Paper, Linen, Sky, Blush, Periwinkle). Switching fades the colours over.
+- **Follow system light/dark**: pick one light and one dark theme and the phone switches with the system.
+- **Smaller text.** Text across the phone app is smaller, and a Text size slider in Appearance has four steps (Small, Default, Large, Larger).
+- **New Home header.** The Tether logo and name at the top with Edit and Settings buttons, then a card for your Mac with its connection and battery, or Reconnect when it isn't connected. The Edit Home button at the bottom is gone.
+- **Shelf on Home as cards.** Your folders as chips, then a row of cards you can swipe through: photos show a thumbnail, links their site, PDFs a document and snippets their first lines. Add is the first card. An empty Shelf offers Paste and Add file.
+- **Long file names** in transfers and on the Shelf are shortened once in the middle and keep their extension.
+- **Status bar and navigation bar icons** turn dark on light themes.
 
 ## Screenshots
 
@@ -125,13 +115,13 @@ Every release's changes are in [CHANGELOG.md](CHANGELOG.md).
 
 <p align="center">
   <img src="docs/screenshots/android/home.png" width="24%" alt="Tether on Android: Home with the Mac and its battery, Clipboard, File, Hotspot and Photos buttons next to Now playing on the Mac, Recent transfers and the Shelf">
-  <img src="docs/screenshots/android/home-edit-sheet.png" width="24%" alt="Edit Home: drag sections into order and switch them on or off">
+  <img src="docs/screenshots/android/home-light.png" width="24%" alt="Home in the Light theme">
   <img src="docs/screenshots/android/transfers.png" width="24%" alt="The Transfers screen: All, Sent and Received filters, transfers grouped by day, Clear all">
   <img src="docs/screenshots/android/shelf.png" width="24%" alt="The Shelf on Android: thumbnails and document icons, friendly types, a link, a Wi-Fi network, a snippet and an address, grouped Today and Earlier">
 </p>
 <p align="center">
   <img src="docs/screenshots/android/settings.png" width="24%" alt="Android Settings with the Find my Mac card: Ring and Lock">
-  <img src="docs/screenshots/android/hotspot.png" width="24%" alt="Instant Hotspot settings on Android">
+  <img src="docs/screenshots/android/appearance.png" width="24%" alt="Settings › Appearance: 18 themes, Follow system light/dark and text size">
   <img src="docs/screenshots/android/setup.png" width="24%" alt="The Android setup checklist with a Fix button for each missing permission">
   <img src="docs/screenshots/android/pairing-code.png" width="24%" alt="Pairing without a camera by comparing a 6-digit code">
 </p>

@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -50,8 +49,8 @@ import java.io.File
 /**
  * 0.5.4 Home edge-to-edge: real status / navigation bar insets are dispatched to the window (24 dp
  * status bar; 48 dp three-button bar or a 20 dp gesture bar), then the list is scrolled to its end.
- * The header must start below the status bar and the last control ("Edit Home") must end above the
- * navigation bar. The bars are drawn as grey strips in the screenshots so any overlap is visible.
+ * The app bar must start below the status bar and the last section (0.5.5: the empty Shelf card;
+ * the "Edit Home" pill moved into the app bar) must end above the navigation bar. The bars are drawn as grey strips in the screenshots so any overlap is visible.
  */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -101,11 +100,14 @@ class HomeInsetsTest {
         compose.waitForIdle()
         val headerTop = compose.onNodeWithText("Ben\u2019s MacBook Air").fetchSemanticsNode().boundsInRoot.top
         assertTrue("header under the status bar: $headerTop < $statusPx", headerTop >= statusPx)
-        repeat(SWIPES) { compose.onNode(hasScrollAction()).performTouchInput { swipeUp() } }
+        val barTop = compose.onNodeWithTag("home-settings").fetchSemanticsNode().boundsInRoot.top
+        assertTrue("app bar under the status bar: $barTop < $statusPx", barTop >= statusPx)
+        compose.onNodeWithTag("home-edit").assertExists()
+        repeat(SWIPES) { compose.onNodeWithTag("home-list").performTouchInput { swipeUp() } }
         compose.waitForIdle()
         val rootH = compose.onRoot().fetchSemanticsNode().size.height
-        val editBottom = compose.onNodeWithText("Edit Home").fetchSemanticsNode().boundsInRoot.bottom
-        assertTrue("Edit Home under the navigation bar: $editBottom > ${rootH - navPx}", editBottom <= rootH - navPx)
+        val lastBottom = compose.onNodeWithTag("home-shelf-empty").fetchSemanticsNode().boundsInRoot.bottom
+        assertTrue("last section under the navigation bar: $lastBottom > ${rootH - navPx}", lastBottom <= rootH - navPx)
         compose.onNodeWithTag("home-list").assertExists()
         compose.onRoot().captureRoboImage(File(System.getProperty("tether.screens") ?: "build/screens", "$name.png").path)
     }

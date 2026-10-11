@@ -7,7 +7,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBackIos
 import androidx.compose.material3.Icon
@@ -44,20 +45,22 @@ fun LargeTitle(
     trailing: @Composable () -> Unit = {},
 ) {
     val reduce = LocalReduceMotion.current
-    Column(Modifier.fillMaxWidth().statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 4.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBackIos, contentDescription = "Back", tint = Mono.Text)
-            }
-            Spacer(Modifier.weight(1f))
-            trailing()
+    // 0.5.5: back chevron and title on one row at 22sp (the mockup's "‹ Appearance"), trailing actions at the end.
+    Row(
+        Modifier.fillMaxWidth().statusBarsPadding().padding(top = 16.dp).height(56.dp).padding(start = 4.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Outlined.ArrowBackIos, contentDescription = "Back", tint = Mono.Text,
+                modifier = Modifier.size(18.dp))
         }
-        Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.Bottom) {
-            Box(if (heroKey != null) Modifier.sharedHero(heroKey, reduce) else Modifier) {
-                Text(title, style = MaterialTheme.typography.headlineMedium, color = Mono.Text, maxLines = 1)
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f, fill = false).then(if (heroKey != null) Modifier.sharedHero(heroKey, reduce) else Modifier)) {
+                Text(title, style = MaterialTheme.typography.headlineSmall, color = Mono.Text, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
             }
             if (count != null) {
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
                 AnimatedContent(count, label = "titleCount", transitionSpec = {
                     if (reduce) {
                         fadeIn(Motion.fade(true)) togetherWith fadeOut(Motion.fade(true))
@@ -67,10 +70,10 @@ fun LargeTitle(
                             (slideOutVertically(Motion.spring(false)) { if (up) -it else it } + fadeOut())
                     }
                 }) { n ->
-                    Text("$n", style = MaterialTheme.typography.titleMedium, color = Mono.Muted, fontFamily = MonoCode,
-                        modifier = Modifier.padding(bottom = 6.dp))
+                    Text("$n", style = MaterialTheme.typography.bodyMedium, color = Mono.Faint, fontFamily = MonoCode)
                 }
             }
         }
+        trailing()
     }
 }

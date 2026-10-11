@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -93,8 +92,7 @@ class HomePersistenceTest {
         }
         compose.waitForIdle()
         assertTrue(compose.onAllNodesWithText("Clipboard history").fetchSemanticsNodes().isEmpty())
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Edit Home"))
-        compose.onNodeWithText("Edit Home").performClick()
+        compose.onNodeWithTag("home-edit").performClick()
         GestureScenarios.settle(compose)
         // Driven through semantics (Robolectric doesn't hit-test the animated sheet; the emulator
         // GestureDeviceTest does the same with real touches).
@@ -106,7 +104,7 @@ class HomePersistenceTest {
         compose.onNodeWithText("Done").performSemanticsAction(SemanticsActions.OnClick)
         GestureScenarios.settle(compose)
         // On Home immediately, without leaving the screen.
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Clipboard history"))
+        compose.onNodeWithTag("home-list").performScrollToNode(hasText("Clipboard history"))
         compose.onNodeWithText("Clipboard history").assertExists()
         assertTrue(compose.onAllNodesWithText("Shelf").fetchSemanticsNodes().isEmpty())
         val saved = sectionsOf(repo)

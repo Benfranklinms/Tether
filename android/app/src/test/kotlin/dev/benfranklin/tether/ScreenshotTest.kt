@@ -30,6 +30,7 @@ import dev.benfranklin.tether.ui.screens.PermissionItem
 import dev.benfranklin.tether.ui.screens.SettingsActions
 import dev.benfranklin.tether.ui.screens.SettingsScreen
 import dev.benfranklin.tether.ui.theme.TetherTheme
+import dev.benfranklin.tether.ui.theme.Appearance
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import org.junit.Rule
@@ -51,8 +52,8 @@ import org.robolectric.annotation.GraphicsMode
 class ScreenshotTest {
     @get:Rule val compose = createComposeRule()
 
-    private fun shot(name: String, content: @Composable () -> Unit) {
-        compose.setContent { TetherTheme { content() } }
+    private fun shot(name: String, theme: Appearance? = null, content: @Composable () -> Unit) {
+        compose.setContent { TetherTheme(theme ?: Appearance()) { content() } }
         compose.mainClock.autoAdvance = false
         compose.mainClock.advanceTimeBy(ANIMATION_SETTLE_MS)
         compose.onRoot().captureRoboImage(File(System.getProperty("tether.screens") ?: "build/screens", "$name.png").path)
@@ -97,24 +98,33 @@ class ScreenshotTest {
     // ---------------- 0.5.4 Home (Control Center) ----------------
 
     private fun shelfItem(id: String, kind: String, title: String, body: String, from: String, agoMin: Long, order: Double,
-        file: dev.benfranklin.tether.core.proto.ShelfFile? = null) =
-        dev.benfranklin.tether.core.proto.ShelfItem(id, kind, title, body, null, from, now - agoMin * 60_000L, now, order, file)
+        file: dev.benfranklin.tether.core.proto.ShelfFile? = null, folder: String? = null) =
+        dev.benfranklin.tether.core.proto.ShelfItem(id, kind, title, body, null, from, now - agoMin * 60_000L, now, order, file, folder)
 
-    /** The mockup's Shelf: 24 items, the newest three on Home. */
+    /** 0.5.5 mockup folders: Work 4, Receipts 2, Trip 3, College 6. */
+    private val homeFolders = listOf("Work", "Receipts", "Trip", "College").mapIndexed { i, n ->
+        dev.benfranklin.tether.core.proto.ShelfFolder("d$i", n, i.toDouble(), now)
+    }
+    private val folderOf = listOf(4, 2, 3, 6).flatMapIndexed { i, n -> List(n) { "d$i" } }
+
+    /** The mockup's Shelf: 24 items (image, link, PDF, snippet first), 15 of them in folders. */
     private val homeShelf = listOf(
         shelfItem("h1", "file", "IMG_20261010_195129.jpg", "", "phone", 12, -30.0,
             dev.benfranklin.tether.core.proto.ShelfFile("IMG_20261010_195129.jpg", 4_300_000, "image/jpeg", "aa", "phone")),
-        shelfItem("h2", "link", "Titan Engineering registration", "https://forms.gle/x7Tq2", "phone", 14, -29.0),
-        shelfItem("h3", "file", "Benfranklin M S - Yugabyte.pdf", "", "mac", 20, -28.0,
-            dev.benfranklin.tether.core.proto.ShelfFile("Benfranklin M S - Yugabyte.pdf", 82_000, "application/pdf", "bb", "mac")),
-    ) + (4..24).map { shelfItem("f$it", "text", "Note $it", "Item $it", "phone", 60L * it, it.toDouble()) }
+        shelfItem("h2", "link", "Titan registration", "https://forms.gle/x7Tq2", "phone", 14, -29.0),
+        shelfItem("h3", "file", "Yugabyte offer.pdf", "", "mac", 20, -28.0,
+            dev.benfranklin.tether.core.proto.ShelfFile("Yugabyte offer.pdf", 82_000, "application/pdf", "bb", "mac")),
+        shelfItem("h4", "snippet", "adb mdns services", "adb mdns services\nadb connect 192.168.1.4:37011", "mac", 30, -27.0),
+    ) + (5..24).mapIndexed { i, n ->
+        shelfItem("f$n", "text", "Note $n", "Item $n", "phone", 60L * n, n.toDouble(), folder = folderOf.getOrNull(i))
+    }
 
     private val homeMac = dev.benfranklin.tether.v7.MacStatusUi(
         82, false, dev.benfranklin.tether.core.proto.MacMedia(true, "Nights", "Frank Ocean", "Music", true, 307_000, 100_000), now,
     )
 
     private fun homeData() = dev.benfranklin.tether.ui.screens.HomeData(
-        shelf = homeShelf, clipboard = "+917554626501",
+        shelf = homeShelf, folders = homeFolders, clipboard = "+917554626501",
         clips = listOf(
             dev.benfranklin.tether.core.features.ClipRecents.Entry("forms.gle/x7Tq2", now, false),
             dev.benfranklin.tether.core.features.ClipRecents.Entry("1 Market St, San Francisco", now - 60_000, true),
@@ -223,10 +233,56 @@ class ScreenshotTest {
         HomeScreen(linked, sections, homeActions, homeData().copy(mac = homeMac.copy(media = null)))
     }
 
-    /** System light mode: Tether stays dark (pure mono), nothing renders black-on-black. */
+    /** 0.5.5 themes: Light (Settings › Appearance), plus a few others from the approved sheets. */
+    @Test
+    fun homeLight() = shot("home-light", Appearance(themeId = "light")) { HomeScreen(linked, sections, homeActions, homeData()) }
+
+    @Test
+    fun homeSky() = shot("home-sky", Appearance(themeId = "sky")) { HomeScreen(linked, sections, homeActions, homeData()) }
+
+    @Test
+    fun homeLinen() = shot("home-linen", Appearance(themeId = "linen")) { HomeScreen(linked, sections, homeActions, homeData()) }
+
+    @Test
+    fun homeMidnight() = shot("home-midnight", Appearance(themeId = "midnight")) {
+        HomeScreen(linked, sections, homeActions, homeData())
+    }
+
+    @Test
+    fun homeOled() = shot("home-oled", Appearance(themeId = "oled")) { HomeScreen(linked, sections, homeActions, homeData()) }
+
+    /** Light theme while disconnected (dimmed controls must stay readable on white). */
+    @Test
+    fun homeLightDisconnected() = shot("home-light-disconnected", Appearance(themeId = "light")) {
+        HomeScreen(linked.copy(connected = false, wifi = false, canReconnect = true), sections, homeActions, homeData())
+    }
+
+    /** Follow system with the system in light mode: the light pick (Sky) is used. */
     @Test
     @Config(qualifiers = "w400dp-h860dp-notnight-xxhdpi")
-    fun homeLight() = shot("home-light") { HomeScreen(linked, sections, homeActions, homeData()) }
+    fun homeFollowSystemLight() = shot("home-follow-system-light", Appearance(followSystem = true, lightId = "sky")) {
+        HomeScreen(linked, sections, homeActions, homeData())
+    }
+
+    /** Larger text on a 360 dp phone with 1.3× system font: nothing in the app bar or device card is cut. */
+    @Test
+    @Config(fontScale = 1.3f, qualifiers = "w360dp-h740dp-night-xxhdpi")
+    fun homeLargerText360() = shot("home-larger-360", Appearance(textSize = 3)) {
+        HomeScreen(linked, sections, homeActions, homeData())
+    }
+
+    @Test
+    fun appearance() = shot("appearance") {
+        dev.benfranklin.tether.ui.screens.AppearanceScreen(Appearance(), onChange = {}, onBack = {})
+    }
+
+    @Test
+    fun appearanceFollowSystem() = shot("appearance-follow-system", Appearance(themeId = "light")) {
+        dev.benfranklin.tether.ui.screens.AppearanceScreen(
+            Appearance(themeId = "light", followSystem = true, lightId = "paper", darkId = "midnight", textSize = 2),
+            onChange = {}, onBack = {},
+        )
+    }
 
     /** The Edit Home sheet over Home (drawn in Home's own window). */
     @Test
@@ -310,6 +366,16 @@ class ScreenshotTest {
             find = dev.benfranklin.tether.ui.screens.FindModel(
                 ringing = false, pending = null, locked = false, error = null, available = true,
             ),
+        )
+    }
+
+    /** Settings in the Paper light theme (cards, switches and rows on a light background). */
+    @Test
+    fun settingsLight() = shot("settings-light", Appearance(themeId = "paper")) {
+        SettingsScreen(
+            AppSettings(theme = "paper"),
+            DeviceInfo("MacBook Air", "3F9A·0C21·77B4", "8B12·E4D0·19AF", true, true, "0.5.5", false),
+            NoActions, onBack = {},
         )
     }
 

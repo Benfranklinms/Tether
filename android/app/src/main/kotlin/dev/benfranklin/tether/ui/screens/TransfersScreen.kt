@@ -201,12 +201,12 @@ private fun FilterChips(selected: TransferList.Filter, onSelect: (TransferList.F
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for (f in TransferList.Filter.entries) {
             val on = f == selected
-            val bg by animateColorAsState(if (on) Mono.Text else Mono.Bg, Motion.spring(reduce), label = "chip")
+            val bg by animateColorAsState(if (on) Mono.Accent else Mono.Bg, Motion.spring(reduce), label = "chip")
             val fg by animateColorAsState(if (on) Mono.Bg else Mono.Muted, Motion.spring(reduce), label = "chipText")
             val source = remember { MutableInteractionSource() }
             Box(
                 Modifier.pressScale(source).clip(RoundedCornerShape(50)).background(bg)
-                    .border(1.dp, if (on) Mono.Text else Mono.Line, RoundedCornerShape(50))
+                    .border(1.dp, if (on) Mono.Accent else Mono.Line, RoundedCornerShape(50))
                     .clickable(source, null, role = Role.Tab) {
                         if (!on) Haptics.tick(view)
                         onSelect(f)
@@ -282,9 +282,8 @@ private fun TransferItem(t: TransferRecord, now: Long, zone: ZoneId, last: Boole
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        TransferMeta.middle(t.name, 32), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                    dev.benfranklin.tether.ui.MiddleEllipsisText(
+                        t.name, MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f),
                     )
                     Spacer(Modifier.width(12.dp))
                     AnimatedContent(TransferMeta.percent(t) ?: TransferMeta.time(t, now, zone), label = "trail",
@@ -351,7 +350,7 @@ private fun SwipeRow(t: TransferRecord, onRemove: () -> Unit, modifier: Modifier
         state = state, enableDismissFromStartToEnd = false, gesturesEnabled = t.status.isFinal, modifier = modifier,
         backgroundContent = {
             val past = state.progress > 0.4f && state.targetValue == SwipeToDismissBoxValue.EndToStart
-            val bg by animateColorAsState(if (past) Mono.Text else Mono.SurfaceHigh, Motion.fade(reduce), label = "bg")
+            val bg by animateColorAsState(if (past) Mono.Accent else Mono.SurfaceHigh, Motion.fade(reduce), label = "bg")
             Box(Modifier.fillMaxSize().background(bg).padding(end = 24.dp), contentAlignment = Alignment.CenterEnd) {
                 Icon(Icons.Outlined.Delete, contentDescription = null, tint = if (past) Mono.Bg else Mono.Text)
             }

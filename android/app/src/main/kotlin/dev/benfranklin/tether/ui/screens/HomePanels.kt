@@ -36,6 +36,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.ui.text.font.FontWeight
+import dev.benfranklin.tether.ui.MiddleEllipsisText
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -113,12 +116,12 @@ import java.time.ZoneId
 
 // 0.5.4 Home sections ("Control Center"). Pure mono; every tap ticks; springs respect Reduce Motion.
 
-internal val BLOCK_RADIUS = 30.dp
-internal val TILE_RADIUS = 24.dp
+internal val BLOCK_RADIUS = 28.dp
+internal val TILE_RADIUS = 22.dp
 private val TILE_GAP = 10.dp
 private val BLOCK_PAD = 12.dp
-private val ROW_HEIGHT = 68.dp
-private val LEAD = 44.dp
+private val ROW_HEIGHT = 58.dp
+private val LEAD = 38.dp
 
 /** Alpha for Mac-dependent controls while the Mac isn't connected. */
 private const val DIM = 0.38f
@@ -133,8 +136,9 @@ internal fun homeTransfers(m: HomeModel): List<TransferRecord> = TransferList.ho
 @Composable
 private fun Block(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(BLOCK_RADIUS)).background(Mono.Surface)
-            .border(1.dp, Mono.Line, RoundedCornerShape(BLOCK_RADIUS)).padding(BLOCK_PAD),
+        modifier.fillMaxWidth().clip(RoundedCornerShape(BLOCK_RADIUS))
+            .background(Brush.verticalGradient(listOf(Mono.SurfaceHigh, Mono.Surface)))
+            .border(0.6.dp, Mono.Line, RoundedCornerShape(BLOCK_RADIUS)).padding(BLOCK_PAD),
     ) { content() }
 }
 
@@ -230,14 +234,14 @@ private fun SquareButton(
     val reduce = LocalReduceMotion.current
     val view = LocalView.current
     val source = remember { MutableInteractionSource() }
-    val bg by animateColorAsState(if (filled) Mono.Text else Mono.SurfaceHigh, Motion.fade(reduce), label = "sqBg")
+    val bg by animateColorAsState(if (filled) Mono.Accent else Mono.SurfaceHigh, Motion.fade(reduce), label = "sqBg")
     val fg by animateColorAsState(if (filled) Mono.Bg else Mono.Text, Motion.fade(reduce), label = "sqFg")
     val alpha by animateFloatAsState(if (dim) DIM else 1f, Motion.fade(reduce), label = "sqDim")
     Box(Modifier.size(size)) {
         Column(
             Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha.clamp01() }.pressScale(source)
                 .clip(RoundedCornerShape(TILE_RADIUS)).background(bg)
-                .border(1.dp, if (filled) Mono.Text else Mono.Line, RoundedCornerShape(TILE_RADIUS))
+                .border(0.5.dp, if (filled) Mono.Accent else Mono.Line, RoundedCornerShape(TILE_RADIUS))
                 .clickable(source, ripple(), enabled = enabled, role = Role.Button) {
                     Haptics.tick(view)
                     onClick()
@@ -246,19 +250,19 @@ private fun SquareButton(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(if (size < 70.dp) 22.dp else 26.dp))
-            Spacer(Modifier.height(if (size < 70.dp) 6.dp else 10.dp))
+            Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(if (size < 70.dp) 20.dp else 24.dp))
+            Spacer(Modifier.height(if (size < 70.dp) 6.dp else 9.dp))
             Text(
                 label, style = fitLabel(label, size),
-                color = if (filled) Mono.Bg else Mono.Text.copy(alpha = 0.86f), maxLines = 1, softWrap = false,
+                color = if (filled) Mono.OnAccent else Mono.Muted, maxLines = 1, softWrap = false,
             )
         }
         if (badge != null) {
             Box(
-                Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp).size(24.dp).clip(CircleShape).background(Mono.Text)
-                    .border(2.dp, Mono.Surface, CircleShape),
+                Modifier.align(Alignment.TopEnd).offset(x = 2.dp, y = (-2).dp).size(22.dp).clip(CircleShape).background(Mono.Bg)
+                    .padding(2.dp).clip(CircleShape).background(Mono.Accent),
                 contentAlignment = Alignment.Center,
-            ) { Text(badge, fontFamily = MonoCode, fontSize = 11.sp, color = Mono.Bg, maxLines = 1) }
+            ) { Text(badge, fontFamily = MonoCode, fontSize = 11.sp, color = Mono.OnAccent, maxLines = 1) }
         }
     }
 }
@@ -268,20 +272,20 @@ private fun SquareButton(
  * fixed size, and at 1.3× "Clipboard" no longer fit and was cut (0.5.4 font-scale check).
  */
 internal fun squareLabelSp(size: Dp, fontScale: Float): androidx.compose.ui.unit.TextUnit {
-    val base = if (size < 74.dp) 13f else 15f
+    val base = if (size < 74.dp) 11f else 11.5f
     val scale = if (fontScale > 0f) fontScale else 1f
     return (base * scale.coerceAtMost(MAX_LABEL_SCALE) / scale).sp
 }
 
 private const val MAX_LABEL_SCALE = 1.15f
-private const val MIN_LABEL_SP = 10f
+private const val MIN_LABEL_SP = 9f
 
 /** The label style at [squareLabelSp], stepped down until the label fits inside the square with a margin. */
 @Composable
 private fun fitLabel(label: String, size: Dp): androidx.compose.ui.text.TextStyle {
     val measurer = androidx.compose.ui.text.rememberTextMeasurer()
     val density = LocalDensity.current
-    val base = MaterialTheme.typography.bodyMedium
+    val base = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
     return remember(label, size, density) {
         val room = with(density) { (size - 14.dp).roundToPx() }.coerceAtLeast(1)
         var sp = squareLabelSp(size, density.fontScale).value
@@ -302,22 +306,23 @@ private fun NowPlayingTile(m: HomeModel, data: HomeData, a: HomeActions, blocked
     val media = nowPlaying(m, data)
     val s = data.mac
     Box(
-        modifier.graphicsLayer { this.alpha = alpha.clamp01() }.clip(RoundedCornerShape(TILE_RADIUS)).background(Mono.SurfaceHigh)
-            .border(1.dp, Mono.Line, RoundedCornerShape(TILE_RADIUS)),
+        modifier.graphicsLayer { this.alpha = alpha.clamp01() }.clip(RoundedCornerShape(TILE_RADIUS)).background(Mono.Surface2)
+            .border(0.5.dp, Mono.Line, RoundedCornerShape(TILE_RADIUS)),
     ) {
         if (media == null || s == null) {
             Column(Modifier.fillMaxSize().padding(14.dp).semantics(mergeDescendants = true) {}) {
                 // The glyph gives way first when space is short (large font on a narrow phone), never the text.
                 Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                    Box(Modifier.size(40.dp).clip(CircleShape).background(Mono.Surface), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.MusicNote, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(20.dp))
+                    Box(Modifier.size(52.dp).clip(CircleShape).background(Mono.SurfaceHigh), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.MusicNote, contentDescription = null, tint = Mono.Faint, modifier = Modifier.size(24.dp))
                     }
                 }
                 // Wraps instead of cutting off ("Nothi…" in 0.5.3).
-                Text("Nothing playing", style = MaterialTheme.typography.titleMedium, color = Mono.Text, maxLines = 2)
+                Text("Nothing playing", style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.5.sp), color = Mono.Muted,
+                    maxLines = 2)
                 Text(
-                    if (m.connected) "on your Mac" else "Mac not connected", style = MaterialTheme.typography.bodyMedium,
-                    color = Mono.Muted, maxLines = 2,
+                    if (m.connected) "on your Mac" else "Mac not connected", style = MaterialTheme.typography.bodySmall,
+                    color = Mono.Faint, maxLines = 2,
                 )
             }
             return@Box
@@ -327,13 +332,13 @@ private fun NowPlayingTile(m: HomeModel, data: HomeData, a: HomeActions, blocked
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 Artwork(media.title, Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true))
                 Spacer(Modifier.weight(1f))
-                Icon(Icons.Outlined.Laptop, contentDescription = "On your Mac", tint = Mono.Muted, modifier = Modifier.size(18.dp))
+                Icon(Icons.Outlined.Laptop, contentDescription = "On your Mac", tint = Mono.Faint, modifier = Modifier.size(16.dp))
             }
             Spacer(Modifier.height(8.dp))
-            Text(media.title.ifBlank { media.app }, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp), maxLines = 1,
+            Text(media.title.ifBlank { media.app }, style = MaterialTheme.typography.titleMedium, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
             if (media.artist.isNotBlank()) {
-                Text(media.artist, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1,
+                Text(media.artist, style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp), color = Mono.Muted, maxLines = 1,
                     overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.height(8.dp))
@@ -341,7 +346,7 @@ private fun NowPlayingTile(m: HomeModel, data: HomeData, a: HomeActions, blocked
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically) {
                 MediaButton(Icons.Outlined.FastRewind, "Previous", m.connected && !blocked) { a.mediaCommand(MacMediaCmds.PREV) }
-                PlayButton(media.playing, m.connected && !blocked, 38.dp) { a.mediaCommand(MacMediaCmds.TOGGLE) }
+                PlayButton(media.playing, m.connected && !blocked, 34.dp) { a.mediaCommand(MacMediaCmds.TOGGLE) }
                 MediaButton(Icons.Outlined.FastForward, "Next", m.connected && !blocked) { a.mediaCommand(MacMediaCmds.NEXT) }
             }
         }
@@ -377,7 +382,7 @@ internal fun PlayerRow(m: HomeModel, data: HomeData, a: HomeActions, blocked: Bo
                 Artwork(media.title, Modifier.size(56.dp))
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(media.title.ifBlank { media.app }, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
+                    Text(media.title.ifBlank { media.app }, style = MaterialTheme.typography.titleMedium,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(media.artist, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1,
                         overflow = TextOverflow.Ellipsis)
@@ -415,7 +420,7 @@ private fun rememberProgress(media: dev.benfranklin.tether.core.proto.MacMedia, 
 private fun Bar(progress: Float, modifier: Modifier = Modifier) {
     LinearProgressIndicator(
         progress = { progress.clamp01() }, modifier = modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
-        color = Mono.Accent, trackColor = Mono.Line, drawStopIndicator = {}, gapSize = 0.dp,
+        color = Mono.Accent, trackColor = Mono.Surface4, drawStopIndicator = {}, gapSize = 0.dp,
     )
 }
 
@@ -459,7 +464,7 @@ private fun MediaButton(icon: ImageVector, desc: String, enabled: Boolean, onCli
                 onClick()
             }.semantics { contentDescription = desc },
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, contentDescription = null, tint = if (enabled) Mono.Text else Mono.Muted, modifier = Modifier.size(20.dp)) }
+    ) { Icon(icon, contentDescription = null, tint = if (enabled) Mono.Muted else Mono.Faint, modifier = Modifier.size(18.dp)) }
 }
 
 @Composable
@@ -468,7 +473,7 @@ private fun PlayButton(playing: Boolean, enabled: Boolean, size: Dp, onClick: ()
     val source = remember { MutableInteractionSource() }
     val view = LocalView.current
     Box(
-        Modifier.pressScale(source).size(size).clip(CircleShape).background(Mono.Text)
+        Modifier.pressScale(source).size(size).clip(CircleShape).background(Mono.Accent)
             .clickable(source, null, enabled = enabled, role = Role.Button) {
                 Haptics.confirm(view)
                 onClick()
@@ -482,7 +487,7 @@ private fun PlayButton(playing: Boolean, enabled: Boolean, size: Dp, onClick: ()
                 (fadeIn() + scaleIn(Motion.bouncy(false), 0.4f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.4f))
             }
         }) { p ->
-            Icon(if (p) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, contentDescription = null, tint = Mono.Bg,
+            Icon(if (p) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, contentDescription = null, tint = Mono.OnAccent,
                 modifier = Modifier.size(size * 0.5f))
         }
     }
@@ -490,35 +495,40 @@ private fun PlayButton(playing: Boolean, enabled: Boolean, size: Dp, onClick: ()
 
 // ---------------- Section heading + empty line ----------------
 
-/** "Recent transfers ........ See all": a quiet heading with an optional count and trailing action. */
+/** "Recent transfers ........ See all": a quiet 13sp heading with an optional count and trailing action. */
 @Composable
 internal fun SectionTitle(title: String, count: Int? = null, action: String? = null, actionDesc: String? = null,
-    actionIcon: ImageVector? = null, onAction: (() -> Unit)? = null) {
+    actionIcon: ImageVector? = null, chevron: Boolean = false, onAction: (() -> Unit)? = null) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 4.dp, top = 28.dp, bottom = 6.dp).heightIn(min = 32.dp),
+        Modifier.fillMaxWidth().padding(start = 4.dp, top = 26.dp, bottom = 6.dp).heightIn(min = 32.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp), color = Mono.Muted, maxLines = 1,
+        Text(title, style = MaterialTheme.typography.titleSmall, color = Mono.Faint, maxLines = 1,
             modifier = Modifier.semantics { heading() })
         if (count != null) {
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(7.dp))
             Count(count)
         }
         Spacer(Modifier.weight(1f))
         if (onAction != null && (action != null || actionIcon != null)) {
             val view = LocalView.current
-            Box(
+            Row(
                 Modifier.clip(RoundedCornerShape(10.dp)).clickable(role = Role.Button) {
                     Haptics.tick(view)
                     onAction()
                 }.padding(horizontal = 6.dp, vertical = 4.dp)
-                    .semantics { if (actionDesc != null) contentDescription = actionDesc },
-                contentAlignment = Alignment.Center,
+                    .semantics(mergeDescendants = true) { if (actionDesc != null) contentDescription = actionDesc },
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (actionIcon != null) {
-                    Icon(actionIcon, contentDescription = null, tint = Mono.Text, modifier = Modifier.size(22.dp))
+                    Icon(actionIcon, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(18.dp))
                 } else {
-                    Text(action.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = Mono.Text)
+                    Text(action.orEmpty(), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        color = Mono.Muted)
+                    if (chevron) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Mono.Muted,
+                            modifier = Modifier.size(18.dp))
+                    }
                 }
             }
         }
@@ -539,14 +549,14 @@ private fun Count(n: Int) {
                     (slideOutVertically(Motion.spring(false)) { if (up) -it else it } + fadeOut())
             }
         },
-    ) { c -> Text("$c", style = MaterialTheme.typography.bodyLarge, color = Mono.Muted, fontFamily = MonoCode) }
+    ) { c -> Text("$c", style = MaterialTheme.typography.bodySmall, color = Mono.Faint, fontFamily = MonoCode) }
 }
 
 /** An empty section: its heading plus one grey line, never a big empty card. */
 @Composable
 internal fun EmptyLine(text: String, onClick: (() -> Unit)? = null) {
     Text(
-        text, style = MaterialTheme.typography.bodyLarge, color = Mono.Muted,
+        text, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted,
         modifier = Modifier.fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(start = 4.dp, top = 2.dp, bottom = 6.dp),
@@ -555,7 +565,7 @@ internal fun EmptyLine(text: String, onClick: (() -> Unit)? = null) {
 
 @Composable
 private fun RowDivider() {
-    Box(Modifier.fillMaxWidth().padding(start = LEAD + 16.dp).height(1.dp).background(Mono.Line))
+    Box(Modifier.fillMaxWidth().padding(start = LEAD + 14.dp).height(0.5.dp).background(Mono.LineFaint))
 }
 
 // ---------------- Recent transfers ----------------
@@ -595,24 +605,24 @@ private fun TransferRow(t: TransferRecord, now: Long, a: HomeActions) {
         Box(Modifier.size(LEAD)) {
             FileLead(t.name, t.mime, LEAD)
             Box(
-                Modifier.align(Alignment.BottomEnd).offset(x = 5.dp, y = 5.dp).size(20.dp).clip(CircleShape).background(Mono.Bg)
-                    .border(1.dp, Mono.Line, CircleShape),
+                Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp).size(19.dp).clip(CircleShape).background(Mono.Bg)
+                    .padding(2.dp).clip(CircleShape).background(Mono.Surface4),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     if (t.direction == Direction.OUT) Icons.Outlined.ArrowUpward else Icons.Outlined.ArrowDownward,
-                    contentDescription = null, tint = Mono.Text, modifier = Modifier.size(12.dp),
+                    contentDescription = null, tint = Mono.Text, modifier = Modifier.size(10.dp),
                 )
             }
         }
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(TransferMeta.middle(t.name, 32), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1,
-                overflow = TextOverflow.Ellipsis)
+            // One middle ellipsis that keeps the extension (0.5.4 showed "VID_2026…0812….mp4": helper + overflow).
+            MiddleEllipsisText(t.name, MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     if (t.status == TransferStatus.DONE) statusLine(t) else TransferMeta.subtitle(t, ::formatBytes),
-                    style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall, color = Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = if (running) Modifier else Modifier.weight(1f, fill = false),
                 )
                 if (running) {
@@ -625,12 +635,12 @@ private fun TransferRow(t: TransferRecord, now: Long, a: HomeActions) {
         Column(horizontalAlignment = Alignment.End) {
             val pct = TransferMeta.percent(t)
             if (pct != null) {
-                Text(pct, style = MaterialTheme.typography.bodyMedium, fontFamily = MonoCode, color = Mono.Text)
-                Text(if (t.direction == Direction.OUT) "Sending" else "Receiving", style = MaterialTheme.typography.bodyMedium,
-                    color = Mono.Muted)
+                Text(pct, style = MaterialTheme.typography.bodySmall, fontFamily = MonoCode, color = Mono.Text)
+                Text(if (t.direction == Direction.OUT) "Sending" else "Receiving", style = MaterialTheme.typography.bodySmall,
+                    color = Mono.Faint)
             } else {
-                Text(When.short(maxOf(t.createdAt, t.updatedAt), now, zone), style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = MonoCode, color = Mono.Muted)
+                Text(When.short(maxOf(t.createdAt, t.updatedAt), now, zone), style = MaterialTheme.typography.bodySmall,
+                    fontFamily = MonoCode, color = Mono.Faint)
             }
         }
     }
@@ -655,54 +665,14 @@ internal fun isVideo(mime: String?, name: String): Boolean =
 @Composable
 private fun GlyphSquare(icon: ImageVector, size: Dp, shape: RoundedCornerShape) {
     Box(
-        Modifier.size(size).clip(shape).background(Brush.verticalGradient(listOf(Color(0xFF3A3A3E), Color(0xFF18181B))))
-            .border(1.dp, Mono.Line, shape),
+        Modifier.size(size).clip(shape).background(Brush.verticalGradient(listOf(Mono.Surface4, Mono.SurfaceHigh)))
+            .border(0.5.dp, Mono.Line, shape),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, contentDescription = null, tint = Mono.Text, modifier = Modifier.size(size * 0.46f)) }
 }
 
 // ---------------- Shelf ----------------
 
-@Composable
-internal fun ShelfSection(m: HomeModel, data: HomeData, a: HomeActions) {
-    val zone = remember { ZoneId.systemDefault() }
-    val view = LocalView.current
-    if (data.shelf.isEmpty()) {
-        SectionTitle("Shelf", actionIcon = Icons.Outlined.Add, actionDesc = "Open Shelf", onAction = a::openShelf)
-        EmptyLine("Empty")
-        return
-    }
-    SectionTitle("Shelf", count = data.shelf.size, action = "See all", actionDesc = "Open Shelf", onAction = a::openShelf)
-    data.shelf.take(SHELF_ROWS).forEachIndexed { i, item ->
-        if (i > 0) RowDivider()
-        val (title, sub) = ShelfMeta.lines(item, ::formatBytes)
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = ROW_HEIGHT).clip(RoundedCornerShape(12.dp))
-                .clickable {
-                    Haptics.tick(view)
-                    a.openShelfItem(item.id)
-                }
-                .semantics(mergeDescendants = true) { contentDescription = "$title, $sub" },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ShelfLeading(item, LEAD, thumbnail = { a.shelfThumb(it) })
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(if (item.kind == ShelfKinds.FILE) TransferMeta.middle(title, 34) else title,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(sub, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(When.short(item.created, m.now, zone), style = MaterialTheme.typography.bodyMedium, fontFamily = MonoCode,
-                    color = Mono.Muted)
-                Text(ShelfMeta.source(item), style = MaterialTheme.typography.bodyMedium, color = Mono.Muted)
-            }
-        }
-    }
-}
-
-private const val SHELF_ROWS = 3
 private const val CLIP_ROWS = 3
 private const val PHOTO_CELLS = 4
 
@@ -772,7 +742,7 @@ internal fun PhotosSection(data: HomeData, a: HomeActions) {
             if (c > 0) {
                 val source = remember { MutableInteractionSource() }
                 Box(
-                    Modifier.pressScale(source).clip(RoundedCornerShape(50)).background(Mono.Text)
+                    Modifier.pressScale(source).clip(RoundedCornerShape(50)).background(Mono.Accent)
                         .clickable(source, null, role = Role.Button) {
                             Haptics.confirm(view)
                             a.sendPhotos(shown.filter { it.id in picked })
@@ -820,7 +790,7 @@ private fun PhotoCell(p: RecentPhoto, picked: Boolean, a: HomeActions, modifier:
         bmp?.let { Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
         Box(
             Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp).clip(CircleShape)
-                .background(if (picked) Mono.Text else Color(0x33000000)).border(1.5.dp, Mono.Text.copy(alpha = 0.9f), CircleShape),
+                .background(if (picked) Mono.Accent else Color(0x33000000)).border(1.5.dp, Color.White.copy(alpha = 0.9f), CircleShape),
             contentAlignment = Alignment.Center,
         ) { if (picked) Icon(Icons.Outlined.Check, contentDescription = null, tint = Mono.Bg, modifier = Modifier.size(13.dp)) }
     }
@@ -844,7 +814,7 @@ internal fun FindSection(data: HomeData, a: HomeActions) {
 }
 
 /** Widens content by [by] on each side (to undo a child's own horizontal padding). */
-private fun Modifier.bleed(by: Dp) = layout { measurable, c ->
+internal fun Modifier.bleed(by: Dp) = layout { measurable, c ->
     val extra = (by * 2).roundToPx()
     val max = if (c.hasBoundedWidth) c.maxWidth + extra else c.maxWidth
     val p = measurable.measure(c.copy(minWidth = max, maxWidth = max))

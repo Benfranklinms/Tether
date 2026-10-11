@@ -80,7 +80,7 @@ fun ShelfSettingsScreen(
                             // Space used, as a thin mono bar.
                             Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Mono.Line)) {
                                 val f = if (cap <= 0) 0f else (used.toFloat() / cap).coerceIn(0f, 1f)
-                                Box(Modifier.fillMaxWidth(f).fillMaxHeight().background(Mono.Text))
+                                Box(Modifier.fillMaxWidth(f).fillMaxHeight().background(Mono.Accent))
                             }
                             Spacer(Modifier.height(10.dp))
                             Text(

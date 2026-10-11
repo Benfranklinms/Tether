@@ -100,6 +100,8 @@ import dev.benfranklin.tether.ui.screens.SetupScreen
 import dev.benfranklin.tether.ui.screens.setupSummary
 import dev.benfranklin.tether.ui.screens.updateUi
 import dev.benfranklin.tether.ui.theme.TetherTheme
+import dev.benfranklin.tether.data.appearance
+import dev.benfranklin.tether.data.withAppearance
 import dev.benfranklin.tether.core.features.UpdatePrompt
 import dev.benfranklin.tether.core.proto.Caps6
 import dev.benfranklin.tether.ui.screens.FindModel
@@ -419,7 +421,7 @@ private fun TetherApp(rt: TetherRuntime) {
                 m = homeModel(state, transfers, mirroringOff = settings.notifications.enabled && !listenerOn),
                 sections = homeSections,
                 data = dev.benfranklin.tether.ui.screens.HomeData(
-                    shelf = shelf.ordered, clipboard = clipboard, clips = clips, mac = feedsMac,
+                    shelf = shelf.ordered, folders = shelf.orderedFolders, clipboard = clipboard, clips = clips, mac = feedsMac,
                     macSupported = state.link !is LinkState.Connected ||
                         dev.benfranklin.tether.core.proto.Caps7.MAC_STATUS in state.peerCaps,
                     photos = photos, photosAllowed = photosAllowed, hotspotSsid = hotspotSsid, hotspotState = hotspot.state,
@@ -436,6 +438,13 @@ private fun TetherApp(rt: TetherRuntime) {
                     override fun settings() = nav.navigate("settings")
                     override fun openShelf() = nav.navigate("shelf")
                     override fun openShelfItem(id: String) = nav.navigate("shelf/$id")
+                    override fun openShelfFolder(id: String) = nav.navigate("shelf/folder/$id")
+                    override fun pasteToShelf() {
+                        val text = shelfActions.pasteText()
+                        if (text.isNullOrBlank()) rt.note("Nothing to paste") else shelfActions.addText(text)
+                    }
+                    override fun addFileToShelf() = shelfActions.addFile()
+                    override fun addToShelf() = nav.navigate("shelfadd")
                     override fun copyClip(text: String) = copyText(ctx, text)
                     override fun seeAllTransfers() = nav.navigate("transfers")
                     override fun openTransfer(t: dev.benfranklin.tether.core.transfer.TransferRecord) {
@@ -514,6 +523,7 @@ private fun TetherApp(rt: TetherRuntime) {
                     override fun openShelf() = nav.navigate("shelf")
                     override fun openShelfSettings() = nav.navigate("shelfsettings")
                     override fun openHotspot() = nav.navigate("hotspot")
+                    override fun openAppearance() = nav.navigate("appearance")
                     override fun setupSummary() = setupSummary(setupRows(ctx))
                 },
                 onBack = { nav.popBackStack() },
@@ -545,11 +555,27 @@ private fun TetherApp(rt: TetherRuntime) {
             )
         }
         composable("licenses") { LicensesScreen(onBack = { nav.popBackStack() }) }
+        composable("appearance") {
+            dev.benfranklin.tether.ui.screens.AppearanceScreen(
+                value = settings.appearance,
+                onChange = { next -> rt.settings.update { it.withAppearance(next) } },
+                onBack = { nav.popBackStack() },
+            )
+        }
         composable("shelf") {
           CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
             ShelfScreen(
                 items = shelf.ordered, connected = shelfConnected,
                 a = shelfActions, onBack = { nav.popBackStack() }, files = shelfFiles, folders = shelf.orderedFolders,
+            )
+          }
+        }
+        composable("shelfadd") {
+          CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
+            ShelfScreen(
+                items = shelf.ordered, connected = shelfConnected,
+                a = shelfActions, onBack = { nav.popBackStack() }, files = shelfFiles, folders = shelf.orderedFolders,
+                startAdding = true,
             )
           }
         }

@@ -13,9 +13,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Edge-to-edge for every Tether activity (0.5.3). Tether is always dark, so the status and
- * navigation bar icons are always light, whatever the system theme (the default "auto" style
- * drew dark clock/battery icons on the black app in light system mode).
+ * Edge-to-edge for every Tether activity (0.5.3). Starts with light bar icons (the default theme
+ * is dark; the default "auto" style drew dark icons on the black app in light system mode);
+ * since 0.5.5 TetherTheme switches them to dark icons whenever a light theme is on screen.
  */
 fun ComponentActivity.tetherEdgeToEdge() = enableEdgeToEdge(
     statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),

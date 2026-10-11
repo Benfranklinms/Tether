@@ -134,10 +134,10 @@ fun LinkBadge(wifi: Boolean, modifier: Modifier = Modifier) {
     }
     val t = rememberInfiniteTransition(label = "radio")
     val pulse by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart), label = "pulse")
-    val bg by animateColorAsState(if (wifi) Mono.Text else Mono.Bg, Motion.fade(reduce), label = "badgeBg")
+    val bg by animateColorAsState(if (wifi) Mono.Accent else Mono.Bg, Motion.fade(reduce), label = "badgeBg")
     val fg by animateColorAsState(if (wifi) Mono.Bg else Mono.Text, Motion.fade(reduce), label = "badgeFg")
     Row(
-        modifier.clip(RoundedCornerShape(50)).background(bg).border(1.dp, if (wifi) Mono.Text else Mono.Line, RoundedCornerShape(50))
+        modifier.clip(RoundedCornerShape(50)).background(bg).border(1.dp, if (wifi) Mono.Accent else Mono.Line, RoundedCornerShape(50))
             .animateContentSize(Motion.spring(reduce))
             .semantics { contentDescription = if (wifi) "Connected over Wi-Fi fast path" else "Connected over Bluetooth" }
             .padding(start = 8.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
@@ -311,7 +311,7 @@ fun PillButton(
 ) {
     val reduce = LocalReduceMotion.current
     val source = remember { MutableInteractionSource() }
-    val bg by animateColorAsState(if (filled) Mono.Text else Mono.Bg, Motion.fade(reduce), label = "pbg")
+    val bg by animateColorAsState(if (filled) Mono.Accent else Mono.Bg, Motion.fade(reduce), label = "pbg")
     val fg by animateColorAsState(
         when {
             !enabled -> Mono.Muted
@@ -624,7 +624,7 @@ fun WhatsNewContent(version: String, notes: String?, onDone: () -> Unit) {
     LaunchedEffect(Unit) { shown = true }
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
         AnimatedVisibility(shown, enter = Motion.enter(reduce, from = 0.6f)) {
-            Box(Modifier.size(56.dp).clip(CircleShape).background(Mono.Text), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(56.dp).clip(CircleShape).background(Mono.Accent), contentAlignment = Alignment.Center) {
                 Icon(Icons.Outlined.Check, contentDescription = null, tint = Mono.Bg)
             }
         }

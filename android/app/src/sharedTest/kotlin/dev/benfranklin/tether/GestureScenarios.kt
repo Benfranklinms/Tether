@@ -10,8 +10,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performScrollToNode
@@ -178,7 +178,7 @@ object GestureScenarios {
     fun holdAndDrag(rule: ComposeContentTestRule) {
         for (d in listOf("Send clipboard", "Photos")) {
             // A drag on a button scrolls the list; bring the control back before holding it (small emulator screens).
-            rule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription(d, substring = true))
+            rule.onNodeWithTag("home-list").performScrollToNode(hasContentDescription(d, substring = true))
             rule.node(d).performTouchInput {
                 down(center)
                 advanceEventTime(1_000)
@@ -194,8 +194,9 @@ object GestureScenarios {
             }
             rule.waitForIdle()
         }
-        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Edit Home"))
-        rule.onNodeWithText("Edit Home").performTouchInput {
+        // 0.5.5: Edit lives in the app bar (the bottom "Edit Home" pill is gone).
+        rule.onNodeWithTag("home-list").performScrollToNode(hasTestTag("home-edit"))
+        rule.onNodeWithTag("home-edit").performTouchInput {
             down(center)
             advanceEventTime(900)
             repeat(40) {
@@ -241,8 +242,8 @@ object GestureScenarios {
      * [editContent] + [editSheetGestures] on the list itself.
      */
     fun editMode(rule: ComposeContentTestRule, saved: () -> HomeSections, touch: Boolean = true) {
-        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Edit Home"))
-        rule.onNodeWithText("Edit Home").performClick()
+        rule.onNodeWithTag("home-list").performScrollToNode(hasTestTag("home-edit"))
+        rule.onNodeWithTag("home-edit").performClick()
         settle(rule)
         rule.onNodeWithText("Done").assertExists()
         if (touch) {
@@ -255,7 +256,7 @@ object GestureScenarios {
         settle(rule)
         check(rule.onAllNodesWithText("Done").fetchSemanticsNodes().isEmpty()) { "Done did not close the sheet" }
         // The toggled sections are on Home now, without leaving the screen.
-        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Clipboard history"))
+        rule.onNodeWithTag("home-list").performScrollToNode(hasText("Clipboard history"))
         rule.onNodeWithText("Clipboard history").assertExists()
     }
 

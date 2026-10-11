@@ -165,7 +165,7 @@ private fun Status(ok: Boolean) {
     if (ok) {
         Text(
             "✓", color = Mono.Bg, style = MaterialTheme.typography.labelSmall,
-            modifier = m.background(Mono.Text).padding(start = 3.dp).semantics { contentDescription = "Granted" },
+            modifier = m.background(Mono.Accent).padding(start = 3.dp).semantics { contentDescription = "Granted" },
         )
     } else {
         Spacer(m.border(1.5.dp, Mono.Muted, CircleShape).semantics { contentDescription = "Missing" })
@@ -268,7 +268,7 @@ fun More5Screen(
                         Text(upd.line, style = MaterialTheme.typography.bodySmall, color = Mono.Muted, maxLines = 4, overflow = TextOverflow.Ellipsis)
                         upd.progress?.let {
                             LinearProgressIndicator(
-                                progress = { it }, color = Mono.Text, trackColor = Mono.Line, modifier = Modifier.fillMaxWidth().heightIn(min = 3.dp),
+                                progress = { it }, color = Mono.Accent, trackColor = Mono.Line, modifier = Modifier.fillMaxWidth().heightIn(min = 3.dp),
                             )
                         }
                         upd.action?.let { label ->

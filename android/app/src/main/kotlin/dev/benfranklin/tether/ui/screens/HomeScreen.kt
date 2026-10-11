@@ -19,6 +19,18 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import dev.benfranklin.tether.ui.theme.MonoCode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -165,6 +177,8 @@ data class HomeData(
     val newPhotos: Int = 0,
     /** 0.5.4: Find my Mac section; null when no Mac is paired. */
     val find: FindModel? = null,
+    /** 0.5.5: Shelf folders (chips above the carousel), in order. */
+    val folders: List<dev.benfranklin.tether.core.proto.ShelfFolder> = emptyList(),
 )
 
 /** What Home can do; every action has a no-op default so tests and previews stay short. */
@@ -175,6 +189,11 @@ interface HomeActions {
     fun settings() {}
     fun openShelf() {}
     fun openShelfItem(id: String) {}
+    /** 0.5.5 Shelf on Home: a folder chip, the Add tile, and the empty card's Paste / Add file. */
+    fun openShelfFolder(id: String) {}
+    fun addToShelf() = openShelf()
+    fun pasteToShelf() {}
+    fun addFileToShelf() {}
     fun copyClip(text: String) {}
     fun seeAllTransfers() {}
     fun openTransfer(t: TransferRecord) {}
@@ -242,8 +261,14 @@ fun HomeScreen(
             LazyColumn(
                 state = list, modifier = Modifier.fillMaxSize().testTag("home-list"),
                 // The last row must clear the gesture/navigation bar even if the Scaffold padding lacks it.
-                contentPadding = screenPadding(pad, start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp + navGap),
+                contentPadding = screenPadding(pad, start = 16.dp, end = 16.dp, top = APP_BAR_TOP, bottom = 32.dp + navGap),
             ) {
+                item(key = "appbar") {
+                    AppBar(data, a, onEdit = {
+                        Haptics.tick(view)
+                        editing = true
+                    })
+                }
                 item(key = "header") { Header(m, data, a) }
                 banners(m, a)
                 rows.forEach { row ->
@@ -252,12 +277,6 @@ fun HomeScreen(
                             fadeOutSpec = Motion.fade(LocalReduceMotion.current))) {
                             Column { SectionContent(row, m, data, a, editing) }
                         }
-                    }
-                }
-                item(key = "edit") {
-                    EditHomeButton(Modifier.padding(top = if (rows.isEmpty()) 24.dp else 36.dp)) {
-                        Haptics.tick(view)
-                        editing = true
                     }
                 }
             }
@@ -291,9 +310,9 @@ private fun rowKey(row: HomeRow): String = when (row) {
 @Composable
 private fun SectionContent(row: HomeRow, m: HomeModel, data: HomeData, a: HomeActions, editing: Boolean) {
     when (row) {
-        HomeRow.Control -> Box(Modifier.padding(top = 20.dp)) { ControlBlock(m, data, a, editing) }
-        HomeRow.QuickOnly -> Box(Modifier.padding(top = 20.dp)) { QuickRow(m, data, a, editing) }
-        HomeRow.PlayerOnly -> Box(Modifier.padding(top = 20.dp)) { PlayerRow(m, data, a, editing) }
+        HomeRow.Control -> Box(Modifier.padding(top = 14.dp)) { ControlBlock(m, data, a, editing) }
+        HomeRow.QuickOnly -> Box(Modifier.padding(top = 14.dp)) { QuickRow(m, data, a, editing) }
+        HomeRow.PlayerOnly -> Box(Modifier.padding(top = 14.dp)) { PlayerRow(m, data, a, editing) }
         is HomeRow.Single -> when (row.section) {
             HomeSection.TRANSFERS -> TransfersSection(m, a)
             HomeSection.SHELF -> ShelfSection(m, data, a)
@@ -331,72 +350,143 @@ private fun Banner(text: String, action: String, strong: Boolean, onClick: () ->
     }
 }
 
-// ---------------- Header ----------------
+// ---------------- App bar + device card (0.5.5 Home v2) ----------------
 
-/** The Mac, the link ("Connected · Wi-Fi · 82%"), Update when offered, Settings. */
+/** Space between the status bar and the app bar: the bar sits lower than in 0.5.4 (approved v2 mockup). */
+private val APP_BAR_TOP = 28.dp
+
+/**
+ * The app bar: the Tether mark (a black rounded tile with the launcher rings) and "Tether" on the
+ * left; Update (when offered), Edit (opens Edit Home) and Settings as round buttons on the right.
+ */
+@Composable
+private fun AppBar(data: HomeData, a: HomeActions, onEdit: () -> Unit) {
+    val reduce = LocalReduceMotion.current
+    val view = LocalView.current
+    Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        AppLogo()
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "Tether", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+            maxLines = 1, modifier = Modifier.weight(1f).semantics { heading() },
+        )
+        AnimatedVisibility(
+            data.updateVersion != null, enter = Motion.enter(reduce, from = 0.7f), exit = Motion.exit(reduce, to = 0.7f),
+        ) {
+            Box(Modifier.padding(end = 8.dp)) { UpdatePill(data.updateVersion.orEmpty(), a::update) }
+        }
+        RoundIconButton(Icons.Outlined.Edit, "Edit Home", "home-edit", 17.dp, onEdit)
+        Spacer(Modifier.width(8.dp))
+        RoundIconButton(Icons.Outlined.Settings, "Settings", "home-settings", 19.dp) {
+            Haptics.tick(view)
+            a.settings()
+        }
+    }
+}
+
+/** The app's mark as on the launcher: two rings on a black rounded tile (the adaptive icon's foreground). */
+@Composable
+private fun AppLogo() {
+    Box(
+        Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(Color.Black)
+            .border(0.5.dp, Mono.Line, RoundedCornerShape(9.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        // The foreground's rings span 46 of its 108 units; scaled so they fill ~65% of the tile.
+        Image(
+            painterResource(dev.benfranklin.tether.R.drawable.ic_launcher_foreground), contentDescription = null,
+            modifier = Modifier.requiredSize(46.dp),
+        )
+    }
+}
+
+/** A 40 dp circular icon button (app bar). */
+@Composable
+private fun RoundIconButton(icon: ImageVector, desc: String, tag: String, iconSize: Dp, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    Box(
+        Modifier.pressScale(source).size(48.dp).testTag(tag)
+            .clickable(source, null, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = desc },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).background(Mono.Surface2).border(0.5.dp, Mono.Line2, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(iconSize)) }
+    }
+}
+
+/**
+ * The device card: a laptop tile, the Mac's name, the link ("Connected · Wi-Fi", "Connecting…",
+ * "Not connected") and the Mac's battery; Reconnect when the phone can restart the link.
+ */
 @Composable
 private fun Header(m: HomeModel, data: HomeData, a: HomeActions) {
     val reduce = LocalReduceMotion.current
     val view = LocalView.current
     val line = HeaderLine.of(
         connected = m.connected, connecting = m.connecting, wifi = m.wifi,
-        battery = data.mac?.battery?.takeIf { m.connected }, canReconnect = m.canReconnect, reason = m.reason,
+        battery = null, canReconnect = m.canReconnect, reason = m.reason,
     )
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp).animateContentSize(Motion.spring(reduce))) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(52.dp).clip(CircleShape).background(Mono.Surface).border(1.dp, Mono.Line, CircleShape),
-                contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Laptop, contentDescription = null, tint = Mono.Text, modifier = Modifier.size(26.dp))
+    val battery = data.mac?.battery?.takeIf { m.connected }?.coerceIn(0, 100)
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp).animateContentSize(Motion.spring(reduce))) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 76.dp).clip(RoundedCornerShape(22.dp)).background(Mono.Surface)
+                .border(0.5.dp, Mono.Line2, RoundedCornerShape(22.dp)).padding(horizontal = 14.dp, vertical = 12.dp)
+                .testTag("device-card"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)).background(Mono.SurfaceHigh)
+                    .border(0.5.dp, Mono.Line, RoundedCornerShape(15.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Laptop, contentDescription = null, tint = if (m.connected) Mono.Text else Mono.Faint,
+                    modifier = Modifier.size(24.dp))
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }) {
-                Text(m.title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp), maxLines = 1,
+                Text(m.title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), maxLines = 1,
                     overflow = TextOverflow.Ellipsis)
                 AnimatedContent(line.text to line.dot, label = "link",
                     transitionSpec = { fadeIn(Motion.fade(reduce)) togetherWith fadeOut(Motion.fade(reduce)) }) { (text, dot) ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
                         LinkDot(dot)
-                        Spacer(Modifier.width(8.dp))
-                        // Two lines at most: at large font sizes the battery wraps instead of being cut off.
-                        Text(text, style = MaterialTheme.typography.bodyLarge, color = Mono.Muted, maxLines = 2,
-                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Spacer(Modifier.width(7.dp))
+                        // Two lines at most: at large text sizes the reason wraps instead of being cut off.
+                        Text(text, style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp), color = Mono.Muted,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
-            AnimatedVisibility(
-                data.updateVersion != null, enter = Motion.enter(reduce, from = 0.7f), exit = Motion.exit(reduce, to = 0.7f),
-            ) {
-                Box(Modifier.padding(start = 8.dp)) { UpdatePill(data.updateVersion.orEmpty(), a::update) }
+            if (battery != null) {
+                Spacer(Modifier.width(10.dp))
+                BatteryGlyph(battery / 100f)
+                Spacer(Modifier.width(8.dp))
+                Text("$battery%", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                    fontFamily = MonoCode, maxLines = 1, softWrap = false,
+                    modifier = Modifier.semantics { contentDescription = "Mac battery $battery percent" })
             }
-            Spacer(Modifier.width(8.dp))
-            val gear = remember { MutableInteractionSource() }
-            Box(
-                Modifier.pressScale(gear).size(48.dp).clip(CircleShape).background(Mono.Surface).border(1.dp, Mono.Line, CircleShape)
-                    .clickable(gear, ripple(), role = Role.Button) {
-                        Haptics.tick(view)
-                        a.settings()
-                    }
-                    .semantics { contentDescription = "Settings" },
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Outlined.Settings, contentDescription = null, tint = Mono.Text, modifier = Modifier.size(22.dp)) }
-        }
-        // Always composed (hidden when not offered) so the header never inserts children mid-gesture.
-        AnimatedVisibility(
-            line.reconnect, enter = fadeIn(Motion.fade(reduce)) + expandVertically(Motion.spring(reduce)),
-            exit = fadeOut(Motion.fade(reduce)) + shrinkVertically(Motion.spring(reduce)),
-        ) {
-            Row(Modifier.padding(start = 62.dp, top = 8.dp)) {
+            // Always composed (hidden when not offered) so the card never inserts children mid-gesture.
+            AnimatedVisibility(
+                line.reconnect, enter = Motion.enter(reduce, from = 0.8f), exit = Motion.exit(reduce, to = 0.8f),
+            ) {
                 val source = remember { MutableInteractionSource() }
-                Text(
-                    "Reconnect", style = MaterialTheme.typography.labelLarge, color = Mono.Text,
-                    modifier = Modifier.pressScale(source).clip(RoundedCornerShape(50)).border(1.dp, Mono.Line, RoundedCornerShape(50))
-                        .clickable(source, ripple(), role = Role.Button) {
+                Box(
+                    Modifier.padding(start = 10.dp).pressScale(source).height(32.dp).clip(RoundedCornerShape(50))
+                        .background(Mono.Accent)
+                        .clickable(source, null, role = Role.Button) {
                             Haptics.tick(view)
                             a.reconnect()
                         }
                         .semantics { contentDescription = "Reconnect: restart Bluetooth for Tether" }
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                )
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Reconnect", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = Mono.OnAccent, maxLines = 1, softWrap = false)
+                }
             }
         }
         AnimatedVisibility(
@@ -405,10 +495,28 @@ private fun Header(m: HomeModel, data: HomeData, a: HomeActions) {
         ) {
             Text(
                 m.error.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = Mono.Text,
-                modifier = Modifier.padding(top = 12.dp).fillMaxWidth().border(1.dp, Mono.Line, RoundedCornerShape(12.dp))
+                modifier = Modifier.padding(top = 10.dp).fillMaxWidth().border(1.dp, Mono.Line2, RoundedCornerShape(14.dp))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
         }
+    }
+}
+
+/** The Mac's battery: an outline with its level filled in. */
+@Composable
+private fun BatteryGlyph(level: Float) {
+    val tint = Mono.Muted
+    Canvas(Modifier.size(width = 24.dp, height = 12.dp)) {
+        val nub = 2.dp.toPx()
+        val w = size.width - nub - 1.dp.toPx()
+        val sw = 1.2.dp.toPx()
+        drawRoundRect(tint, Offset(sw / 2, sw / 2), Size(w - sw, size.height - sw), CornerRadius(3.dp.toPx()), style = Stroke(sw))
+        val inset = 2.2.dp.toPx()
+        drawRoundRect(
+            tint, Offset(inset, inset), Size(((w - 2 * inset) * level.clamp01()).coerceAtLeast(0f), size.height - 2 * inset),
+            CornerRadius(1.5.dp.toPx()),
+        )
+        drawRoundRect(tint, Offset(w + 1.dp.toPx(), size.height * 0.32f), Size(nub, size.height * 0.36f), CornerRadius(1.dp.toPx()))
     }
 }
 
@@ -428,23 +536,6 @@ private fun LinkDot(dot: HeaderLine.Dot) {
 }
 
 private const val DOT_MS = 900
-
-@Composable
-private fun EditHomeButton(modifier: Modifier, onClick: () -> Unit) {
-    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        val source = remember { MutableInteractionSource() }
-        Row(
-            Modifier.pressScale(source).clip(RoundedCornerShape(50)).border(1.dp, Mono.Line, RoundedCornerShape(50))
-                .clickable(source, ripple(), role = Role.Button, onClick = onClick)
-                .heightIn(min = 48.dp).padding(horizontal = 24.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Outlined.Edit, contentDescription = null, tint = Mono.Muted, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(10.dp))
-            Text("Edit Home", style = MaterialTheme.typography.bodyLarge, color = Mono.Text.copy(alpha = 0.86f))
-        }
-    }
-}
 
 // ---------------- Edit Home sheet ----------------
 
@@ -593,7 +684,7 @@ fun EditHomeContent(sections: HomeSections, onChange: (HomeSections) -> Unit, on
             Text("Edit Home", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             val done = remember { MutableInteractionSource() }
             Box(
-                Modifier.pressScale(done).clip(RoundedCornerShape(50)).background(Mono.Text)
+                Modifier.pressScale(done).clip(RoundedCornerShape(50)).background(Mono.Accent)
                     .clickable(done, null, enabled = enabled, role = Role.Button, onClick = onDone)
                     .heightIn(min = 44.dp).padding(horizontal = 26.dp),
                 contentAlignment = Alignment.Center,
@@ -721,7 +812,7 @@ private fun EditRow(
                     .padding(end = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(section.title, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp),
+                Text(section.title, style = MaterialTheme.typography.bodyLarge,
                     color = if (on) Mono.Text else Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(12.dp))

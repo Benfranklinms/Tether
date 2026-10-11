@@ -5,6 +5,16 @@ CI copies the section whose heading matches the tag (`## 0.5.2` for `v0.5.2`) in
 release notes, and the apps show it in their update popup. A tag without a matching section
 fails the release.
 
+## 0.5.5
+
+- **18 themes on the phone.** Settings › Appearance has 9 dark themes (Mono, OLED Black, Midnight, Sand, Violet, Ocean, Rose, Slate, Mocha) and 9 light ones (Light, Ice, Lilac, Snow, Paper, Linen, Sky, Blush, Periwinkle). Switching fades the colours over.
+- **Follow system light/dark**: pick one light and one dark theme and the phone switches with the system.
+- **Smaller text.** Text across the phone app is smaller, and a Text size slider in Appearance has four steps (Small, Default, Large, Larger).
+- **New Home header.** The Tether logo and name at the top with Edit and Settings buttons, then a card for your Mac with its connection and battery, or Reconnect when it isn't connected. The Edit Home button at the bottom is gone.
+- **Shelf on Home as cards.** Your folders as chips, then a row of cards you can swipe through: photos show a thumbnail, links their site, PDFs a document and snippets their first lines. Add is the first card. An empty Shelf offers Paste and Add file.
+- **Long file names** in transfers and on the Shelf are shortened once in the middle and keep their extension.
+- **Status bar and navigation bar icons** turn dark on light themes.
+
 ## 0.5.4
 
 - **Shelf folders.** Group Shelf items into folders on both devices. Folders sit as chips above your Shelf: tap one to open it, drag an item onto a chip to file it, or use **Move to…**. Rename, delete (items go back to your Shelf, nothing is removed) or keep a whole folder offline from its menu.

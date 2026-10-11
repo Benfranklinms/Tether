@@ -266,13 +266,15 @@ fun ShelfScreen(
     /** 0.5.4: the Shelf's folders (chip order) and which one this page shows (null = the Shelf itself). */
     folders: List<ShelfFolder> = emptyList(),
     folderId: String? = null,
+    /** 0.5.5: opened from Home's Add tile: the add sheet is open on arrival. */
+    startAdding: Boolean = false,
 ) {
     val reduce = LocalReduceMotion.current
     val view = LocalView.current
     val ctx = LocalContext.current
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var adding by remember { mutableStateOf(false) }
+    var adding by remember { mutableStateOf(startAdding) }
     var query by rememberSaveable(folderId) { mutableStateOf(initialQuery) }
     var renaming by remember { mutableStateOf<ShelfItem?>(null) }
     // 0.5.4 folders: which sheet / menu / dialog is up.
@@ -766,7 +768,7 @@ private fun ShelfRow(
         },
         backgroundContent = {
             val past = dismiss.progress > 0.4f && dismiss.targetValue != SwipeToDismissBoxValue.Settled
-            val bg by animateColorAsState(if (past) Mono.Text else Mono.SurfaceHigh, Motion.fade(reduce), label = "bg")
+            val bg by animateColorAsState(if (past) Mono.Accent else Mono.SurfaceHigh, Motion.fade(reduce), label = "bg")
             val iconScale by animateFloatAsState(if (past) 1.2f else 1f, Motion.bouncy(reduce), label = "icon")
             LaunchedEffect(past) { if (past) Haptics.tick(view) }
             Box(Modifier.fillMaxSize().background(bg).padding(end = 24.dp), contentAlignment = Alignment.CenterEnd) {
@@ -837,11 +839,11 @@ private fun ShelfRow(
                 Column(Modifier.weight(1f)) {
                     Row(Modifier.padding(top = 16.dp, end = 20.dp), verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f)) {
-                            Text(
-                                if (item.kind == ShelfKinds.FILE) TransferMeta.middle(title, 28) else title,
-                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp), maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                            )
+                            if (item.kind == ShelfKinds.FILE) {
+                                dev.benfranklin.tether.ui.MiddleEllipsisText(title, MaterialTheme.typography.bodyLarge)
+                            } else {
+                                Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                             Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                 // 0.5.4: a file without a copy here keeps its picture and details, plus a small cloud
                                 // (only while the Mac is away; its label reads "Available when connected") or a ring while it downloads.
@@ -850,7 +852,7 @@ private fun ShelfRow(
                                     Spacer(Modifier.width(6.dp))
                                 }
                                 Text(
-                                    detail, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp), color = Mono.Muted,
+                                    detail, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
                             }
@@ -1000,7 +1002,7 @@ private fun AddSheet(a: ShelfActions, onDone: () -> Unit, modifier: Modifier, fo
             Text(
                 "Add", style = MaterialTheme.typography.labelLarge, color = Mono.Bg, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.graphicsLayer { this.alpha = alpha }.pressScale(source).clip(RoundedCornerShape(14.dp))
-                    .background(Mono.Text)
+                    .background(Mono.Accent)
                     .clickable(source, null, enabled = enabled, role = Role.Button) {
                         a.addTextTo(text, folderId)
                         Haptics.confirm(view)
@@ -1175,7 +1177,7 @@ private fun BigAction(
 ) {
     val reduce = LocalReduceMotion.current
     val source = remember { MutableInteractionSource() }
-    val bg by animateColorAsState(if (filled) Mono.Text else Mono.Surface, Motion.fade(reduce), label = "bab")
+    val bg by animateColorAsState(if (filled) Mono.Accent else Mono.Surface, Motion.fade(reduce), label = "bab")
     val fg by animateColorAsState(if (filled) Mono.Bg else Mono.Text, Motion.fade(reduce), label = "baf")
     val corner by animateDpAsState(if (filled) 26.dp else 16.dp, Motion.spring(reduce), label = "corner")
     Row(

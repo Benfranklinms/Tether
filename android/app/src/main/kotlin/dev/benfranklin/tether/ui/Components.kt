@@ -131,22 +131,22 @@ private const val PRESSED_SCALE = 0.96f
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     Text(
-        text.uppercase(), style = MaterialTheme.typography.labelMedium, color = Mono.Muted,
-        modifier = modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 8.dp).semantics { heading() },
+        text, style = MaterialTheme.typography.titleSmall, color = Mono.Faint,
+        modifier = modifier.padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 8.dp).semantics { heading() },
     )
 }
 
 @Composable
 fun Card(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(
-        modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(16.dp))
-            .background(Mono.Surface).border(1.dp, Mono.Line, RoundedCornerShape(16.dp)),
+        modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(20.dp))
+            .background(Mono.Surface).border(1.dp, Mono.Line2, RoundedCornerShape(20.dp)),
     ) { content() }
 }
 
 @Composable
 fun monoSwitchColors() = SwitchDefaults.colors(
-    checkedThumbColor = Mono.Bg, checkedTrackColor = Mono.Text, checkedBorderColor = Mono.Text,
+    checkedThumbColor = Mono.OnAccent, checkedTrackColor = Mono.Accent, checkedBorderColor = Mono.Accent,
     uncheckedThumbColor = Mono.Muted, uncheckedTrackColor = Mono.Bg, uncheckedBorderColor = Mono.Line,
 )
 
@@ -236,15 +236,15 @@ private val NAV_VALUE_MAX = 150.dp
 
 @Composable
 fun Divider() {
-    Box(Modifier.fillMaxWidth().padding(start = 16.dp).heightIn(min = 1.dp, max = 1.dp).background(Mono.Line))
+    Box(Modifier.fillMaxWidth().padding(start = 16.dp).heightIn(min = 1.dp, max = 1.dp).background(Mono.Line2))
 }
 
 /** Filled white when on, hollow grey when off. */
 @Composable
 fun StatusDot(on: Boolean, modifier: Modifier = Modifier) {
     Box(
-        modifier.size(8.dp).clip(CircleShape).background(if (on) Mono.Text else Mono.Bg)
-            .border(1.dp, if (on) Mono.Text else Mono.Muted, CircleShape),
+        modifier.size(8.dp).clip(CircleShape).background(if (on) Mono.Accent else Mono.Bg)
+            .border(1.dp, if (on) Mono.Accent else Mono.Muted, CircleShape),
     )
 }
 
@@ -257,3 +257,47 @@ fun Chip(text: String, highlighted: Boolean = false) {
             .padding(horizontal = 8.dp, vertical = 2.dp),
     )
 }
+
+/**
+ * One line of text that, when too long, is cut once in the middle keeping the end (the file
+ * extension): "VID_20261011…0812.mp4". 0.5.5 fix: a pre-shortened name plus TextOverflow.Ellipsis
+ * cut twice ("VID_2026…0812…").
+ */
+@Composable
+fun MiddleEllipsisText(
+    text: String,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+    color: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.Unspecified,
+) {
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
+        val max = constraints.maxWidth
+        val shown = remember(text, style, max) {
+            middleFit(text, max) { measurer.measure(it, style, maxLines = 1, softWrap = false).size.width }
+        }
+        Text(shown, style = style, color = color, maxLines = 1, softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
+    }
+}
+
+/** The longest middle-ellipsized form of [text] whose [width] fits in [max] px (whole text if it fits). */
+internal fun middleFit(text: String, max: Int, width: (String) -> Int): String {
+    if (max <= 0 || max == androidx.compose.ui.unit.Constraints.Infinity || width(text) <= max) return text
+    var lo = MIN_MIDDLE
+    var hi = text.length - 1
+    var best = dev.benfranklin.tether.core.features.TransferMeta.middle(text, MIN_MIDDLE)
+    while (lo <= hi) {
+        val mid = (lo + hi) / 2
+        val cand = dev.benfranklin.tether.core.features.TransferMeta.middle(text, mid)
+        if (width(cand) <= max) {
+            best = cand
+            lo = mid + 1
+        } else {
+            hi = mid - 1
+        }
+    }
+    return best
+}
+
+private const val MIN_MIDDLE = 5

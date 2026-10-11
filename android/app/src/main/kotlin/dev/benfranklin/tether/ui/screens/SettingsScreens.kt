@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowBackIos
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
@@ -68,15 +69,22 @@ import dev.benfranklin.tether.ui.sharedHero
 import dev.benfranklin.tether.ui.theme.LocalReduceMotion
 import dev.benfranklin.tether.ui.monoSwitchColors
 import dev.benfranklin.tether.ui.theme.Mono
+import dev.benfranklin.tether.data.appearance
 import dev.benfranklin.tether.ui.theme.Motion
 import java.util.Locale
 
 @Composable
 fun TopBar(title: String, onBack: () -> Unit) {
-    CenterAlignedTopAppBar(
-        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
-        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") } },
-        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Mono.Bg),
+    // 0.5.5: a left-aligned 22sp title next to the back chevron, as on the approved Appearance mockup.
+    androidx.compose.material3.TopAppBar(
+        title = { Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 1) },
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBackIos, contentDescription = "Back", modifier = Modifier.size(18.dp))
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Mono.Bg, titleContentColor = Mono.Text,
+            navigationIconContentColor = Mono.Text, actionIconContentColor = Mono.Text),
     )
 }
 
@@ -117,6 +125,8 @@ interface SettingsActions {
     /** 0.5.4 Settings › Shelf (offline files); the Shelf itself before. */
     fun openShelfSettings() = openShelf()
     fun openHotspot() = Unit
+    /** 0.5.5 Settings › Appearance. */
+    fun openAppearance() = Unit
     /** "12 of 16 ready" for the setup row. */
     fun setupSummary(): String = ""
 }
@@ -140,6 +150,15 @@ fun SettingsScreen(
     val n = s.notifications
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Settings", onBack) }) { pad ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(pad)) {
+            item { SectionHeader("Appearance") }
+            item {
+                Card {
+                    NavRow(
+                        "Appearance", appearanceSummary(s.appearance), subtitle = "Theme and text size",
+                        onClick = a::openAppearance,
+                    )
+                }
+            }
             item { SectionHeader("Features") }
             item {
                 Card {

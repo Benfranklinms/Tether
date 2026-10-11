@@ -207,7 +207,7 @@ private fun FolderChip(
         Spacer(Modifier.width(8.dp))
         Text(
             f.name, color = fg, maxLines = 1,
-            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
         )
         Spacer(Modifier.width(8.dp))
         Text("$count", color = if (hovered) Mono.Bg.copy(alpha = 0.7f) else Mono.Muted, style = MaterialTheme.typography.bodyMedium)
@@ -351,7 +351,7 @@ fun MoveSheet(
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        title, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1,
+                        title, style = MaterialTheme.typography.bodyLarge, maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
@@ -377,7 +377,7 @@ fun MoveSheet(
                     Icon(Icons.Outlined.Add, contentDescription = null, tint = Mono.Text)
                 }
                 Spacer(Modifier.width(16.dp))
-                Text("New folder", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), color = Mono.Muted)
+                Text("New folder", style = MaterialTheme.typography.bodyLarge, color = Mono.Muted)
             }
         }
     }
@@ -403,7 +403,7 @@ private fun MoveRow(
         Column(Modifier.weight(1f)) {
             Row(Modifier.height(64.dp).padding(end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    name, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1,
+                    name, style = MaterialTheme.typography.bodyLarge, maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f))
                 if (selected) {
@@ -455,7 +455,7 @@ fun FolderNameSheet(title: String, action: String, initial: String, onDone: (Str
             OutlinedTextField(
                 value = text, onValueChange = { if (it.text.length <= ShelfFolders.NAME_MAX + 8) text = it }, singleLine = true,
                 placeholder = { Text("Folder name", color = Mono.Muted) },
-                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp),
+                textStyle = MaterialTheme.typography.bodyLarge,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Mono.Text, unfocusedBorderColor = Mono.Line, cursorColor = Mono.Text,
                     focusedContainerColor = Mono.Bg, unfocusedContainerColor = Mono.Bg,

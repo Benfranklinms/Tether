@@ -314,7 +314,7 @@ private fun Intro(kind: String, onShutter: () -> Unit, onCancel: () -> Unit) {
         Spacer(Modifier.height(10.dp))
         Text(
             if (kind == CaptureKinds.SCAN) "Your Mac wants a scan" else "Your Mac wants a photo",
-            color = Mono.Text, fontSize = 26.sp, textAlign = TextAlign.Center,
+            color = Mono.Text, fontSize = 22.sp, textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(48.dp))
         Box(Modifier.size(180.dp), contentAlignment = Alignment.Center) {
@@ -328,7 +328,7 @@ private fun Intro(kind: String, onShutter: () -> Unit, onCancel: () -> Unit) {
             }
             Box(
                 Modifier.size(92.dp).pressScale(source).clip(CircleShape).border(4.dp, Mono.Text, CircleShape).padding(8.dp)
-                    .clip(CircleShape).background(Mono.Text)
+                    .clip(CircleShape).background(Mono.Accent)
                     .clickable(source, null) {
                         Haptics.confirm(view)
                         onShutter()
@@ -336,7 +336,7 @@ private fun Intro(kind: String, onShutter: () -> Unit, onCancel: () -> Unit) {
             )
         }
         Spacer(Modifier.height(48.dp))
-        Text("Cancel", color = Mono.Muted, fontSize = 15.sp, modifier = Modifier.clickable(onClick = onCancel).padding(12.dp))
+        Text("Cancel", color = Mono.Muted, fontSize = 14.sp, modifier = Modifier.clickable(onClick = onCancel).padding(12.dp))
     }
 }
 
@@ -346,7 +346,7 @@ private fun CropStep(bitmap: Bitmap, kind: String, onUse: (CropRect) -> Unit, on
     val image = remember(bitmap) { bitmap.asImageBitmap() }
     val view = LocalView.current
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Crop", color = Mono.Text, fontSize = 22.sp, modifier = Modifier.padding(8.dp))
+        Text("Crop", color = Mono.Text, fontSize = 17.sp, modifier = Modifier.padding(8.dp))
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             val aspect = bitmap.width.toFloat() / bitmap.height
             val boxW = constraints.maxWidth.toFloat()
@@ -396,12 +396,12 @@ private fun CropStep(bitmap: Bitmap, kind: String, onUse: (CropRect) -> Unit, on
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Cancel", color = Mono.Muted, fontSize = 15.sp, modifier = Modifier.clickable(onClick = onCancel).padding(12.dp))
-            Text("Retake", color = Mono.Text, fontSize = 15.sp, modifier = Modifier.clickable(onClick = onRetake).padding(12.dp))
+            Text("Cancel", color = Mono.Muted, fontSize = 14.sp, modifier = Modifier.clickable(onClick = onCancel).padding(12.dp))
+            Text("Retake", color = Mono.Text, fontSize = 14.sp, modifier = Modifier.clickable(onClick = onRetake).padding(12.dp))
             val source = remember { MutableInteractionSource() }
             Text(
-                "Send to Mac", color = Mono.Bg, fontSize = 15.sp,
-                modifier = Modifier.pressScale(source).clip(RoundedCornerShape(12.dp)).background(Mono.Text)
+                "Send to Mac", color = Mono.Bg, fontSize = 14.sp,
+                modifier = Modifier.pressScale(source).clip(RoundedCornerShape(12.dp)).background(Mono.Accent)
                     .clickable(source, null) {
                         Haptics.confirm(view)
                         onUse(rect)
@@ -422,12 +422,12 @@ private fun SendingStep() {
             Modifier.size(84.dp).graphicsLayer {
                 scaleX = if (reduce) 1f else s
                 scaleY = if (reduce) 1f else s
-            }.clip(CircleShape).background(Mono.Text),
+            }.clip(CircleShape).background(Mono.Accent),
             contentAlignment = Alignment.Center,
         ) {
             Text("✓", color = Mono.Bg, fontSize = 38.sp)
         }
         Spacer(Modifier.height(20.dp))
-        Text("Sending to your Mac", color = Mono.Text, fontSize = 18.sp)
+        Text("Sending to your Mac", color = Mono.Text, fontSize = 15.sp)
     }
 }

@@ -247,7 +247,7 @@ class RingActivity : ComponentActivity() {
                         },
                         modifier = Modifier.fillMaxWidth().height(64.dp),
                         shape = RoundedCornerShape(20.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Mono.Text, contentColor = Mono.Bg),
+                        colors = ButtonDefaults.buttonColors(containerColor = Mono.Accent, contentColor = Mono.OnAccent),
                     ) { Text(getString(R.string.ring_stop), style = MaterialTheme.typography.titleMedium) }
                 }
             }

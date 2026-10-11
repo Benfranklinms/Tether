@@ -56,6 +56,7 @@ import dev.benfranklin.tether.ui.theme.Motion
 /** A paper document with a folded corner and its type on a black tab ("PDF"), as in the mockups. */
 @Composable
 fun DocIcon(badge: String, size: Dp, modifier: Modifier = Modifier) {
+    val outline = Mono.Line
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val w = this.size.width * 0.74f
@@ -76,7 +77,9 @@ fun DocIcon(badge: String, size: Dp, modifier: Modifier = Modifier) {
                 quadraticTo(left, top, left + r, top)
                 close()
             }
-            drawPath(paper, Mono.Accent)
+            // Paper stays paper in every theme (an object, like album art); the outline keeps it visible on light surfaces.
+            drawPath(paper, PAPER)
+            drawPath(paper, outline, style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.03f))
             val corner = Path().apply {
                 moveTo(left + w - fold, top)
                 lineTo(left + w - fold, top + fold - r)
@@ -95,13 +98,16 @@ fun DocIcon(badge: String, size: Dp, modifier: Modifier = Modifier) {
         Text(
             badge,
             style = TextStyle(fontFamily = MonoCode, fontWeight = FontWeight.Medium, fontSize = (size.value * 0.17f).sp,
-                color = Mono.Accent),
+                color = PAPER),
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = size * 0.12f)
-                .clip(RoundedCornerShape(size * 0.06f)).background(Mono.Bg).padding(horizontal = size * 0.06f),
+                .clip(RoundedCornerShape(size * 0.06f)).background(INK).padding(horizontal = size * 0.06f),
             maxLines = 1,
         )
     }
 }
+
+private val PAPER = Color(0xFFF2F2F2)
+private val INK = Color(0xFF111112)
 
 /** The icon for a non-file Shelf item. */
 fun shelfKindIcon(kind: String): ImageVector = when (kind) {

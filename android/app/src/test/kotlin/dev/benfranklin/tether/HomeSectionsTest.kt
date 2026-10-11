@@ -161,10 +161,11 @@ class HomeSectionsTest {
     }
 
     @Test fun squareLabelStopsGrowingAt115Percent() {
-        assertEquals(15f, squareLabelSp(80.dp, 1f).value, 0.01f)
-        assertEquals(15f * 1.15f / 1.3f, squareLabelSp(80.dp, 1.3f).value, 0.01f)
-        assertEquals(13f, squareLabelSp(60.dp, 1f).value, 0.01f)
-        assertEquals(15f, squareLabelSp(80.dp, 0f).value, 0.01f)
+        // 0.5.5 smaller labels (11.5 / 11 sp, approved v2 mockup).
+        assertEquals(11.5f, squareLabelSp(80.dp, 1f).value, 0.01f)
+        assertEquals(11.5f * 1.15f / 1.3f, squareLabelSp(80.dp, 1.3f).value, 0.01f)
+        assertEquals(11f, squareLabelSp(60.dp, 1f).value, 0.01f)
+        assertEquals(11.5f, squareLabelSp(80.dp, 0f).value, 0.01f)
     }
 
     @Test fun clipLabelsNeverContainTheText() {

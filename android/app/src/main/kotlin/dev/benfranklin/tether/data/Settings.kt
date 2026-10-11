@@ -106,7 +106,23 @@ data class AppSettings(
     val homeSections: List<SectionSpec>? = null,
     /** 0.5.4: newest MediaStore photo id seen when Photos was last opened (0 = not yet recorded). */
     val homePhotosSeenId: Long = 0,
+    // 0.5.5 Settings › Appearance
+    /** The theme when not following the system (Themes ids; unknown ids fall back to Mono). */
+    val theme: String = "mono",
+    /** Follow the system light/dark setting with [themeLight] / [themeDark]. */
+    val themeFollowSystem: Boolean = false,
+    val themeLight: String = "light",
+    val themeDark: String = "mono",
+    /** Text size step: 0 Small, 1 Default, 2 Large, 3 Larger. */
+    val textSize: Int = 1,
 )
+
+/** The Appearance choice in [AppSettings]. */
+val AppSettings.appearance: dev.benfranklin.tether.ui.theme.Appearance
+    get() = dev.benfranklin.tether.ui.theme.Appearance(theme, themeFollowSystem, themeLight, themeDark, textSize)
+
+fun AppSettings.withAppearance(a: dev.benfranklin.tether.ui.theme.Appearance): AppSettings =
+    copy(theme = a.themeId, themeFollowSystem = a.followSystem, themeLight = a.lightId, themeDark = a.darkId, textSize = a.textSize)
 
 /** App settings as a hot flow, persisted atomically on every change. */
 class SettingsRepository(context: Context) {
