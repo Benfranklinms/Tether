@@ -123,6 +123,8 @@ private val BLOCK_PAD = 12.dp
 private val ROW_HEIGHT = 58.dp
 private val LEAD = 38.dp
 
+private val MIN_ART = 32.dp
+
 /** Alpha for Mac-dependent controls while the Mac isn't connected. */
 private const val DIM = 0.38f
 
@@ -262,7 +264,11 @@ private fun SquareButton(
                 Modifier.align(Alignment.TopEnd).offset(x = 2.dp, y = (-2).dp).size(22.dp).clip(CircleShape).background(Mono.Bg)
                     .padding(2.dp).clip(CircleShape).background(Mono.Accent),
                 contentAlignment = Alignment.Center,
-            ) { Text(badge, fontFamily = MonoCode, fontSize = 11.sp, color = Mono.OnAccent, maxLines = 1) }
+            ) {
+                // Fixed size: the 22 dp circle doesn't grow with the text size, so neither does its number.
+                val fixed = with(LocalDensity.current) { 11.dp.toSp() }
+                Text(badge, fontFamily = MonoCode, fontSize = fixed, color = Mono.OnAccent, maxLines = 1, softWrap = false)
+            }
         }
     }
 }
@@ -330,8 +336,12 @@ private fun NowPlayingTile(m: HomeModel, data: HomeData, a: HomeActions, blocked
         val progress = rememberProgress(media, s.at, m.now)
         Column(Modifier.fillMaxSize().padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 8.dp)) {
             Row(Modifier.weight(1f).fillMaxWidth()) {
-                Artwork(media.title, Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true))
-                Spacer(Modifier.weight(1f))
+                // At very large text the art gives way (hidden below 32 dp) instead of shrinking to a dot.
+                BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+                    if (maxHeight >= MIN_ART) {
+                        Artwork(media.title, Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true))
+                    }
+                }
                 Icon(Icons.Outlined.Laptop, contentDescription = "On your Mac", tint = Mono.Faint, modifier = Modifier.size(16.dp))
             }
             Spacer(Modifier.height(8.dp))

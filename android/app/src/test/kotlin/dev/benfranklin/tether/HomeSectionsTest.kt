@@ -31,10 +31,10 @@ import org.junit.Test
 class HomeSectionsTest {
     @Test fun defaultsMatchTheMockup() {
         val d = HomeSections.DEFAULT
-        assertEquals(listOf(QUICK, NOW_PLAYING, TRANSFERS, SHELF, CLIPBOARD, PHOTOS, FIND_MAC), d.order)
-        assertEquals(listOf(QUICK, NOW_PLAYING, TRANSFERS, SHELF), d.visible)
+        assertEquals(listOf(QUICK, NOW_PLAYING, SHELF, TRANSFERS, CLIPBOARD, PHOTOS, FIND_MAC), d.order)
+        assertEquals(listOf(QUICK, NOW_PLAYING, SHELF, TRANSFERS), d.visible)
         assertEquals(setOf(CLIPBOARD, PHOTOS, FIND_MAC), d.hidden)
-        assertEquals(listOf(HomeRow.Control, HomeRow.Single(TRANSFERS), HomeRow.Single(SHELF)), d.rows())
+        assertEquals(listOf(HomeRow.Control, HomeRow.Single(SHELF), HomeRow.Single(TRANSFERS)), d.rows())
         assertEquals(d, HomeSections.from(null, null))
         assertEquals(d, HomeSections.from(null))
     }
@@ -97,7 +97,7 @@ class HomeSectionsTest {
         assertTrue(s.isOn(PHOTOS))
         s = s.set(PHOTOS, false).set(QUICK, false)
         assertFalse(s.isOn(PHOTOS))
-        assertEquals(listOf(HomeRow.PlayerOnly, HomeRow.Single(TRANSFERS), HomeRow.Single(SHELF)), s.rows())
+        assertEquals(listOf(HomeRow.PlayerOnly, HomeRow.Single(SHELF), HomeRow.Single(TRANSFERS)), s.rows())
         s = s.set(QUICK, true).move(SHELF, 0)
         assertEquals(SHELF, s.order.first())
         // Out of range never throws: clamped or ignored.
@@ -111,7 +111,7 @@ class HomeSectionsTest {
         val swapped = HomeSections.DEFAULT.move(NOW_PLAYING, 0)
         assertEquals(HomeRow.Control, swapped.rows().first())
         val apart = HomeSections.DEFAULT.move(NOW_PLAYING, 2)
-        assertEquals(listOf(HomeRow.QuickOnly, HomeRow.Single(TRANSFERS), HomeRow.PlayerOnly, HomeRow.Single(SHELF)), apart.rows())
+        assertEquals(listOf(HomeRow.QuickOnly, HomeRow.Single(SHELF), HomeRow.PlayerOnly, HomeRow.Single(TRANSFERS)), apart.rows())
         // A hidden section between them doesn't separate them.
         val gap = HomeSections.DEFAULT.move(PHOTOS, 1)
         assertEquals(HomeRow.Control, gap.rows().first())

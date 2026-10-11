@@ -150,9 +150,8 @@ fun SettingsScreen(
     val n = s.notifications
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Settings", onBack) }) { pad ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(pad)) {
-            item { SectionHeader("Appearance") }
             item {
-                Card {
+                Card(Modifier.padding(top = 20.dp)) {
                     NavRow(
                         "Appearance", appearanceSummary(s.appearance), subtitle = "Theme and text size",
                         onClick = a::openAppearance,

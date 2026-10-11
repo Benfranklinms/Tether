@@ -102,7 +102,14 @@ data class HomeSections(val order: List<HomeSection>, val hidden: Set<HomeSectio
 
     companion object {
         /** A fresh install: the approved mockup (Quick controls + Now playing, Transfers, Shelf). */
-        val DEFAULT = HomeSections(HomeSection.entries.toList(), HomeSection.entries.filterNot { it.defaultOn }.toSet())
+        /** 0.5.5 (approved Home v2): the Shelf carousel sits above Recent transfers. Saved layouts keep their order. */
+        val DEFAULT = HomeSections(
+            listOf(
+                HomeSection.QUICK, HomeSection.NOW_PLAYING, HomeSection.SHELF, HomeSection.TRANSFERS,
+                HomeSection.CLIPBOARD, HomeSection.PHOTOS, HomeSection.FIND_MAC,
+            ),
+            HomeSection.entries.filterNot { it.defaultOn }.toSet(),
+        )
 
         /**
          * Reads settings: the 0.5.4 [saved] list wins; otherwise a 0.5.3 panel layout ([legacy]) is

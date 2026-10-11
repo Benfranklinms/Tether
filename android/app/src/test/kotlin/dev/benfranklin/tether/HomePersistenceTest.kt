@@ -98,7 +98,7 @@ class HomePersistenceTest {
         // GestureDeviceTest does the same with real touches).
         compose.onNodeWithTag("edit-row-clipboard").performSemanticsAction(SemanticsActions.OnClick) // add
         compose.onNodeWithTag("edit-row-shelf").performSemanticsAction(SemanticsActions.OnClick) // remove
-        repeat(2) { GestureScenarios.customAction(compose, "Move Recent transfers up") } // reorder: Transfers to the top
+        repeat(3) { GestureScenarios.customAction(compose, "Move Recent transfers up") } // reorder: Transfers to the top
         compose.waitForIdle()
         assertTrue(sectionsOf(repo).isOn(HomeSection.CLIPBOARD))
         compose.onNodeWithText("Done").performSemanticsAction(SemanticsActions.OnClick)
