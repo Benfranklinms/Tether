@@ -186,7 +186,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Tether uses Location only so macOS lets it see Wi-Fi network names when joining your phone's hotspot.</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Tether lowers and restores your Mac's volume during phone calls.</string>
+	<string>Tether lowers your Mac's volume during phone calls and shows what Music or Spotify is playing on your phone.</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Tether shows your phone's notifications on your Mac.</string>
 </dict>

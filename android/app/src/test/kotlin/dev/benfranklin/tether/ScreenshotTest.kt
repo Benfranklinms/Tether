@@ -2,6 +2,7 @@ package dev.benfranklin.tether
 
 import android.app.Application
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -65,24 +66,111 @@ class ScreenshotTest {
             status = status, transferred = done, error = err, createdAt = now, via = via,
         )
 
+    private val zone = java.time.ZoneId.of("Asia/Kolkata")
+
+    /** A calm mono "photo" (sky, sun, hills) so thumbnails render without real pictures. */
+    private fun fakePhoto(seed: Int, w: Int = 240, h: Int = 240): androidx.compose.ui.graphics.ImageBitmap {
+        val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(bmp)
+        val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        val top = 0xFF000000.toInt() or ((60 + seed * 23 % 90) * 0x010101)
+        p.shader = android.graphics.LinearGradient(0f, 0f, 0f, h.toFloat(), top, 0xFF0C0C0E.toInt(), android.graphics.Shader.TileMode.CLAMP)
+        c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
+        p.shader = null
+        p.color = 0xFFE6E6E6.toInt()
+        c.drawCircle(w * (0.3f + seed % 3 * 0.2f), h * 0.32f, w * 0.1f, p)
+        p.color = 0xFF2A2A2E.toInt()
+        val path = android.graphics.Path().apply {
+            moveTo(0f, h * 0.75f)
+            lineTo(w * 0.35f, h * (0.45f + seed % 2 * 0.1f))
+            lineTo(w * 0.6f, h * 0.68f)
+            lineTo(w * 0.8f, h * 0.5f)
+            lineTo(w.toFloat(), h * 0.7f)
+            lineTo(w.toFloat(), h.toFloat())
+            lineTo(0f, h.toFloat())
+            close()
+        }
+        c.drawPath(path, p)
+        return bmp.asImageBitmap()
+    }
+
+    private val homeShelf = listOf(
+        dev.benfranklin.tether.core.proto.ShelfItem(
+            "h1", "link", "Event registration", "https://forms.gle/x7Tq2", null, "phone", now - 14 * 60_000L, now, -3.0,
+        ),
+        dev.benfranklin.tether.core.proto.ShelfItem(
+            "h2", "file", "Aptitude Practice Set 15 Questions.pdf", "", null, "mac", now - 2 * 60_000L, now, -2.0,
+            dev.benfranklin.tether.core.proto.ShelfFile("Aptitude Practice Set 15 Questions.pdf", 464_000, "application/pdf", "bb", "mac"),
+        ),
+        dev.benfranklin.tether.core.proto.ShelfItem("h3", "wifi", "Studio_5G", "", "pw", "phone", now - 3_600_000L, now, -1.0),
+    )
+
+    private fun homeData() = dev.benfranklin.tether.ui.screens.HomeData(
+        shelf = homeShelf, clipboard = "forms.gle/x7Tq2",
+        clips = listOf(
+            dev.benfranklin.tether.core.features.ClipRecents.Entry("forms.gle/x7Tq2", now, false),
+            dev.benfranklin.tether.core.features.ClipRecents.Entry("1 Market St, San Francisco", now - 60_000, true),
+            dev.benfranklin.tether.core.features.ClipRecents.Entry("See you at 6", now - 120_000, true),
+        ),
+        mac = dev.benfranklin.tether.v7.MacStatusUi(
+            82, true, dev.benfranklin.tether.core.proto.MacMedia(true, "Nights", "Frank Ocean", "Music", false, 307_000, 102_000), now,
+        ),
+        photos = (1L..8L).map { dev.benfranklin.tether.v7.RecentPhoto(it, android.net.Uri.parse("content://demo/$it")) },
+        hotspotSsid = "Alex's Phone",
+    )
+
+    private val homeActions = object : dev.benfranklin.tether.ui.screens.HomeActions {
+        override suspend fun photoThumb(p: dev.benfranklin.tether.v7.RecentPhoto) = fakePhoto(p.id.toInt())
+    }
+
+    private val linked = HomeModel(
+        title = "MacBook Air", subtitle = "Connected · Wi-Fi", connected = true, searching = false,
+        wifi = true, error = null, notice = null, mirroringOff = false, now = now + 60_000,
+        transfers = listOf(
+            rec("Screenshot_2026-10-11-08-41.png", Direction.OUT, 282_000, 282_000, TransferStatus.DONE, Transport.WIFI),
+            rec("Lecture_notes_unit4.pdf", Direction.IN, 1_400_000, 1_400_000, TransferStatus.DONE, Transport.WIFI),
+            rec("AdaFace_Summary.pdf", Direction.OUT, 20_000, 20_000, TransferStatus.DONE, Transport.WIFI),
+        ),
+    )
+
+    /** 0.5.3: Home as customizable panels (the default layout). */
     @Test
     fun home() = shot("home") {
-        HomeScreen(
-            HomeModel(
-                title = "MacBook Air", subtitle = "Connected · Wi-Fi fast path", connected = true, searching = false,
-                wifi = true, error = null, notice = null, mirroringOff = false, now = now + 60_000,
-                transfers = listOf(
-                    rec("IMG_2041.HEIC", Direction.OUT, 4_800_000, 3_100_000, TransferStatus.ACTIVE, Transport.WIFI),
-                    rec("Lecture-notes.pdf", Direction.IN, 2_300_000, 2_300_000, TransferStatus.DONE, Transport.BLE),
-                    rec("demo-video.mp4", Direction.OUT, 180_000_000, 0, TransferStatus.WAITING, Transport.BLE,
-                        "Waiting for Wi-Fi (too large for Bluetooth)"),
-                ),
-            ),
-            {}, {}, {}, {}, {}, {}, {}, {},
-            extras = dev.benfranklin.tether.ui.screens.HomeExtras(
-                shelfCount = 4, updateVersion = "0.5.3",
+        HomeScreen(linked, dev.benfranklin.tether.core.features.HomeLayout.DEFAULT, homeActions, homeData())
+    }
+
+    /** 0.5.3: Home in edit mode: "−" badges, resize corners, + and Done. */
+    @Test
+    fun homeEdit() = shot("home-edit") {
+        HomeScreen(linked, dev.benfranklin.tether.core.features.HomeLayout.DEFAULT, homeActions, homeData(), startEditing = true)
+    }
+
+    /** 0.5.3: the panel picker (sheet content on its own; the modal sheet needs a window). */
+    @Test
+    fun homeAddPanel() = shot("home-add-panel") {
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.sheetBackdrop()) {
+            dev.benfranklin.tether.ui.screens.AddPanelContent(
+                dev.benfranklin.tether.core.features.HomeLayout.DEFAULT.remove(dev.benfranklin.tether.core.features.PanelKind.SHELF)
+                    .remove(dev.benfranklin.tether.core.features.PanelKind.CLIPBOARD)
+                    .remove(dev.benfranklin.tether.core.features.PanelKind.TRANSFERS),
+                linked, homeData(), onAdd = { _, _ -> }, onClose = {},
+            )
+        }
+    }
+
+    /** 0.5.3: other sizes: wide Mac and clipboard, large Now playing, Hotspot. */
+    @Test
+    fun homeSizes() = shot("home-sizes") {
+        val l = dev.benfranklin.tether.core.features.HomeLayout(
+            listOf(
+                dev.benfranklin.tether.core.features.Panel(dev.benfranklin.tether.core.features.PanelKind.MAC, dev.benfranklin.tether.core.features.PanelSize.WIDE),
+                dev.benfranklin.tether.core.features.Panel(dev.benfranklin.tether.core.features.PanelKind.NOW_PLAYING, dev.benfranklin.tether.core.features.PanelSize.LARGE),
+                dev.benfranklin.tether.core.features.Panel(dev.benfranklin.tether.core.features.PanelKind.HOTSPOT, dev.benfranklin.tether.core.features.PanelSize.SMALL),
+                dev.benfranklin.tether.core.features.Panel(dev.benfranklin.tether.core.features.PanelKind.SEND_FILE, dev.benfranklin.tether.core.features.PanelSize.SMALL),
+                dev.benfranklin.tether.core.features.Panel(dev.benfranklin.tether.core.features.PanelKind.PHOTOS, dev.benfranklin.tether.core.features.PanelSize.LARGE),
             ),
         )
+        HomeScreen(linked, l, homeActions, homeData())
     }
 
     private fun many(): List<TransferRecord> = listOf(
@@ -92,19 +180,6 @@ class ScreenshotTest {
         rec("IMG20260821093336.jpg", Direction.OUT, 2_900_000, 2_900_000, TransferStatus.DONE, Transport.WIFI),
         rec("Lecture-notes.pdf", Direction.IN, 2_300_000, 2_300_000, TransferStatus.DONE, Transport.BLE),
     ).mapIndexed { i, r -> r.copy(createdAt = now - i * 3_600_000L * 7, updatedAt = now - i * 3_600_000L * 7) }
-
-    /** 0.5.3: Home shows the latest three transfers and "See all (N)". */
-    @Test
-    fun homeTransfers() = shot("home-transfers") {
-        HomeScreen(
-            HomeModel(
-                title = "MacBook Air", subtitle = "Connected · Wi-Fi fast path", connected = true, searching = false,
-                wifi = true, error = null, notice = null, mirroringOff = false, transfers = many(), now = now + 60_000,
-            ),
-            {}, {}, {}, {}, {}, {}, {}, {},
-            extras = dev.benfranklin.tether.ui.screens.HomeExtras(shelfCount = 3),
-        )
-    }
 
     @Test
     fun transfers() = shot("transfers") {
@@ -117,7 +192,7 @@ class ScreenshotTest {
                 override fun clearFinished() = Unit
                 override fun open(t: TransferRecord): String? = null
             },
-            onBack = {}, now = now + 60_000,
+            onBack = {}, now = now + 60_000, zone = zone,
         )
     }
 
@@ -128,7 +203,7 @@ class ScreenshotTest {
                 title = "MacBook Air", subtitle = "Looking nearby…", connected = false, searching = true, wifi = false,
                 error = null, notice = null, transfers = emptyList(), mirroringOff = true,
             ),
-            {}, {}, {}, {}, {}, {}, {}, {},
+            dev.benfranklin.tether.core.features.HomeLayout.DEFAULT, homeActions,
         )
     }
 
@@ -315,18 +390,33 @@ class ScreenshotTest {
     }
 
     // ---- 0.5.2 ----
+    private fun shelfFile(id: String, name: String, size: Long, mime: String, from: String, ago: Long, order: Double) =
+        dev.benfranklin.tether.core.proto.ShelfItem(
+            id, "file", name, "", null, from, now - ago, now - ago, order,
+            dev.benfranklin.tether.core.proto.ShelfFile(name, size, mime, id + "sha", from),
+        )
+
     private val shelfItems = listOf(
-        dev.benfranklin.tether.core.proto.ShelfItem("1", "link", "Lab schedule", "https://example.com/lab", null, "mac", now, now, -4.0),
-        dev.benfranklin.tether.core.proto.ShelfItem("2", "wifi", "Studio Wi-Fi", "Studio-5G", "correct-horse", "phone", now, now, -3.0),
+        shelfFile("s1", "Aptitude Practice Set 15 Questions.pdf", 464_000, "application/pdf", "mac", 2 * 60_000L, -9.0),
+        shelfFile("s2", "Quiz_answer_script.docx", 11_264, "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "mac", 5 * 60_000L, -8.0),
+        shelfFile("s3", "IMG_20261010_195129.jpg", 4_300_000, "image/jpeg", "phone", 12 * 60_000L, -7.0),
         dev.benfranklin.tether.core.proto.ShelfItem(
-            "3", "address", "Sample Street", "12 Sample Street, Springfield 682021", null, "mac", now, now, -2.0,
+            "s4", "link", "Event registration", "https://forms.gle/x7Tq2", null, "phone", now - 14 * 60_000L, now, -6.0,
         ),
+        dev.benfranklin.tether.core.proto.ShelfItem("s5", "wifi", "Studio_5G", "", "correct-horse", "phone", now - 3_600_000L, now, -5.0),
         dev.benfranklin.tether.core.proto.ShelfItem(
-            "4", "snippet", "ssh", "ssh -L 8080:localhost:80 demo@example.com", null, "phone", now, now, -1.0,
+            "s6", "snippet", "adb mdns services", "adb mdns services\nadb connect 192.168.29.142:37099", null, "mac",
+            now - 3 * 3_600_000L, now, -4.0,
         ),
+        shelfFile("s7", "Resume - Alex.pdf", 82_000, "application/pdf", "mac", 26 * 3_600_000L, -3.0),
+        dev.benfranklin.tether.core.proto.ShelfItem(
+            "s8", "address", "Public Library", "Public Library\n1 Market St, San Francisco", null, "phone", now - 27 * 3_600_000L, now, -2.0,
+        ),
+        shelfFile("s9", "Screenshot_2026-10-09-21-14.png", 1_150_000, "image/png", "phone", 3 * 86_400_000L, -1.0),
     )
 
-    private object NoShelf : dev.benfranklin.tether.ui.screens.ShelfActions {
+    private val noShelf = object : dev.benfranklin.tether.ui.screens.ShelfActions {
         override fun addText(text: String) = Unit
         override fun addFile() = Unit
         override fun pasteText(): String? = null
@@ -336,11 +426,15 @@ class ScreenshotTest {
         override fun primary(item: dev.benfranklin.tether.core.proto.ShelfItem) = "Copied"
         override fun copy(item: dev.benfranklin.tether.core.proto.ShelfItem) = "Copied"
         override fun open(id: String) = Unit
+        override suspend fun thumbnail(item: dev.benfranklin.tether.core.proto.ShelfItem) = fakePhoto(item.id.hashCode() and 7)
     }
 
     @Test
     fun shelf() = shot("shelf") {
-        dev.benfranklin.tether.ui.screens.ShelfScreen(shelfItems, connected = true, a = NoShelf, onBack = {})
+        dev.benfranklin.tether.ui.screens.ShelfScreen(
+            shelfItems, connected = true, a = noShelf, onBack = {}, now = now, zone = zone,
+            files = dev.benfranklin.tether.ui.screens.ShelfFilesUi(local = shelfItems.map { it.id }.toSet()),
+        )
     }
 
     private val shelfFileItems = listOf(
@@ -361,24 +455,24 @@ class ScreenshotTest {
     @Test
     fun shelfFiles() = shot("shelf-files") {
         dev.benfranklin.tether.ui.screens.ShelfScreen(
-            shelfFileItems, connected = false, a = NoShelf, onBack = {},
+            shelfFileItems, connected = false, a = noShelf, onBack = {},
             files = dev.benfranklin.tether.ui.screens.ShelfFilesUi(local = setOf("f2"), connected = false),
         )
     }
 
     @Test
     fun shelfSearch() = shot("shelf-search") {
-        dev.benfranklin.tether.ui.screens.ShelfScreen(shelfFileItems, connected = true, a = NoShelf, onBack = {}, initialQuery = "word")
+        dev.benfranklin.tether.ui.screens.ShelfScreen(shelfFileItems, connected = true, a = noShelf, onBack = {}, initialQuery = "word")
     }
 
     @Test
     fun shelfEmpty() = shot("shelf-empty") {
-        dev.benfranklin.tether.ui.screens.ShelfScreen(emptyList(), connected = false, a = NoShelf, onBack = {})
+        dev.benfranklin.tether.ui.screens.ShelfScreen(emptyList(), connected = false, a = noShelf, onBack = {})
     }
 
     @Test
     fun shelfDetail() = shot("shelf-detail") {
-        dev.benfranklin.tether.ui.screens.ShelfDetailScreen(shelfItems[1], NoShelf, onBack = {})
+        dev.benfranklin.tether.ui.screens.ShelfDetailScreen(shelfItems[4], noShelf, onBack = {})
     }
 
     @Test

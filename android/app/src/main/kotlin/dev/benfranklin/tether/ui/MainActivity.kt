@@ -103,7 +103,6 @@ import dev.benfranklin.tether.ui.theme.TetherTheme
 import dev.benfranklin.tether.core.features.UpdatePrompt
 import dev.benfranklin.tether.core.proto.Caps6
 import dev.benfranklin.tether.ui.screens.FindModel
-import dev.benfranklin.tether.ui.screens.HomeExtras
 import dev.benfranklin.tether.ui.screens.HotspotActions
 import dev.benfranklin.tether.ui.screens.HotspotScreen
 import dev.benfranklin.tether.ui.screens.ShelfActions
@@ -144,7 +143,7 @@ class MainActivity : ComponentActivity() {
 fun homeModel(s: UiState, transfers: List<TransferRecord>, mirroringOff: Boolean): HomeModel {
     val link = s.link
     val (title, sub) = when (link) {
-        is LinkState.Connected -> link.peerName to if (link.wifi) "Connected · Wi-Fi fast path" else "Connected over Bluetooth"
+        is LinkState.Connected -> link.peerName to if (link.wifi) "Connected · Wi-Fi" else "Connected · Bluetooth"
         is LinkState.Pairing -> link.peerName to "Pairing"
         LinkState.Handshaking -> (s.peer?.name ?: "Your Mac") to "Connecting…"
         LinkState.Offline -> (s.peer?.name ?: "Your Mac") to when (s.radio) {
@@ -360,23 +359,76 @@ private fun TetherApp(rt: TetherRuntime) {
     ) {
         composable("home") {
           CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
+            val feedsMac by rt.feeds.mac.collectAsStateWithLifecycle()
+            val clips by rt.feeds.clips.collectAsStateWithLifecycle()
+            var clipboard by remember { mutableStateOf<String?>(null) }
+            var photos by remember { mutableStateOf<List<dev.benfranklin.tether.v7.RecentPhoto>>(emptyList()) }
+            val photosAllowed = remember(permsTick) { dev.benfranklin.tether.v7.RecentPhotos.allowed(ctx) }
+            var resumed by remember { mutableIntStateOf(0) }
+            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { resumed++ }
+            LaunchedEffect(resumed, photosAllowed, transfers.size) {
+                clipboard = readClipboardText(ctx)
+                photos = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    dev.benfranklin.tether.v7.RecentPhotos.latest(ctx, HOME_PHOTOS)
+                }
+            }
+            val homeLayout = remember(settings.homePanels) { dev.benfranklin.tether.core.features.HomeLayout.from(settings.homePanels) }
+            val hotspotSsid = remember(resumed) { dev.benfranklin.tether.v6.HotspotStore.ssid(ctx) }
+            var inFront by remember { mutableStateOf(true) }
+            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { inFront = true }
+            LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { inFront = false }
+            val linked = state.link is LinkState.Connected
+            val wantsMedia = dev.benfranklin.tether.core.features.PanelKind.NOW_PLAYING in homeLayout
+            val wantsMac = wantsMedia || dev.benfranklin.tether.core.features.PanelKind.MAC in homeLayout
+            // Poll the Mac's status while Home shows the Mac / Now playing panel and the app is in front.
+            LaunchedEffect(inFront, linked, wantsMac, wantsMedia) {
+                if (!inFront || !linked || !wantsMac) return@LaunchedEffect
+                while (true) {
+                    rt.feeds.request(wantsMedia)
+                    kotlinx.coroutines.delay(dev.benfranklin.tether.core.features.MacStatusPolicy.POLL_MS)
+                }
+            }
             HomeScreen(
                 m = homeModel(state, transfers, mirroringOff = settings.notifications.enabled && !listenerOn),
-                onSendClipboard = { ctx.startActivity(dev.benfranklin.tether.clip.ClipSendActivity.intent(ctx)) },
-                onSendFile = { filePicker.launch(arrayOf("*/*")) },
-                onSettings = { nav.navigate("settings") },
-                onCancel = rt::cancelTransfer, onRetry = rt::retryTransfer, onRemove = rt::removeTransfer,
-                onNoticeShown = rt::clearNotice,
-                onFixMirroring = { grant("listener") },
-                onStopScreen = rt::stopScreenSharing,
-                onReconnect = rt::reconnect,
-                extras = HomeExtras(
-                    shelfCount = shelf.items.size,
-                    onShelf = { nav.navigate("shelf") },
+                layout = homeLayout,
+                data = dev.benfranklin.tether.ui.screens.HomeData(
+                    shelf = shelf.ordered, clipboard = clipboard, clips = clips, mac = feedsMac,
+                    macSupported = state.link !is LinkState.Connected ||
+                        dev.benfranklin.tether.core.proto.Caps7.MAC_STATUS in state.peerCaps,
+                    photos = photos, photosAllowed = photosAllowed, hotspotSsid = hotspotSsid, hotspotState = hotspot.state,
                     updateVersion = offered?.version?.takeIf { it != settings.skippedVersion },
-                    onUpdate = { showUpdate = true },
-                    onSeeAllTransfers = { nav.navigate("transfers") },
                 ),
+                a = object : dev.benfranklin.tether.ui.screens.HomeActions {
+                    override fun sendClipboard() = ctx.startActivity(dev.benfranklin.tether.clip.ClipSendActivity.intent(ctx))
+                    override fun sendFile() = filePicker.launch(arrayOf("*/*"))
+                    override fun settings() = nav.navigate("settings")
+                    override fun openShelf() = nav.navigate("shelf")
+                    override fun openShelfItem(id: String) = nav.navigate("shelf/$id")
+                    override fun copyClip(text: String) = copyText(ctx, text)
+                    override fun seeAllTransfers() = nav.navigate("transfers")
+                    override fun openTransfer(t: dev.benfranklin.tether.core.transfer.TransferRecord) {
+                        rt.openTransfer(t)?.let(rt::note)
+                    }
+                    override fun mediaCommand(cmd: String) = rt.feeds.mediaCommand(cmd)
+                    override fun sendPhotos(photos: List<dev.benfranklin.tether.v7.RecentPhoto>) = rt.sendFiles(photos.map { it.uri })
+                    override fun allowPhotos() = grant("media")
+                    override fun openHotspot() = nav.navigate("hotspot")
+                    override fun update() {
+                        showUpdate = true
+                    }
+                    override fun reconnect() = rt.reconnect()
+                    override fun stopScreen() = rt.stopScreenSharing()
+                    override fun fixMirroring() = grant("listener")
+                    override fun noticeShown() = rt.clearNotice()
+                    override fun layoutChanged(layout: dev.benfranklin.tether.core.features.HomeLayout) =
+                        rt.settings.update { it.copy(homePanels = layout.specs()) }
+                    override suspend fun photoThumb(p: dev.benfranklin.tether.v7.RecentPhoto): ImageBitmap? =
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            dev.benfranklin.tether.v7.RecentPhotos.thumbnail(ctx, p, PHOTO_THUMB_PX)
+                        }
+                    override suspend fun shelfThumb(item: dev.benfranklin.tether.core.proto.ShelfItem): ImageBitmap? =
+                        shelfActions.thumbnail(item)
+                },
             )
           }
         }
@@ -803,6 +855,8 @@ fun readClipboardImage(c: android.content.Context): android.net.Uri? = runCatchi
 private const val REDUCED_FADE_MS = 150
 /** Launch and foreground checks can fire together; one network check per minute is plenty. */
 private const val CHECK_GAP_MS = 60_000L
+private const val HOME_PHOTOS = 8
+private const val PHOTO_THUMB_PX = 256
 
 /** Checklist rows for the UI (pure mapping of [dev.benfranklin.tether.v5.Setup.items]). */
 fun setupRows(c: android.content.Context): List<dev.benfranklin.tether.ui.screens.SetupRow> =

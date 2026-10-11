@@ -83,6 +83,8 @@ private val sans = FontFamily(
 val TetherType = Typography(
     displaySmall = TextStyle(fontFamily = sans, fontWeight = FontWeight.Light, fontSize = 34.sp, letterSpacing = (-0.5).sp),
     headlineSmall = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 24.sp, letterSpacing = (-0.2).sp),
+    headlineMedium = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 34.sp, letterSpacing = (-0.6).sp),
+    titleLarge = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 19.sp, letterSpacing = (-0.2).sp),
     titleMedium = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 16.sp),
     titleSmall = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 14.sp),
     bodyLarge = TextStyle(fontFamily = sans, fontSize = 16.sp, lineHeight = 22.sp),

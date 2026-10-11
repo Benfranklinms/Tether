@@ -381,10 +381,15 @@ final class AppModel: ObservableObject {
         engine?.dismissOnPhone(key)
     }
 
+    /// Clear all (0.5.3): empties the history and withdraws those banners; with "Dismiss on both"
+    /// on, each one is dismissed on the phone as well.
     func clearHistory() {
+        let plan = NotificationClear.plan(history, dismissSync: settings.notifications.dismissSync)
         history.clear()
-        notifier.removeAll()
+        notifier.remove(keys: plan.withdraw)
+        for key in plan.dismissOnPhone { engine?.dismissOnPhone(key) }
         scheduleHistoryWrite()
+        Log.info("notif.clear_all", ["count": "\(plan.withdraw.count)", "phone": "\(plan.dismissOnPhone.count)"])
     }
 
     func unpair() { engine?.unpair() }

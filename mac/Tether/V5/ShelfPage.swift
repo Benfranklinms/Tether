@@ -25,31 +25,36 @@ struct ShelfPage: View {
     private var searching: Bool { !v5.shelfQuery.trimmingCharacters(in: .whitespaces).isEmpty }
     private var items: [ShelfItem] { searching ? ShelfSearch.filter(v5.shelf.ordered, query: v5.shelfQuery) : v5.shelf.ordered }
 
+    @State private var adding = false
+
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    PageTitle(title: "Shelf",
-                              detail: m.peer.map { "Pinned on both devices · synced with \($0.name)" } ?? "Pinned on both devices")
-                    addBar
-                    if !v5.shelf.items.isEmpty { searchBar }
+                    header
+                    if adding || v5.shelf.items.isEmpty {
+                        addBar.transition(reduce ? .opacity : .move(edge: .top).combined(with: .opacity))
+                    }
                     if v5.shelf.items.isEmpty {
                         empty
                     } else if items.isEmpty {
-                        Text("Nothing on your Shelf matches “\(v5.shelfQuery.trimmingCharacters(in: .whitespaces))”")
+                        Text("No match for “\(v5.shelfQuery.trimmingCharacters(in: .whitespaces))”")
                             .font(Typo.sans(13)).foregroundColor(Mono.muted).padding(.vertical, 30).frame(maxWidth: .infinity)
                             .transition(.opacity)
                     } else {
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
-                            ForEach(items) { item in card(item) }
+                        ForEach(groups, id: \.id) { g in
+                            if let t = g.title {
+                                Text(t).font(Typo.sans(13)).foregroundColor(Mono.muted).padding(.top, 8).padding(.leading, 2)
+                            }
+                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+                                ForEach(g.items) { item in card(item) }
+                            }
                         }
                         .animation(reduce ? Motion.reducedFade : .spring(response: 0.46, dampingFraction: 0.76), value: items.map(\.id))
                     }
-                    Text("Shelf keeps up to \(ShelfState.limit) items · drag to reorder · swipe or ⌫ to remove")
-                        .font(Typo.sans(11)).foregroundColor(Mono.muted)
                 }
-                .padding(20)
-                .frame(maxWidth: 900, alignment: .leading)
+                .padding(.horizontal, 28).padding(.vertical, 22)
+                .frame(maxWidth: 1100, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             undoBar
@@ -59,6 +64,7 @@ struct ShelfPage: View {
         .onDrop(of: [UTType.fileURL, UTType.utf8PlainText, UTType.url], isTargeted: $targeted, perform: drop)
         .animation(reduce ? Motion.reducedFade : .spring(response: 0.34, dampingFraction: 0.62), value: targeted)
         .animation(reduce ? Motion.reducedFade : .spring(response: 0.42, dampingFraction: 0.72), value: v5.shelfUndo?.id)
+        .animation(Motion.snappy(reduce), value: adding)
         .onAppear(perform: watchKeys)
         .onChange(of: v5.shelfSearchFocus) { _ in searchFocused = true }
         .onDisappear {
@@ -67,14 +73,62 @@ struct ShelfPage: View {
         }
     }
 
-    // MARK: add
+    /// "Today" / "Earlier" groups while the list is newest-first; one untitled group otherwise.
+    private struct ShelfGroup: Identifiable {
+        let id: String
+        let title: String?
+        let items: [ShelfItem]
+    }
+
+    private var groups: [ShelfGroup] {
+        let list = items
+        let heads = searching ? [:] : ShelfMeta.sections(list, now: Int64(Date().timeIntervalSince1970 * 1000))
+        guard !heads.isEmpty else { return [ShelfGroup(id: "all", title: nil, items: list)] }
+        let starts = heads.keys.sorted()
+        return starts.enumerated().map { i, start in
+            let end = i + 1 < starts.count ? starts[i + 1] : list.count
+            return ShelfGroup(id: heads[start] ?? "\(start)", title: heads[start], items: Array(list[start..<end]))
+        }
+    }
+
+    // MARK: header, add, search
+
+    private var header: some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text("Shelf").font(Typo.sans(28, .medium)).foregroundColor(Mono.text)
+                    if !v5.shelf.items.isEmpty {
+                        Text("\(v5.shelf.items.count)").font(Typo.mono(14)).foregroundColor(Mono.muted)
+                            .contentTransition(.numericText()).animation(Motion.snappy(reduce), value: v5.shelf.items.count)
+                    }
+                }
+                Spacer(minLength: 12)
+                if !v5.shelf.items.isEmpty { searchBar.frame(maxWidth: 300) }
+                Button {
+                    withAnimation(Motion.snappy(reduce)) { adding.toggle() }
+                } label: {
+                    Image(systemName: "plus").font(.system(size: 13, weight: .medium)).foregroundColor(Mono.text)
+                        .rotationEffect(.degrees(adding && !reduce ? 45 : 0))
+                        .frame(width: 32, height: 32)
+                        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Mono.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Mono.line))
+                }
+                .buttonStyle(PressStyle())
+                .help("Add to Shelf")
+                .accessibilityLabel("Add to Shelf")
+            }
+            Rectangle().fill(Mono.line).frame(height: 1).padding(.horizontal, -28)
+        }
+    }
 
     private var addBar: some View {
         HStack(spacing: 10) {
-            TextField("Drop text, a link or a file here…", text: $draft, axis: .vertical)
+            TextField("Text, a link, or drop a file", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain).font(Typo.sans(13)).foregroundColor(Mono.text)
                 .lineLimit(1...4)
                 .onSubmit(add)
+                .onExitCommand { adding = false }
             Button(action: add) {
                 Text("Add").font(Typo.sans(13, .semibold)).foregroundColor(Mono.bg)
                     .padding(.horizontal, 22).frame(height: 30)
@@ -93,7 +147,7 @@ struct ShelfPage: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundColor(Mono.muted)
-            TextField("Search Shelf  ⌘F", text: $v5.shelfQuery)
+            TextField("Search", text: $v5.shelfQuery)
                 .textFieldStyle(.plain).font(Typo.sans(13)).foregroundColor(Mono.text)
                 .focused($searchFocused)
                 .onExitCommand { v5.shelfQuery = "" }
@@ -102,11 +156,16 @@ struct ShelfPage: View {
                     Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundColor(Mono.muted)
                 }
                 .buttonStyle(.plain).accessibilityLabel("Clear search").transition(.opacity.combined(with: .scale))
+            } else {
+                Text("⌘F").font(Typo.mono(10)).foregroundColor(Mono.muted)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Mono.line))
+                    .transition(.opacity)
             }
         }
         .padding(.horizontal, 12).frame(height: 32)
         .background(RoundedRectangle(cornerRadius: 10).fill(Mono.surface))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(searchFocused ? Mono.text : Mono.line, lineWidth: searchFocused ? 1.5 : 1))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(searchFocused ? Mono.muted : Mono.line, lineWidth: 1))
         .animation(Motion.snappy(reduce), value: searchFocused)
         .animation(Motion.snappy(reduce), value: searching)
     }
@@ -115,13 +174,14 @@ struct ShelfPage: View {
         let t = draft
         draft = ""
         m.addToShelf(text: t)
+        withAnimation(Motion.snappy(reduce)) { adding = false }
     }
 
     private var empty: some View {
         VStack(spacing: 10) {
             Image(systemName: "tray").font(.system(size: 30, weight: .ultraLight)).foregroundColor(Mono.muted)
             Text("Nothing pinned yet").font(Typo.sans(14, .medium)).foregroundColor(Mono.text)
-            Text("Pin a roll number, a Wi-Fi password, a resume link — it shows up on your phone too.")
+            Text("It shows up on your phone too.")
                 .font(Typo.sans(12)).foregroundColor(Mono.muted).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 50)
@@ -312,7 +372,8 @@ struct ShelfReorder: DropDelegate {
     }
 }
 
-/// One Shelf card, as in the mockup: type tag, title, preview, divider, "From … · age" and one action.
+/// One Shelf card (0.5.3 redesign): a real thumbnail or a document with its type, the title once,
+/// one calm line of detail and "Phone · 12m". Hovering lifts the card and shows its actions.
 struct ShelfCard: View {
     @EnvironmentObject var m: AppModel
     let item: ShelfItem
@@ -323,47 +384,66 @@ struct ShelfCard: View {
     @State private var hover = false
     @Environment(\.accessibilityReduceMotion) private var reduce
 
-    private var mono: Bool { item.kind == ShelfKinds.wifi || item.kind == ShelfKinds.snippet }
+    private var editing: Bool { m.v5.shelfRenaming == item.id }
+    private var lines: (title: String, detail: String) {
+        ShelfMeta.lines(item, size: formatBytes, missing: m.shelfState(item) == .notDownloaded)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                ShelfTag(kind: item.kind).hero("s-tag-\(item.id)", in: hero, active: heroActive)
-                Spacer(minLength: 8)
-                ShelfFileThumb(item: item, state: m.shelfState(item))
+        HStack(alignment: .center, spacing: 16) {
+            ShelfLeading(item: item, state: m.shelfState(item), size: 46)
+            VStack(alignment: .leading, spacing: 4) {
+                ShelfTitle(item: item, shown: lines.title).hero("s-title-\(item.id)", in: hero, active: heroActive)
+                Text(lines.detail).font(Typo.sans(13)).foregroundColor(Mono.muted).lineLimit(1).truncationMode(.tail)
             }
-            ShelfTitle(item: item, shown: cardText.title).hero("s-title-\(item.id)", in: hero, active: heroActive)
-            Text(cardText.preview.replacingOccurrences(of: "\n", with: " "))
-                .font(mono ? Typo.mono(13) : Typo.sans(13)).foregroundColor(Mono.muted).lineLimit(1).truncationMode(.tail)
-            Rectangle().fill(Mono.line).frame(height: 1).padding(.top, 2)
-            HStack {
-                TimelineView(.periodic(from: .now, by: 30)) { ctx in
-                    Text(ShelfAge.label(from: item.from, updatedMs: item.created, nowMs: Int64(ctx.date.timeIntervalSince1970 * 1000)))
-                        .font(Typo.sans(11)).foregroundColor(Mono.muted)
-                }
-                Spacer()
-                ShelfActionButton(item: item)
+            .padding(.trailing, hover ? 150 : 0)
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 20).padding(.vertical, 18)
+        .frame(minHeight: 84)
+        .overlay(alignment: .topTrailing) {
+            if hover && !editing && !lifted {
+                ShelfHoverActions(item: item).padding(.top, 14).padding(.trailing, 14)
+                    .transition(reduce ? .opacity : .scale(scale: 0.85, anchor: .trailing).combined(with: .opacity))
             }
         }
-        .padding(16)
+        .overlay(alignment: .bottomTrailing) {
+            Group {
+                if editing {
+                    HStack(spacing: 6) {
+                        Text("Save").font(Typo.sans(11)).foregroundColor(Mono.muted)
+                        Text("⏎").font(Typo.mono(10)).foregroundColor(Mono.muted)
+                            .padding(.horizontal, 5).padding(.vertical, 1).overlay(RoundedRectangle(cornerRadius: 4).stroke(Mono.line))
+                    }
+                } else if !hover {
+                    TimelineView(.periodic(from: .now, by: 30)) { ctx in
+                        Text(ShelfMeta.source(item) + " · " + When.short(item.created, now: Int64(ctx.date.timeIntervalSince1970 * 1000)))
+                            .font(Typo.sans(11)).foregroundColor(Mono.muted)
+                    }
+                }
+            }
+            .padding(.trailing, 20).padding(.bottom, 16)
+            .transition(.opacity)
+        }
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous).fill(hover || selected ? Mono.surfaceHigh : Mono.surface)
                 .hero("s-card-\(item.id)", in: hero, active: heroActive)
         )
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .stroke(selected ? Mono.text : Mono.line, lineWidth: selected ? 1.5 : 1))
-        .scaleEffect(lifted && !reduce ? 1.05 : (hover && !reduce ? 1.02 : 1))
-        .offset(y: hover && !lifted && !reduce ? -2 : 0)
-        .shadow(color: .black.opacity(lifted ? 0.4 : (hover ? 0.22 : 0)), radius: lifted ? 24 : 12, y: lifted ? 14 : 6)
+            .stroke(selected ? Mono.muted : Mono.line, lineWidth: 1))
+        .scaleEffect(lifted && !reduce ? 1.04 : (hover && !reduce ? 1.01 : 1))
+        .offset(y: hover && !lifted && !reduce ? -1 : 0)
+        .shadow(color: .black.opacity(lifted ? 0.4 : (hover ? 0.18 : 0)), radius: lifted ? 24 : 10, y: lifted ? 14 : 4)
         .opacity(lifted ? 0.6 : 1)
         .zIndex(lifted || hover ? 1 : 0)
-        .animation(reduce ? Motion.reducedFade : .spring(response: 0.3, dampingFraction: 0.7), value: hover)
+        .animation(reduce ? Motion.reducedFade : .spring(response: 0.3, dampingFraction: 0.72), value: hover)
         .animation(reduce ? Motion.reducedFade : .spring(response: 0.3, dampingFraction: 0.65), value: lifted)
         .animation(Motion.snappy(reduce), value: selected)
+        .animation(Motion.snappy(reduce), value: editing)
         .contentShape(RoundedRectangle(cornerRadius: 14))
         .onHover { hover = $0 }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(item.kind) \(item.title)")
+        .accessibilityLabel("\(lines.title), \(lines.detail), from \(ShelfMeta.source(item))")
     }
 
     /// "11 KB · Word document" (0.5.3: friendly kinds, not MIME types), plus "Not downloaded yet"
@@ -380,23 +460,6 @@ struct ShelfCard: View {
         for p in ["https://", "http://", "www."] where s.lowercased().hasPrefix(p) { s = String(s.dropFirst(p.count)) }
         if s.hasSuffix("/") { s.removeLast() }
         return s.count > 48 ? String(s.prefix(47)) + "…" : s
-    }
-
-    /// Title + preview; a snippet titled from its own first line doesn't repeat it (0.5.3).
-    private var cardText: ShelfCardText.Parts {
-        switch item.kind {
-        case ShelfKinds.link, ShelfKinds.wifi, ShelfKinds.file: return .init(title: item.title, preview: preview)
-        default: return ShelfCardText.split(title: item.title, body: item.body)
-        }
-    }
-
-    private var preview: String {
-        switch item.kind {
-        case ShelfKinds.link: return ShelfCard.linkPreview(item.body)
-        case ShelfKinds.wifi: return item.secret.map { _ in "Password ••••••••" } ?? "Open network"
-        case ShelfKinds.file: return ShelfCard.filePreview(item, state: m.shelfState(item))
-        default: return item.body.replacingOccurrences(of: "\n", with: " ")
-        }
     }
 }
 
@@ -519,7 +582,7 @@ struct ShelfTitle: View {
         Group {
             if editing {
                 TextField("Name", text: $draft)
-                    .textFieldStyle(.plain).font(Typo.sans(17, .medium)).foregroundColor(Mono.text)
+                    .textFieldStyle(.plain).font(Typo.sans(15, .medium)).foregroundColor(Mono.text)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(RoundedRectangle(cornerRadius: 6).fill(Mono.bg))
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Mono.text, lineWidth: 1))
@@ -528,11 +591,20 @@ struct ShelfTitle: View {
                     .onExitCommand { m.v5.shelfRenaming = nil }
                     .onAppear {
                         draft = item.title
-                        DispatchQueue.main.async { focused = true }
+                        DispatchQueue.main.async {
+                            focused = true
+                            // Select the name without its extension, as Finder does.
+                            DispatchQueue.main.async {
+                                guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+                                let ext = FileKinds.ext(item.title)
+                                let len = (item.title as NSString).length - (ext.isEmpty ? 0 : (ext as NSString).length + 1)
+                                editor.setSelectedRange(NSRange(location: 0, length: max(0, len)))
+                            }
+                        }
                     }
                     .onChange(of: focused) { f in if !f && editing { commit() } }
             } else {
-                Text(shown ?? item.title).font(Typo.sans(17, .medium)).foregroundColor(Mono.text).lineLimit(1)
+                Text(shown ?? item.title).font(Typo.sans(15, .medium)).foregroundColor(Mono.text).lineLimit(1).truncationMode(.middle)
                     .onTapGesture(count: 2) { m.v5.shelfRenaming = item.id }
                     .help("Double-click to rename")
             }
@@ -547,11 +619,13 @@ struct ShelfTitle: View {
     }
 }
 
-/// An image file's thumbnail (from the encrypted local copy) at the top-right of its card.
-struct ShelfFileThumb: View {
+/// An image file's thumbnail (from the encrypted local copy); [placeholder] until it loads.
+struct ShelfFileThumb<Placeholder: View>: View {
     @EnvironmentObject var m: AppModel
     let item: ShelfItem
     let state: ShelfCache.State
+    var side: CGFloat = 44
+    @ViewBuilder var placeholder: () -> Placeholder
     @State private var image: NSImage?
     @Environment(\.accessibilityReduceMotion) private var reduce
 
@@ -559,12 +633,15 @@ struct ShelfFileThumb: View {
         ZStack {
             if let image {
                 Image(nsImage: image).resizable().scaledToFill()
-                    .frame(width: 44, height: 44)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Mono.line))
-                    .transition(reduce ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
+                    .frame(width: side, height: side)
+                    .clipShape(RoundedRectangle(cornerRadius: side * 0.22, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: side * 0.22, style: .continuous).stroke(Mono.line))
+                    .transition(reduce ? .opacity : .scale(scale: 0.85).combined(with: .opacity))
+            } else {
+                placeholder()
             }
         }
+        .frame(width: side, height: side)
         .animation(Motion.snappy(reduce), value: image != nil)
         .onAppear(perform: load)
         .onChange(of: state) { _ in load() }

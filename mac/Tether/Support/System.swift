@@ -348,6 +348,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.removeAllDeliveredNotifications()
     }
 
+    func remove(keys: [String]) {
+        guard !keys.isEmpty else { return }
+        center.removeDeliveredNotifications(withIdentifiers: keys)
+    }
+
     func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification,
                                 withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
         let passive: Bool

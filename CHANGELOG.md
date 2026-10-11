@@ -19,6 +19,12 @@ fails the release.
 - **Shelf snippet cards** no longer repeat their title in the preview.
 - **Continue on Mac cards** wait until a new photo is fully saved, so the thumbnail and size are right (no more black thumbnails).
 - **What's new** now shows after every update, including updates from 0.5.1 and older.
+- **A new Home on the phone, made of panels.** Send clipboard, Send file, Shelf, Mac battery, Clipboard, Now playing on your Mac, Recent transfers, Photos and Hotspot. Long-press or tap Edit to rearrange: drag to move, − to remove, the corner to resize, + to add from the panel picker. Your layout is saved.
+- **See and control your Mac from the phone**: the Mac panel shows its battery, Now playing shows what Music or Spotify is playing on the Mac with play/pause and skip.
+- **Send recent photos from Home**: pick a few in the Photos panel and tap Send.
+- **Redesigned Shelf on both devices**: real thumbnails, a document icon with its type (PDF, DOC, ZIP), one calm line of detail ("PDF · 454 KB", "forms.gle", "Snippet · 2 lines"), where it came from and when, grouped Today and Earlier. On the Mac, hover a card for Copy, Open, Rename and More; Rename selects the name without its extension.
+- **Transfers redesigned on the phone**: a large title, All / Sent / Received pills, the time of each transfer, and a percentage while it moves. Long-press a row to cancel, retry or remove.
+- **Clear all notifications on the Mac**, in the main window and the menu-bar panel. It also clears their banners, and with Dismiss on both on, dismisses them on your phone too. It asks first only when there are many.
 
 ## 0.5.2
 

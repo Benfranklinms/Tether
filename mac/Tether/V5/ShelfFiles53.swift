@@ -167,6 +167,7 @@ extension AppModel {
 
     /// The card state: here, coming, available from the phone, or "Not downloaded yet".
     func shelfState(_ item: ShelfItem) -> ShelfCache.State {
+        if demo { return .local }
         ShelfCache.state(haveLocal: v5.shelfLocal.contains(item.id), fetching: v5.shelfFetching.contains(item.id),
                          connected: isConnected && supports(Caps6.shelf))
     }
@@ -259,6 +260,7 @@ extension AppModel {
 
     /// A small picture of an image file, decoded from the encrypted copy off the main thread.
     func shelfThumbnail(_ item: ShelfItem, done: @escaping (NSImage?) -> Void) {
+        if demo, let img = Demo5.shelfThumbs[item.id] { return done(img) }
         guard let f = item.file, FileKinds.isImage(mime: f.mime, name: f.name), shelfHasLocal(item.id), let key = shelfKey() else {
             return done(nil)
         }

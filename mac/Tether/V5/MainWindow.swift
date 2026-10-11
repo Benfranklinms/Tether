@@ -300,7 +300,7 @@ struct NotificationsPage5: View {
             HStack {
                 PageTitle(title: "Notifications", detail: m.history.items.isEmpty ? "Nothing from your phone right now." : nil)
                 Spacer()
-                if !m.history.items.isEmpty { GhostButton(title: "Clear all") { m.clearHistory() } }
+                ClearNotificationsButton(style: .ghost)
             }
             VStack(spacing: 0) {
                 ForEach(Array(m.history.items.enumerated()), id: \.element.key) { i, n in

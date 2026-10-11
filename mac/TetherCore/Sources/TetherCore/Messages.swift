@@ -232,6 +232,10 @@ public enum Message: Equatable {
     case hotspotState(HotspotStatePayload)
     case shelfSync(ShelfSyncPayload)
     case shelfFileReq(ShelfFileReq)
+    // revision 7 (0.5.3)
+    case macStatus(MacStatusPayload)
+    case macStatusReq(MacStatusReq)
+    case macMediaCmd(MacMediaCmd)
     case unknown(type: UInt8)
 
     public var type: UInt8 {
@@ -321,6 +325,9 @@ public enum Message: Equatable {
         case .hotspotState: return 0xE8
         case .shelfSync: return 0xE9
         case .shelfFileReq: return 0xEA
+        case .macStatus: return 0xEB
+        case .macStatusReq: return 0xEC
+        case .macMediaCmd: return 0xED
         case .unknown(let t): return t
         }
     }
@@ -456,6 +463,9 @@ public enum MessageCodec {
         case .hotspotState(let p): return (try encoder.encode(p), Data())
         case .shelfSync(let p): return (try encoder.encode(p), Data())
         case .shelfFileReq(let p): return (try encoder.encode(p), Data())
+        case .macStatus(let p): return (try encoder.encode(p), Data())
+        case .macStatusReq(let p): return (try encoder.encode(p), Data())
+        case .macMediaCmd(let p): return (try encoder.encode(p), Data())
         default: throw ProtocolError("cannot encode unknown message")
         }
     }
@@ -611,6 +621,9 @@ public enum MessageCodec {
         case 0xE8: return .hotspotState(try d(HotspotStatePayload.self))
         case 0xE9: return .shelfSync(try d(ShelfSyncPayload.self))
         case 0xEA: return .shelfFileReq(try d(ShelfFileReq.self))
+        case 0xEB: return .macStatus(try d(MacStatusPayload.self))
+        case 0xEC: return .macStatusReq(try d(MacStatusReq.self))
+        case 0xED: return .macMediaCmd(try d(MacMediaCmd.self))
         default: return .unknown(type: type)
         }
     }

@@ -265,6 +265,9 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     )
     val updater = Updater(app).also { Updater.instance = it }
 
+    /** 0.5.3 Home panels: the Mac's battery / now playing (revision 7) and recent clipboard texts. */
+    val feeds = dev.benfranklin.tether.v7.HomeFeeds(send = { m -> controller.send(m) }, supports = { c -> controller.peerSupports(c) })
+
     // ---- 0.3.1 reconnect safety net ----
     private val watchdog = ReconnectWatchdog()
     private var radioRestarts = 0
@@ -407,7 +410,10 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         }
         if (notice != null) note(notice)
         Log.i("clip.sent", "ok" to ok, "bytes" to bytes, "user" to fromUser)
-        if (ok) v5.linkCopied(text)
+        if (ok) {
+            v5.linkCopied(text)
+            feeds.clip(text, fromMac = false)
+        }
     }
 
     /** The app came to the foreground and the clipboard holds an image: send it if new (0.5). */
@@ -428,7 +434,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         engine.execute {
             if (h == lastClipHash || !controller.isConnected) return@execute
             lastClipHash = h
-            controller.send(Clip(UUID.randomUUID().toString(), System.currentTimeMillis(), text))
+            if (controller.send(Clip(UUID.randomUUID().toString(), System.currentTimeMillis(), text))) feeds.clip(text, fromMac = false)
             Log.i("clip.auto_sent")
         }
     }
@@ -883,6 +889,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             }
         } else {
             stopRssi()
+            feeds.linkDown()
             if (screenLive || screenPending) stopScreen("link")
             if (wasConnectedForShelf) v6.linkChanged()
         }
@@ -926,13 +933,16 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             is CallAction, is CallDial, is CallLogReq, is ContactSearch -> calls.handle(message)
             is MediaCmd -> onMediaCmd(message)
             is ProximityCfg -> onProximityCfg(message)
-            else -> if (!v5.handle(message) && !v6.handle(message)) Log.i("msg.ignored", "type" to message.type)
+            else -> if (!v5.handle(message) && !v6.handle(message) && !feeds.handle(message)) {
+                Log.i("msg.ignored", "type" to message.type)
+            }
         }
     }
 
     private fun onClip(c: Clip) {
         if (!settings.current.receiveClipboard) return
         lastClipHash = hash(c.text)
+        feeds.clip(c.text, fromMac = true)
         clipWatcher.onLocalWrite(c.text)
         main.post {
             val cm = app.getSystemService(ClipboardManager::class.java) ?: return@post

@@ -168,6 +168,11 @@ object MsgType {
     const val HOTSPOT_STATE = 0xE8
     const val SHELF_SYNC = 0xE9
     const val SHELF_FILE_REQ = 0xEA
+
+    // ---- revision 7 (0.5.3), gated on Hello.caps ----
+    const val MAC_STATUS = 0xEB
+    const val MAC_STATUS_REQ = 0xEC
+    const val MAC_MEDIA_CMD = 0xED
 }
 
 @Serializable data class Ping(val t: Long) : Message { override val type get() = MsgType.PING }
@@ -380,6 +385,9 @@ object MessageCodec {
             is HotspotState -> enc(HotspotState.serializer(), m) to EMPTY
             is ShelfSync -> enc(ShelfSync.serializer(), m) to EMPTY
             is ShelfFileReq -> enc(ShelfFileReq.serializer(), m) to EMPTY
+            is MacStatus -> enc(MacStatus.serializer(), m) to EMPTY
+            is MacStatusReq -> enc(MacStatusReq.serializer(), m) to EMPTY
+            is MacMediaCmd -> enc(MacMediaCmd.serializer(), m) to EMPTY
             is UnknownMessage -> throw ProtocolException("cannot encode unknown message")
         }
         val buf = ByteBuffer.allocate(PREFIX + header.size + body.size)
@@ -537,6 +545,9 @@ object MessageCodec {
         MsgType.HOTSPOT_STATE -> dec(HotspotState.serializer(), header)
         MsgType.SHELF_SYNC -> dec(ShelfSync.serializer(), header)
         MsgType.SHELF_FILE_REQ -> dec(ShelfFileReq.serializer(), header)
+        MsgType.MAC_STATUS -> dec(MacStatus.serializer(), header)
+        MsgType.MAC_STATUS_REQ -> dec(MacStatusReq.serializer(), header)
+        MsgType.MAC_MEDIA_CMD -> dec(MacMediaCmd.serializer(), header)
         else -> UnknownMessage(type)
     }
 

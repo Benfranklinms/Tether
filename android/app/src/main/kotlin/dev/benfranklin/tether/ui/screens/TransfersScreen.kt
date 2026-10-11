@@ -2,38 +2,49 @@
 
 package dev.benfranklin.tether.ui.screens
 
-import dev.benfranklin.tether.ui.screenPadding
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.NorthEast
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.SouthWest
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -42,12 +53,11 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -56,21 +66,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.benfranklin.tether.core.features.TransferList
+import dev.benfranklin.tether.core.features.TransferMeta
+import dev.benfranklin.tether.core.transfer.Direction
 import dev.benfranklin.tether.core.transfer.TransferRecord
+import dev.benfranklin.tether.core.transfer.TransferStatus
+import dev.benfranklin.tether.core.transfer.Transport
 import dev.benfranklin.tether.ui.Haptics
+import dev.benfranklin.tether.ui.pressScale
+import dev.benfranklin.tether.ui.screenPadding
 import dev.benfranklin.tether.ui.theme.LocalReduceMotion
 import dev.benfranklin.tether.ui.theme.Mono
 import dev.benfranklin.tether.ui.theme.MonoCode
 import dev.benfranklin.tether.ui.theme.Motion
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 import java.util.Calendar
 
 /** What the Transfers screen can do (runtime-backed in the app, fakes in screenshot tests). */
@@ -94,48 +112,46 @@ fun startOfDay(now: Long): Long = Calendar.getInstance().apply {
 }.timeInMillis
 
 /**
- * Every transfer (0.5.3), newest first, grouped Today / Earlier, filtered All / Sent / Received.
- * Swipe a row to remove it, tap to open its file, Clear all removes finished ones. Transfers that
- * finished more than a day ago fold into a collapsed Earlier group.
+ * Every transfer (0.5.3 redesign), newest first, grouped Today / Earlier, filtered All / Sent /
+ * Received. Tap opens a finished file (or retries a failed send), long-press for Cancel / Retry /
+ * Remove, swipe left to remove, Clear all removes finished ones.
  */
 @Composable
-fun TransfersScreen(transfers: List<TransferRecord>, a: TransfersActions, onBack: () -> Unit, now: Long = System.currentTimeMillis()) {
+fun TransfersScreen(
+    transfers: List<TransferRecord>,
+    a: TransfersActions,
+    onBack: () -> Unit,
+    now: Long = System.currentTimeMillis(),
+    zone: ZoneId = ZoneId.systemDefault(),
+) {
     val reduce = LocalReduceMotion.current
     val view = LocalView.current
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var filter by rememberSaveable { mutableStateOf(TransferList.Filter.ALL) }
     var confirmClear by remember { mutableStateOf(false) }
-    val expanded = remember { mutableStateMapOf<String, Boolean>() }
     val sections = remember(transfers, filter, now) { TransferList.sections(transfers, filter, now, startOfDay(now)) }
     val anyFinished = transfers.any { it.status.isFinal }
     Scaffold(
         containerColor = Mono.Bg,
         snackbarHost = { SnackbarHost(snack) },
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Transfers", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") }
-                },
-                actions = {
-                    TextButton(onClick = { confirmClear = true }, enabled = anyFinished) {
-                        Text("Clear all", color = if (anyFinished) Mono.Text else Mono.Muted)
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Mono.Bg),
-            )
+            LargeTitle("Transfers", onBack, heroKey = "transfers-title") {
+                TextButton(onClick = { confirmClear = true }, enabled = anyFinished) {
+                    Text("Clear all", style = MaterialTheme.typography.bodyLarge, color = if (anyFinished) Mono.Text else Mono.Muted)
+                }
+            }
         },
     ) { pad ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(pad)) {
-            item(key = "filter") { FilterBar(filter) { filter = it } }
+            item(key = "filter") { FilterChips(filter) { filter = it } }
             if (sections.isEmpty()) {
                 item(key = "empty") {
                     Text(
                         when (filter) {
-                            TransferList.Filter.SENT -> "Nothing sent yet."
-                            TransferList.Filter.RECEIVED -> "Nothing received yet."
-                            TransferList.Filter.ALL -> "Files you send or receive show up here."
+                            TransferList.Filter.SENT -> "Nothing sent yet"
+                            TransferList.Filter.RECEIVED -> "Nothing received yet"
+                            TransferList.Filter.ALL -> "Files you send or receive show up here"
                         },
                         style = MaterialTheme.typography.bodyMedium, color = Mono.Muted,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp).animateItem(),
@@ -143,25 +159,22 @@ fun TransfersScreen(transfers: List<TransferRecord>, a: TransfersActions, onBack
                 }
             }
             for (sec in sections) {
-                val open = expanded[sec.title] ?: !sec.collapsed
                 item(key = "h-" + sec.title) {
-                    SectionToggle(sec.title, sec.items.size, collapsible = sec.collapsed, open = open, modifier = Modifier.animateItem()) {
-                        expanded[sec.title] = !open
-                        Haptics.tick(view)
-                    }
+                    Text(
+                        sec.title, style = MaterialTheme.typography.bodyLarge, color = Mono.Muted,
+                        modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 6.dp).animateItem(),
+                    )
                 }
-                if (open) {
-                    items(sec.items, key = { it.id }) { t ->
-                        SwipeRow(t, onRemove = {
-                            a.remove(t.id)
-                            Haptics.confirm(view)
-                        }, modifier = Modifier.animateItem(
-                            fadeInSpec = Motion.spring(reduce), placementSpec = Motion.spring(reduce), fadeOutSpec = Motion.spring(reduce),
-                        )) {
-                            TransferRow(t, a::cancel, a::retry, a::remove, Modifier, onOpen = {
-                                a.open(t)?.let { why -> scope.launch { snack.showSnackbar(why) } }
-                            })
-                        }
+                items(sec.items, key = { it.id }) { t ->
+                    SwipeRow(t, onRemove = {
+                        a.remove(t.id)
+                        Haptics.confirm(view)
+                    }, modifier = Modifier.animateItem(
+                        fadeInSpec = Motion.spring(reduce), placementSpec = Motion.spring(reduce), fadeOutSpec = Motion.spring(reduce),
+                    )) {
+                        TransferItem(t, now, zone, last = t == sec.items.last(), a = a, onOpenFailed = { why ->
+                            scope.launch { snack.showSnackbar(why) }
+                        })
                     }
                 }
             }
@@ -172,7 +185,7 @@ fun TransfersScreen(transfers: List<TransferRecord>, a: TransfersActions, onBack
             onDismissRequest = { confirmClear = false },
             containerColor = Mono.SurfaceHigh, titleContentColor = Mono.Text, textContentColor = Mono.Muted,
             title = { Text("Clear all transfers?") },
-            text = { Text("Finished transfers leave this list. Files you received stay where they were saved.") },
+            text = { Text("Received files stay where they were saved.") },
             confirmButton = {
                 TextButton(onClick = {
                     a.clearFinished()
@@ -185,23 +198,25 @@ fun TransfersScreen(transfers: List<TransferRecord>, a: TransfersActions, onBack
     }
 }
 
-/** All / Sent / Received as a mono segmented control; the selected pill slides. */
+/** All / Sent / Received as separate pills; the chosen one fills on a spring. */
 @Composable
-private fun FilterBar(selected: TransferList.Filter, onSelect: (TransferList.Filter) -> Unit) {
+private fun FilterChips(selected: TransferList.Filter, onSelect: (TransferList.Filter) -> Unit) {
     val reduce = LocalReduceMotion.current
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).clip(RoundedCornerShape(14.dp))
-            .border(1.dp, Mono.Line, RoundedCornerShape(14.dp)).padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
+    val view = LocalView.current
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for (f in TransferList.Filter.entries) {
             val on = f == selected
-            val bg by animateColorAsState(if (on) Mono.Text else Mono.Bg, Motion.spring(reduce), label = "seg")
-            val fg by animateColorAsState(if (on) Mono.Bg else Mono.Muted, Motion.spring(reduce), label = "segText")
+            val bg by animateColorAsState(if (on) Mono.Text else Mono.Bg, Motion.spring(reduce), label = "chip")
+            val fg by animateColorAsState(if (on) Mono.Bg else Mono.Muted, Motion.spring(reduce), label = "chipText")
+            val source = remember { MutableInteractionSource() }
             Box(
-                Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(bg)
-                    .clickable(role = Role.Tab) { onSelect(f) }
-                    .heightIn(min = 40.dp).semantics { this.selected = on },
+                Modifier.pressScale(source).clip(RoundedCornerShape(50)).background(bg)
+                    .border(1.dp, if (on) Mono.Text else Mono.Line, RoundedCornerShape(50))
+                    .clickable(source, null, role = Role.Tab) {
+                        if (!on) Haptics.tick(view)
+                        onSelect(f)
+                    }
+                    .heightIn(min = 40.dp).padding(horizontal = 18.dp).semantics { this.selected = on },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -210,38 +225,118 @@ private fun FilterBar(selected: TransferList.Filter, onSelect: (TransferList.Fil
                         TransferList.Filter.SENT -> "Sent"
                         TransferList.Filter.RECEIVED -> "Received"
                     },
-                    style = MaterialTheme.typography.labelLarge, color = fg,
+                    style = MaterialTheme.typography.bodyLarge, color = fg,
                 )
             }
         }
     }
 }
 
+/** One transfer: arrow in a circle, name, size (or progress), and its time or percentage. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SectionToggle(title: String, count: Int, collapsible: Boolean, open: Boolean, modifier: Modifier, onToggle: () -> Unit) {
+private fun TransferItem(t: TransferRecord, now: Long, zone: ZoneId, last: Boolean, a: TransfersActions, onOpenFailed: (String) -> Unit) {
     val reduce = LocalReduceMotion.current
-    val turn by animateFloatAsState(if (open) 180f else 0f, Motion.spring(reduce), label = "chev")
-    Row(
-        modifier.fillMaxWidth().then(if (collapsible) Modifier.clickable(role = Role.Button, onClick = onToggle) else Modifier)
-            .padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 6.dp)
-            .semantics { contentDescription = "$title, $count" + if (collapsible) (if (open) ", expanded" else ", collapsed") else "" },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = Mono.Muted, modifier = Modifier.weight(1f))
-        AnimatedContent(count, label = "count", transitionSpec = { fadeIn() togetherWith fadeOut() }) { n ->
-            Text("$n", style = MaterialTheme.typography.labelMedium, color = Mono.Muted, fontFamily = MonoCode)
+    val view = LocalView.current
+    var menu by remember { mutableStateOf(false) }
+    val progress by animateFloatAsState(t.progress, Motion.spring(reduce, stiffness = Spring.StiffnessLow, damping = 1f),
+        label = "progress")
+    var wasFinal by remember { mutableStateOf(t.status.isFinal) }
+    LaunchedEffect(t.status) {
+        if (!wasFinal && t.status == TransferStatus.DONE) Haptics.confirm(view)
+        wasFinal = t.status.isFinal
+    }
+    val retryable = t.status == TransferStatus.FAILED && t.direction == Direction.OUT
+    val desc = (if (t.direction == Direction.OUT) "Sent " else "Received ") + t.name + ". " + statusLine(t) + when (t.via) {
+        Transport.WIFI -> ", over Wi-Fi"
+        Transport.BLE -> ", over Bluetooth"
+        null -> ""
+    }
+    Box {
+        Row(
+            Modifier.fillMaxWidth().background(Mono.Bg)
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() }, indication = ripple(),
+                    onLongClick = {
+                        Haptics.confirm(view)
+                        menu = true
+                    },
+                ) {
+                    when {
+                        t.status == TransferStatus.DONE -> a.open(t)?.let(onOpenFailed)
+                        retryable -> {
+                            Haptics.tick(view)
+                            a.retry(t.id)
+                        }
+                        else -> menu = true
+                    }
+                }
+                .padding(start = 20.dp, end = 20.dp).semantics(mergeDescendants = true) { contentDescription = desc },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(Mono.Surface), contentAlignment = Alignment.Center) {
+                Icon(
+                    if (t.direction == Direction.OUT) Icons.Outlined.NorthEast else Icons.Outlined.SouthWest,
+                    contentDescription = null, tint = if (t.status == TransferStatus.FAILED) Mono.Muted else Mono.Text,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        TransferMeta.middle(t.name, 32), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    AnimatedContent(TransferMeta.percent(t) ?: TransferMeta.time(t, now, zone), label = "trail",
+                        transitionSpec = { fadeIn(Motion.fade(reduce)) togetherWith fadeOut(Motion.fade(reduce)) }) { s ->
+                        Text(s, style = MaterialTheme.typography.bodyMedium, color = Mono.Muted,
+                            fontFamily = if (s.first().isDigit()) MonoCode else null)
+                    }
+                }
+                Text(
+                    TransferMeta.subtitle(t, ::formatBytes), style = MaterialTheme.typography.bodyMedium, color = Mono.Muted,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
+                )
+                AnimatedVisibility(
+                    !t.status.isFinal, enter = fadeIn(Motion.spring(reduce)) + expandVertically(Motion.spring(reduce)),
+                    exit = fadeOut(Motion.spring(reduce)) + shrinkVertically(Motion.spring(reduce)),
+                ) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.padding(top = 8.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
+                        color = Mono.Accent, trackColor = Mono.Line, drawStopIndicator = {}, gapSize = 0.dp,
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                if (!last) Box(Modifier.fillMaxWidth().height(1.dp).background(Mono.Line.copy(alpha = 0.7f)))
+            }
         }
-        if (collapsible) {
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                Icons.Outlined.ExpandMore, contentDescription = null, tint = Mono.Muted,
-                modifier = Modifier.graphicsLayer { rotationZ = turn },
-            )
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            if (!t.status.isFinal) {
+                DropdownMenuItem(text = { Text("Cancel") }, leadingIcon = { Icon(Icons.Outlined.Close, null) }, onClick = {
+                    menu = false
+                    a.cancel(t.id)
+                })
+            }
+            if (retryable) {
+                DropdownMenuItem(text = { Text("Retry") }, leadingIcon = { Icon(Icons.Outlined.Refresh, null) }, onClick = {
+                    menu = false
+                    a.retry(t.id)
+                })
+            }
+            if (t.status.isFinal) {
+                DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(Icons.Outlined.Delete, null) }, onClick = {
+                    menu = false
+                    a.remove(t.id)
+                })
+            }
         }
     }
 }
 
-/** Swipe left to remove a transfer from the list. */
+/** Swipe left to remove a finished transfer from the list. */
 @Composable
 private fun SwipeRow(t: TransferRecord, onRemove: () -> Unit, modifier: Modifier, content: @Composable () -> Unit) {
     val reduce = LocalReduceMotion.current

@@ -21,6 +21,7 @@ extension AppModel {
     }
 
     func linkChanged6(wasConnected: Bool) {
+        linkChanged7(wasConnected: wasConnected)
         if isConnected && !wasConnected && supports(Caps6.shelf) {
             engine?.send(.shelfSync(v5.shelf.snapshot()))
         }
@@ -44,7 +45,7 @@ extension AppModel {
         case .hotspotState(let p): hotspotStateReceived(p)
         case .shelfSync(let p): shelfSyncReceived(p)
         case .shelfFileReq(let p): shelfFileRequested(p)
-        default: return false
+        default: return receive7(message)
         }
         return true
     }

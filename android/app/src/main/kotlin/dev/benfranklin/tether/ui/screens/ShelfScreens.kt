@@ -54,6 +54,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
@@ -116,9 +117,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import dev.benfranklin.tether.core.features.FileKinds
 import dev.benfranklin.tether.core.features.ShelfCache
+import dev.benfranklin.tether.core.features.ShelfMeta
+import dev.benfranklin.tether.core.features.TransferMeta
+import dev.benfranklin.tether.core.features.When
 import dev.benfranklin.tether.core.features.ShelfDetect
 import dev.benfranklin.tether.core.features.ShelfRename
 import dev.benfranklin.tether.core.features.ShelfCardText
@@ -212,6 +217,7 @@ fun shelfDropIndex(slots: List<Pair<Int, Int>>, from: Int, centre: Float): Int {
     }
 }
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun ShelfScreen(
     items: List<ShelfItem>,
@@ -220,6 +226,8 @@ fun ShelfScreen(
     onBack: () -> Unit,
     files: ShelfFilesUi = ShelfFilesUi(connected = connected),
     initialQuery: String = "",
+    now: Long = System.currentTimeMillis(),
+    zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
 ) {
     val reduce = LocalReduceMotion.current
     val view = LocalView.current
@@ -233,7 +241,7 @@ fun ShelfScreen(
     var dragId by remember { mutableStateOf<String?>(null) }
     var dragDy by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(items) { if (dragId == null) local = items }
-    // Cards that weren't here when the screen opened spring in (a sync from the Mac, a new add).
+    // Rows that weren't here when the screen opened spring in (a sync from the Mac, a new add).
     val initial = remember { items.map { it.id }.toSet() }
     val listState = rememberLazyListState()
 
@@ -250,22 +258,39 @@ fun ShelfScreen(
         }
     }
 
+    SharedTransitionLayout(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = Mono.Bg,
-        topBar = { TopBar("Shelf", onBack) },
+        topBar = {
+            LargeTitle("Shelf", onBack, heroKey = "shelf-title", count = local.size.takeIf { it > 0 }) {
+                AnimatedVisibility(!adding, enter = fadeIn(Motion.fade(reduce)), exit = fadeOut(Motion.fade(reduce))) {
+                    val source = remember { MutableInteractionSource() }
+                    Box(
+                        Modifier
+                            .then(if (reduce) Modifier else Modifier.sharedBounds(rememberSharedContentState("shelf-add"), this))
+                            .pressScale(source).size(44.dp).clip(CircleShape).background(Mono.SurfaceHigh)
+                            .clickable(source, null, role = Role.Button) {
+                                Haptics.tick(view)
+                                adding = true
+                            }
+                            .semantics { contentDescription = "Add to Shelf" },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Outlined.Add, contentDescription = null, tint = Mono.Text) }
+                }
+            }
+        },
         snackbarHost = { SnackbarHost(snack) },
     ) { pad ->
-        SharedTransitionLayout(Modifier.fillMaxSize().padding(screenPadding(pad, bottom = 0.dp))) {
-            Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().padding(screenPadding(pad, bottom = 0.dp))) {
                 val shown = if (query.isBlank()) local else ShelfSearch.filter(local, query)
                 val searching = query.isNotBlank()
+                val headers = remember(shown, searching, now) { if (searching) emptyMap() else ShelfMeta.sections(shown, now, zone) }
                 if (local.isEmpty()) {
                     ShelfEmpty(connected)
                 } else {
                     LazyColumn(
                         Modifier.fillMaxSize(), state = listState,
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 120.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(top = 0.dp, bottom = 120.dp),
                     ) {
                         item(key = "search") {
                             ShelfSearchBar(query, onChange = { query = it })
@@ -273,86 +298,71 @@ fun ShelfScreen(
                         if (searching && shown.isEmpty()) {
                             item(key = "nomatch") {
                                 Text(
-                                    "Nothing on your Shelf matches “${query.trim()}”", style = MaterialTheme.typography.bodyMedium,
-                                    color = Mono.Muted, modifier = Modifier.padding(horizontal = 8.dp, vertical = 24.dp).animateItem(),
+                                    "No match for “${query.trim()}”", style = MaterialTheme.typography.bodyMedium,
+                                    color = Mono.Muted, modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp).animateItem(),
                                 )
                             }
                         }
-                        if (!searching) item(key = "hint") {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp)) {
-                                AnimatedContent(
-                                    local.size, label = "count",
-                                    transitionSpec = {
-                                        if (reduce) {
-                                            fadeIn(Motion.fade(true)) togetherWith fadeOut(Motion.fade(true))
-                                        } else {
-                                            val up = targetState > initialState
-                                            (slideInVertically(Motion.spring(false)) { if (up) it else -it } + fadeIn()) togetherWith
-                                                (slideOutVertically(Motion.spring(false)) { if (up) -it else it } + fadeOut())
-                                        }
-                                    },
-                                ) { n ->
+                        shown.forEachIndexed { index, item ->
+                            headers[index]?.let { h ->
+                                item(key = "h-$h") {
                                     Text(
-                                        "$n", style = MaterialTheme.typography.labelMedium, color = Mono.Text,
-                                        fontFamily = MonoCode,
+                                        h, style = MaterialTheme.typography.bodyLarge, color = Mono.Muted,
+                                        modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 4.dp).animateItem(),
                                     )
                                 }
-                                Text(
-                                    (if (local.size == 1) " item" else " items") +
-                                        if (connected) " · synced with your Mac" else " · syncs when your Mac connects",
-                                    style = MaterialTheme.typography.labelMedium, color = Mono.Muted,
+                            }
+                            item(key = item.id) {
+                                val dragging = dragId == item.id
+                                ShelfRow(
+                                    item = item, isNew = item.id !in initial, dragging = dragging, dragDy = if (dragging) dragDy else 0f,
+                                    a = a, onRemove = { removeWithUndo(item.id) },
+                                    state = files.state(item), reorder = !searching, now = now, zone = zone,
+                                    divider = index < shown.lastIndex && headers[index + 1] == null,
+                                    onRename = { renaming = item },
+                                    onDragStart = {
+                                        dragId = item.id
+                                        dragDy = 0f
+                                        Haptics.confirm(view)
+                                    },
+                                    onDrag = { dy ->
+                                        dragDy += dy
+                                        val visible = listState.layoutInfo.visibleItemsInfo
+                                            .filter { it.key is String && it.key !in NON_CARD_KEYS && !(it.key as String).startsWith("h-") }
+                                        val me = visible.firstOrNull { it.key == item.id } ?: return@ShelfRow
+                                        val centre = me.offset + me.size / 2f + dragDy
+                                        val slots = visible.map { it.offset to it.size }
+                                        val from = visible.indexOf(me)
+                                        val to = shelfDropIndex(slots, from, centre)
+                                        if (to != from) {
+                                            val target = visible[to]
+                                            val li = local.indexOfFirst { it.id == item.id }
+                                            val ti = local.indexOfFirst { it.id == target.key }
+                                            if (li >= 0 && ti >= 0) {
+                                                local = local.toMutableList().apply { add(ti, removeAt(li)) }
+                                                dragDy -= (target.offset - me.offset).toFloat()
+                                                Haptics.tick(view)
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        val id = dragId
+                                        dragId = null
+                                        dragDy = 0f
+                                        if (id != null) {
+                                            val to = local.indexOfFirst { it.id == id }
+                                            if (to >= 0 && items.indexOfFirst { it.id == id } != to) a.move(id, to)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .zIndex(if (dragging) 1f else 0f)
+                                        .animateItem(
+                                            fadeInSpec = Motion.fade(reduce),
+                                            placementSpec = if (dragging) null else Motion.spring(reduce),
+                                            fadeOutSpec = Motion.fade(reduce),
+                                        ),
                                 )
                             }
-                        }
-                        items(shown, key = { it.id }) { item ->
-                            val dragging = dragId == item.id
-                            ShelfRow(
-                                item = item, isNew = item.id !in initial, dragging = dragging, dragDy = if (dragging) dragDy else 0f,
-                                a = a, onRemove = { removeWithUndo(item.id) },
-                                state = files.state(item), reorder = !searching,
-                                onRename = { renaming = item },
-                                onDragStart = {
-                                    dragId = item.id
-                                    dragDy = 0f
-                                    Haptics.confirm(view)
-                                },
-                                onDrag = { dy ->
-                                    dragDy += dy
-                                    val visible = listState.layoutInfo.visibleItemsInfo
-                                        .filter { it.key is String && it.key !in NON_CARD_KEYS }
-                                    val me = visible.firstOrNull { it.key == item.id } ?: return@ShelfRow
-                                    val centre = me.offset + me.size / 2f + dragDy
-                                    val slots = visible.map { it.offset to it.size }
-                                    val from = visible.indexOf(me)
-                                    val to = shelfDropIndex(slots, from, centre)
-                                    if (to != from) {
-                                        val target = visible[to]
-                                        val li = local.indexOfFirst { it.id == item.id }
-                                        val ti = local.indexOfFirst { it.id == target.key }
-                                        if (li >= 0 && ti >= 0) {
-                                            local = local.toMutableList().apply { add(ti, removeAt(li)) }
-                                            dragDy -= (target.offset - me.offset).toFloat()
-                                            Haptics.tick(view)
-                                        }
-                                    }
-                                },
-                                onDragEnd = {
-                                    val id = dragId
-                                    dragId = null
-                                    dragDy = 0f
-                                    if (id != null) {
-                                        val to = local.indexOfFirst { it.id == id }
-                                        if (to >= 0 && items.indexOfFirst { it.id == id } != to) a.move(id, to)
-                                    }
-                                },
-                                modifier = Modifier
-                                    .zIndex(if (dragging) 1f else 0f)
-                                    .animateItem(
-                                        fadeInSpec = Motion.fade(reduce),
-                                        placementSpec = if (dragging) null else Motion.spring(reduce),
-                                        fadeOutSpec = Motion.fade(reduce),
-                                    ),
-                            )
                         }
                     }
                 }
@@ -364,25 +374,7 @@ fun ShelfScreen(
                             .clickable(remember { MutableInteractionSource() }, null) { adding = false },
                     )
                 }
-
-                // + FAB ⇄ add sheet: one container that morphs between the two (container transform).
-                AnimatedVisibility(
-                    !adding, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(20.dp),
-                    enter = fadeIn(Motion.fade(reduce)), exit = fadeOut(Motion.fade(reduce)),
-                ) {
-                    val source = remember { MutableInteractionSource() }
-                    Box(
-                        Modifier
-                            .then(if (reduce) Modifier else Modifier.sharedBounds(rememberSharedContentState("shelf-add"), this))
-                            .pressScale(source).size(60.dp).clip(RoundedCornerShape(20.dp)).background(Mono.Text)
-                            .clickable(source, null, role = Role.Button) {
-                                Haptics.tick(view)
-                                adding = true
-                            }
-                            .semantics { contentDescription = "Add to Shelf" },
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Outlined.Add, contentDescription = null, tint = Mono.Bg) }
-                }
+                // The + in the title bar morphs into the add sheet (container transform) and back.
                 AnimatedVisibility(
                     adding, modifier = Modifier.align(Alignment.BottomCenter).imePadding().navigationBarsPadding().padding(12.dp),
                     enter = fadeIn(Motion.fade(reduce)), exit = fadeOut(Motion.fade(reduce)),
@@ -410,8 +402,8 @@ fun ShelfScreen(
                             },
                     )
                 }
-            }
         }
+    }
     }
     renaming?.let { r ->
         RenameDialog(r, onDone = { title ->
@@ -426,19 +418,20 @@ fun ShelfScreen(
 private fun ShelfSearchBar(query: String, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = query, onValueChange = onChange, singleLine = true,
-        placeholder = { Text("Search Shelf", color = Mono.Muted) },
+        placeholder = { Text("Search", color = Mono.Muted, style = MaterialTheme.typography.bodyLarge) },
         leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = Mono.Muted) },
         trailingIcon = {
             AnimatedVisibility(query.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
                 IconButton(onClick = { onChange("") }) { Icon(Icons.Outlined.Close, contentDescription = "Clear search") }
             }
         },
+        textStyle = MaterialTheme.typography.bodyLarge,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Mono.Text, unfocusedBorderColor = Mono.Line, cursorColor = Mono.Text,
+            focusedBorderColor = Mono.Muted, unfocusedBorderColor = Mono.Line, cursorColor = Mono.Text,
             focusedContainerColor = Mono.Surface, unfocusedContainerColor = Mono.Surface,
         ),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics { contentDescription = "Search Shelf" },
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).semantics { contentDescription = "Search Shelf" },
     )
 }
 
@@ -522,6 +515,9 @@ private fun ShelfRow(
     modifier: Modifier,
     state: ShelfCache.State = ShelfCache.State.LOCAL,
     reorder: Boolean = true,
+    now: Long = System.currentTimeMillis(),
+    zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+    divider: Boolean = true,
     onRename: () -> Unit = {},
 ) {
     val reduce = LocalReduceMotion.current
@@ -529,10 +525,10 @@ private fun ShelfRow(
     // Long-press without moving opens the menu; long-press and drag reorders.
     var menu by remember { mutableStateOf(false) }
     var travelled by remember { mutableFloatStateOf(0f) }
-    // Spring in when the card arrives (sync / add).
+    // Spring in when the row arrives (sync / add).
     val appear = remember { Animatable(if (isNew && !reduce) 0.86f else 1f) }
     LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow)) }
-    // Lift while dragging: a little larger, raised, with a stronger outline.
+    // Lift while dragging: a little larger, raised, on a soft card.
     val lift by animateFloatAsState(if (dragging) 1f else 0f, Motion.spring(reduce, stiffness = Spring.StiffnessMedium), label = "lift")
     val dismiss = rememberSwipeToDismissBoxState(
         confirmValueChange = { v ->
@@ -541,6 +537,8 @@ private fun ShelfRow(
         },
         positionalThreshold = { it * 0.4f },
     )
+    val missing = state == ShelfCache.State.NOT_DOWNLOADED
+    val (title, detail) = ShelfMeta.lines(item, ::formatBytes, missing)
     SwipeToDismissBox(
         state = dismiss,
         enableDismissFromStartToEnd = false,
@@ -559,10 +557,7 @@ private fun ShelfRow(
             val bg by animateColorAsState(if (past) Mono.Text else Mono.SurfaceHigh, Motion.fade(reduce), label = "bg")
             val iconScale by animateFloatAsState(if (past) 1.2f else 1f, Motion.bouncy(reduce), label = "icon")
             LaunchedEffect(past) { if (past) Haptics.tick(view) }
-            Box(
-                Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).background(bg).padding(end = 24.dp),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
+            Box(Modifier.fillMaxSize().background(bg).padding(end = 24.dp), contentAlignment = Alignment.CenterEnd) {
                 Icon(
                     Icons.Outlined.Delete, contentDescription = null, tint = if (past) Mono.Bg else Mono.Text,
                     modifier = Modifier.graphicsLayer {
@@ -574,12 +569,11 @@ private fun ShelfRow(
         },
     ) {
         val source = remember { MutableInteractionSource() }
-        Column(
+        val rowBg by animateColorAsState(if (dragging) Mono.SurfaceHigh else Mono.Bg, Motion.fade(reduce), label = "rowBg")
+        Box(
             Modifier.fillMaxWidth()
                 .sharedContainer("shelf-${item.id}", reduce)
-                .pressScale(source)
-                .clip(RoundedCornerShape(18.dp)).background(if (dragging) Mono.SurfaceHigh else Mono.Surface)
-                .border(1.dp, if (dragging) Mono.Muted else Mono.Line, RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape((18 * lift).dp)).background(rowBg)
                 .pointerInput(item.id, reorder) {
                     detectDragGesturesAfterLongPress(
                         onDragStart = {
@@ -602,34 +596,38 @@ private fun ShelfRow(
                     Haptics.tick(view)
                     a.open(item.id)
                 }
-                .padding(start = 16.dp, top = 14.dp, bottom = 10.dp, end = 8.dp),
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "$title, $detail, from ${ShelfMeta.source(item)}"
+                },
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                KindBadge(item.kind)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (item.from == "mac") "from Mac" else "from phone", style = MaterialTheme.typography.labelSmall,
-                    color = Mono.Muted, modifier = Modifier.weight(1f),
-                )
-                CardAction(item, a)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                ShelfLeading(item, 56.dp, state) { a.thumbnail(it) }
+                Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
-                    val (title, preview) = shelfCardText(item, state)
-                    Text(
-                        title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 6.dp, end = 8.dp),
-                    )
-                    if (preview.isNotBlank()) {
-                        Text(
-                            preview, style = MaterialTheme.typography.bodySmall, color = Mono.Muted, maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            fontFamily = if (item.kind == ShelfKinds.SNIPPET || item.kind == ShelfKinds.WIFI) MonoCode else null,
-                            modifier = Modifier.padding(top = 2.dp, end = 8.dp, bottom = 4.dp),
-                        )
+                    Row(Modifier.padding(top = 16.dp, end = 20.dp), verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                if (item.kind == ShelfKinds.FILE) TransferMeta.middle(title, 34) else title,
+                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                detail, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp), color = Mono.Muted,
+                                    maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(When.short(item.created, now, zone), style = MaterialTheme.typography.bodyMedium, color = Mono.Muted)
+                            Text(ShelfMeta.source(item), style = MaterialTheme.typography.bodyMedium, color = Mono.Muted,
+                                modifier = Modifier.padding(top = 2.dp))
+                        }
                     }
+                    Spacer(Modifier.height(16.dp))
+                    val line = if (divider && !dragging) Mono.Line.copy(alpha = 0.7f) else Mono.Bg.copy(alpha = 0f)
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(line))
                 }
-                ShelfThumb(item, state, a)
             }
             ShelfMenu(menu, item, a, onDismiss = { menu = false }, onRename = onRename, onRemove = onRemove)
         }
@@ -661,6 +659,13 @@ private fun ShelfMenu(
     open: Boolean, item: ShelfItem, a: ShelfActions, onDismiss: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit,
 ) {
     DropdownMenu(expanded = open, onDismissRequest = onDismiss) {
+        val primary = ShelfDetect.action(item.kind)
+        if (primary != "Copy") {
+            DropdownMenuItem(text = { Text(primary) }, leadingIcon = { Icon(Icons.Outlined.NorthEast, null) }, onClick = {
+                onDismiss()
+                a.primary(item)
+            })
+        }
         DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, onClick = {
             onDismiss()
             onRename()
@@ -681,7 +686,6 @@ private fun ShelfMenu(
 }
 
 private const val MENU_SLOP_PX = 24f
-private val DONE_LABELS = setOf("Copied", "Opened", "Shared")
 private val NON_CARD_KEYS = setOf("hint", "search", "nomatch")
 
 @Composable
@@ -690,56 +694,6 @@ private fun KindBadge(kind: String) {
         shelfKindLabel(kind), style = MaterialTheme.typography.labelSmall, color = Mono.Text,
         modifier = Modifier.border(1.dp, Mono.Line, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp),
     )
-}
-
-/** The card's one action (Copy / Open / Map). Copy morphs into a check mark + "Copied" for a moment. */
-@Composable
-private fun CardAction(item: ShelfItem, a: ShelfActions) {
-    val reduce = LocalReduceMotion.current
-    val view = LocalView.current
-    var done by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(done) {
-        if (done != null) {
-            delay(1_400)
-            done = null
-        }
-    }
-    val source = remember { MutableInteractionSource() }
-    val bg by animateColorAsState(if (done != null) Mono.Text else Mono.Bg, Motion.fade(reduce), label = "actionBg")
-    val fg by animateColorAsState(if (done != null) Mono.Bg else Mono.Text, Motion.fade(reduce), label = "actionFg")
-    Box(
-        Modifier.pressScale(source).clip(RoundedCornerShape(50)).background(bg).border(1.dp, Mono.Text, RoundedCornerShape(50))
-            .clickable(source, null, role = Role.Button) {
-                done = a.primary(item)
-                Haptics.confirm(view)
-            }
-            .heightIn(min = 32.dp).padding(horizontal = 14.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        AnimatedContent(
-            done, label = "copied",
-            transitionSpec = {
-                if (reduce) {
-                    fadeIn(Motion.fade(true)) togetherWith fadeOut(Motion.fade(true))
-                } else {
-                    (fadeIn(Motion.spring(false)) + scaleIn(Motion.bouncy(false), initialScale = 0.6f)) togetherWith
-                        (fadeOut(Motion.spring(false)) + scaleOut(Motion.spring(false), targetScale = 0.6f))
-                }
-            },
-        ) { d ->
-            if (d == null) {
-                Text(ShelfDetect.action(item.kind), style = MaterialTheme.typography.labelLarge, color = fg)
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (d in DONE_LABELS) {
-                        Icon(Icons.Outlined.Check, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    Text(d, style = MaterialTheme.typography.labelLarge, color = fg)
-                }
-            }
-        }
-    }
 }
 
 @Composable

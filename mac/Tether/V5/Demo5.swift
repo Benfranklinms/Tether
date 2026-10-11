@@ -5,18 +5,35 @@ import TetherCore
 /// Sample 0.5.0 data for --demo and the CI screenshots.
 enum Demo5 {
     /// 0.5.3: file cards show a friendly kind, not their MIME type.
-    static func demoShelfFiles(_ start: ShelfState, now t: Int64) -> ShelfState {
-        var shelf = start
-        let files: [(String, Int64, String)] = [
-            ("Quiz_answer_script.docx", 11_264, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-            ("Aptitude Practice Set 15.pdf", 464_896, "application/pdf"),
-        ]
-        for (i, f) in files.enumerated() {
-            let file = ShelfFile(name: f.0, size: f.1, mime: f.2, sha256: "demo\(i)", owner: "mac")
-            shelf = shelf.add(ShelfState.fileItem(file, id: "demo-file-\(i)", from: "mac", now: t - Int64(i + 1) * 60_000))
-        }
-        return shelf
+    private struct DemoFile {
+        let name: String
+        let size: Int64
+        let mime: String
+        let from: String
+        let age: Int64
     }
+
+    /// 0.5.3: file cards show a friendly kind, real thumbnails and "Phone · 12m".
+    static func demoShelfFiles(_ start: ShelfState, now t: Int64) -> ShelfState {
+        let files = [
+            DemoFile(name: "Quiz_answer_script.docx", size: 11_264,
+                     mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", from: "mac", age: 5 * 60_000),
+            DemoFile(name: "Aptitude Practice Set 15 Questions.pdf", size: 464_896, mime: "application/pdf", from: "mac", age: 2 * 60_000),
+            DemoFile(name: "IMG_20261010_195129.jpg", size: 4_300_000, mime: "image/jpeg", from: "phone", age: 12 * 60_000),
+            DemoFile(name: "Screenshot_2026-10-09-21-14.png", size: 1_150_000, mime: "image/png", from: "phone", age: 50 * 3_600_000),
+            DemoFile(name: "tether-debug.zip", size: 13_000_000, mime: "application/zip", from: "mac", age: 74 * 3_600_000),
+        ]
+        var all = start.items
+        for (i, f) in files.enumerated() {
+            let file = ShelfFile(name: f.name, size: f.size, mime: f.mime, sha256: "demo\(i)", owner: f.from)
+            all.append(ShelfState.fileItem(file, id: "demo-file-\(i)", from: f.from, now: t - f.age))
+        }
+        // Oldest first, so the newest ends up on top (Today, then Earlier).
+        return all.sorted { $0.created < $1.created }.reduce(ShelfState()) { $0.add($1) }
+    }
+
+    /// Thumbnails for the demo's picture files (there is no encrypted local copy in demo mode).
+    static let shelfThumbs: [String: NSImage] = ["demo-file-2": image(0.62), "demo-file-3": image(0.42)]
 
     static func load(_ m: AppModel) {
         guard m.peer != nil else { return }

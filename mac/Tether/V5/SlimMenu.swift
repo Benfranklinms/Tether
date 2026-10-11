@@ -104,6 +104,13 @@ struct SlimMenuView: View {
     @ViewBuilder private var notifications: some View {
         let items = Array(m.history.items.prefix(3))
         if !items.isEmpty {
+            HStack {
+                Text("Notifications").font(Typo.sans(11, .medium)).foregroundColor(Mono.muted)
+                Spacer()
+                ClearNotificationsButton(style: .text)
+            }
+            .padding(.horizontal, 2)
+            .transition(.opacity)
             VStack(spacing: 0) {
                 ForEach(items) { n in
                     NotificationRow(n: n, privacy: m.settings.notifications.privacyMode,

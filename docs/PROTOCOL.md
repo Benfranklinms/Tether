@@ -334,3 +334,24 @@ Same rules as before: `Hello.v` stays 1, the four new caps are announced in `Hel
 - **Shelf**: a shared, ordered list of at most 50 items. `ShelfItem` = `{"id","kind" (text\|link\|wifi\|address\|snippet\|file),"title","body","secret"? (the Wi-Fi password),"from" (phone\|mac),"created","updated","order","file"?}`; `file` = `{"name","size","mime","sha256","owner"}`. Merge (ShelfState in both cores, same tests): for each id the copy with the newer `updated` wins (ties: the greater `from`); a tombstone `{"id","ts"}` removes any copy whose `updated` ≤ `ts`; tombstones are kept 30 days. `order` is a fractional index (lower = higher up): adding puts an item on top, moving gives it the midpoint of its new neighbours and a new `updated`. Each side sends a full snapshot (`full:true`) when the link comes up and a delta after each change; both prefer the Wi-Fi session. Text is classified the same way on both sides (ShelfDetect; vectors in `protocol/vectors/shelf-detect.json`).
 - **Shelf files**: the bytes stay on the `owner` device. The other side asks with SHELF_FILE_REQ and the owner answers with a FILE_OFFER `kind:"shelf"` (name = the item's file name). The transfer is SHA-256 verified as usual, and the receiver matches it to the item by `file.sha256`.
 - **Wi-Fi fast path after a network change** (no new messages): both sides watch their networks (the phone also watches its own hotspot / tethering state, which is not a client network on Android). When the phone's addresses change it sends a fresh `WIFI_OFFER` (new one-time token) 1.2 s later and, while Bluetooth is up and Wi-Fi isn't, offers again after 4 s, 8 s … up to 60 s (FastPathRetry, same in both cores). The Mac also watches its own paths (NWPathMonitor) and retries the latest offer when its interfaces change, trying the phone's addresses on one of its own /24 subnets first (for example the hotspot gateway).
+
+## 18. Revision 7 (app 0.5.3)
+
+Same rules as revisions 2–6: `Hello.v` stays 1, the new cap is announced in `Hello.caps`, a side sends a revision-7 message only when the peer announced it, and older builds decode the new types as unknown and ignore them.
+
+| Cap | Feature |
+|---|---|
+| `macstatus` | The Mac's battery and what is playing on it, for the phone's Home panels (MAC_STATUS / MAC_STATUS_REQ / MAC_MEDIA_CMD) |
+
+### New messages
+
+| Type | Name | Direction | Header | Body |
+|---|---|---|---|---|
+| 0xEB | MAC_STATUS | Mac → phone | `{"battery"?:0-100,"charging"?,"media"?:{"active","title","artist","app","playing","durationMs","positionMs"},"ts"}` | |
+| 0xEC | MAC_STATUS_REQ | phone → Mac | `{"media":false}` | |
+| 0xED | MAC_MEDIA_CMD | phone → Mac | `{"cmd"}`; cmd ∈ `toggle`, `next`, `prev` | |
+
+- The Mac sends MAC_STATUS (battery only) when the link comes up and then only when the level or charging state changes (checked once a minute, MacBatteryGate). `battery` is absent on a Mac without one.
+- The phone sends MAC_STATUS_REQ every 5 s while its Home is in front and shows the Mac or Now playing panel; `media:true` asks for what is playing. The Mac reads MediaRemote; when that answers nothing (macOS 15.4 and later), it asks Music or Spotify over AppleScript, only if one is already running. `media.active:false` = nothing playing.
+- MAC_MEDIA_CMD goes to the same player; the Mac answers with a fresh MAC_STATUS (with media) 0.6 s later. The phone flips play/pause at once and lets that answer correct it.
+

@@ -96,6 +96,8 @@ data class AppSettings(
     val whatsNewNotes: String? = null,
     /** Instant Hotspot: let Tether control (accessibility) open hotspot settings and tap the switch. */
     val hotspotAutomation: Boolean = true,
+    /** 0.5.3 Home panels in order with their sizes; null = the default layout. */
+    val homePanels: List<dev.benfranklin.tether.core.features.PanelSpec>? = null,
 )
 
 /** App settings as a hot flow, persisted atomically on every change. */

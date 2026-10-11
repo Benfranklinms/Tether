@@ -197,9 +197,7 @@ struct MenuView: View {
             }
             Spacer()
             if tab == .notifications && !m.history.items.isEmpty {
-                Button("Clear") { withAnimation(Motion.spring(reduce)) { m.clearHistory() } }
-                    .buttonStyle(.plain).font(Typo.sans(11)).foregroundColor(Mono.muted)
-                    .lineLimit(1).fixedSize()
+                ClearNotificationsButton(style: .text)
             }
         }
         .padding(.horizontal, 16)
