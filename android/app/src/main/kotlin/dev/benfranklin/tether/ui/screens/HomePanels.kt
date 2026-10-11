@@ -111,8 +111,8 @@ import java.time.ZoneId
 fun PanelContent(p: Panel, m: HomeModel, data: HomeData, a: HomeActions, editing: Boolean) {
     when (p.kind) {
         PanelKind.SEND_CLIPBOARD -> ActionPanel(
-            "Send clipboard", data.clipboard?.let { dev.benfranklin.tether.core.features.ClipRecents.preview(it,
-                60) } ?: "Tap to send", Icons.Outlined.ContentPaste,
+            // Never the clipboard itself (0.5.3 fix: a copied phone number sat on Home for anyone to read).
+            "Send clipboard", "Tap to send", Icons.Outlined.ContentPaste,
             p.size, enabled = m.connected && !editing, onClick = a::sendClipboard,
         )
         PanelKind.SEND_FILE -> ActionPanel("Send file", "Browse", Icons.Outlined.UploadFile, p.size, enabled = !editing,
@@ -128,6 +128,31 @@ fun PanelContent(p: Panel, m: HomeModel, data: HomeData, a: HomeActions, editing
 }
 
 private val PAD = 16.dp
+
+/** What Now playing shows: the Mac's active media while linked, else null (idle). */
+private fun nowPlaying(m: HomeModel, data: HomeData) = data.mac?.media?.takeIf { it.active && m.connected }
+
+/** The transfers the Recent transfers panel lists at [size]. */
+private fun transfersShown(m: HomeModel, size: PanelSize): List<dev.benfranklin.tether.core.transfer.TransferRecord> {
+    val rows = if (size == PanelSize.LARGE) 7 else 3
+    return if (rows > TransferList.HOME_MAX) {
+        m.transfers.sortedByDescending { it.createdAt }.take(rows)
+    } else {
+        TransferList.home(m.transfers, m.now)
+    }
+}
+
+/**
+ * A full-width panel with nothing in it collapses to [PANEL_COMPACT_HEIGHT] (0.5.3 fix: an empty
+ * Shelf or an idle Now playing was a tall card around one grey line). It grows back on a spring
+ * as soon as something arrives.
+ */
+internal fun panelCompact(p: Panel, m: HomeModel, data: HomeData): Boolean = p.span == 2 && when (p.kind) {
+    PanelKind.SHELF -> data.shelf.isEmpty()
+    PanelKind.NOW_PLAYING -> nowPlaying(m, data) == null
+    PanelKind.TRANSFERS -> transfersShown(m, p.size).isEmpty()
+    else -> false
+}
 
 /** A whole-panel tap target with press scale + ripple + a tick. */
 @Composable
@@ -362,7 +387,11 @@ private fun ClipboardPanel(size: PanelSize, data: HomeData, a: HomeActions, edit
 private fun NowPlayingPanel(size: PanelSize, m: HomeModel, data: HomeData, a: HomeActions, editing: Boolean) {
     val reduce = LocalReduceMotion.current
     val s = data.mac
-    val media = s?.media?.takeIf { it.active && m.connected }
+    val media = nowPlaying(m, data)
+    if (media == null || s == null) {
+        NowPlayingIdle(m.connected)
+        return
+    }
     var tick by remember { mutableLongStateOf(m.now) }
     LaunchedEffect(media?.playing, s?.at) {
         while (media?.playing == true) {
@@ -442,6 +471,28 @@ private fun NowPlayingPanel(size: PanelSize, m: HomeModel, data: HomeData, a: Ho
     }
 }
 
+/**
+ * Nothing playing (or no Mac): one calm line instead of an empty artwork box, disabled controls
+ * and a title squeezed to "Nothi…" (0.5.3 fix). Home shows it at the compact height.
+ */
+@Composable
+private fun NowPlayingIdle(connected: Boolean) {
+    Row(
+        Modifier.fillMaxSize().padding(horizontal = PAD).semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconCircle(Icons.Outlined.MusicNote, enabled = false)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Now playing", style = MaterialTheme.typography.titleMedium, color = Mono.Text, maxLines = 1)
+            Text(
+                if (connected) "Nothing playing on your Mac" else "Your Mac isn't connected",
+                style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
 /** No artwork travels from the Mac, so a calm mono glyph stands in (a moon over its reflection). */
 @Composable
 private fun Artwork(seed: String, modifier: Modifier) {
@@ -517,11 +568,7 @@ private fun PlayButton(playing: Boolean, enabled: Boolean, size: Dp, onClick: ()
 @Composable
 private fun TransfersPanel(size: PanelSize, m: HomeModel, a: HomeActions, editing: Boolean) {
     val reduce = LocalReduceMotion.current
-    val rows = if (size == PanelSize.LARGE) 7 else 3
-    val list = remember(m.transfers, m.now, rows) {
-        TransferList.home(m.transfers,
-            m.now).let { if (rows > TransferList.HOME_MAX) m.transfers.sortedByDescending { t -> t.createdAt }.take(rows) else it }
-    }
+    val list = remember(m.transfers, m.now, size) { transfersShown(m, size) }
     Column(Modifier.fillMaxSize().padding(horizontal = PAD, vertical = 14.dp)) {
         PanelHeader(Icons.Outlined.NorthEast, "Recent transfers", Modifier.sharedHero("transfers-title", reduce)) {
             Text(

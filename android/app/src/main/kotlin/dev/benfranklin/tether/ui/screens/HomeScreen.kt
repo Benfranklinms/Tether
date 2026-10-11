@@ -103,6 +103,14 @@ import dev.benfranklin.tether.core.transfer.Direction
 import dev.benfranklin.tether.core.transfer.TransferRecord
 import dev.benfranklin.tether.core.transfer.TransferStatus
 import dev.benfranklin.tether.ui.Haptics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import dev.benfranklin.tether.ui.clamp01
+import dev.benfranklin.tether.log.guarded
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberUpdatedState
 import dev.benfranklin.tether.ui.TetherMark
 import dev.benfranklin.tether.ui.pressScale
 import dev.benfranklin.tether.ui.screenPadding
@@ -185,6 +193,9 @@ internal val PANEL_RADIUS = 22.dp
 
 internal fun panelHeight(size: PanelSize) = if (size == PanelSize.LARGE) PANEL_HEIGHT * 2 + PANEL_GAP else PANEL_HEIGHT
 
+/** A full-width panel with nothing to show (empty Shelf, idle Now playing, no transfers) takes one row of this height. */
+internal val PANEL_COMPACT_HEIGHT = 84.dp
+
 /**
  * Home (0.5.3): the status card, then panels the user arranges. Long-press a panel (or tap
  * Edit at the bottom) to edit: panels wiggle, "−" removes, the corner handle resizes, drag
@@ -234,12 +245,15 @@ fun HomeScreen(
     }
 
     val drag = remember { PanelDrag() }
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Scaffold(containerColor = Mono.Bg, snackbarHost = { SnackbarHost(snack) }) { pad ->
+        val navGap = (navInset - pad.calculateBottomPadding()).coerceAtLeast(0.dp)
         Box(Modifier.fillMaxSize()) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2), state = grid, modifier = Modifier.fillMaxSize(),
-                contentPadding = screenPadding(pad, start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+                // The last panel must clear the gesture/navigation bar even if the Scaffold padding lacks it.
+                contentPadding = screenPadding(pad, start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp + navGap),
                 horizontalArrangement = Arrangement.spacedBy(PANEL_GAP), verticalArrangement = Arrangement.spacedBy(PANEL_GAP),
             ) {
                 item(key = "edit-bar", span = { GridItemSpan(2) }) {
@@ -256,9 +270,10 @@ fun HomeScreen(
                 }
                 banners(m, a)
                 items(local.panels, key = { it.kind.id }, span = { GridItemSpan(it.span) }) { p ->
-                    val index = local.panels.indexOf(p)
+                    val index = local.panels.indexOf(p).coerceAtLeast(0)
                     PanelFrame(
                         p = p, index = index, editing = editing, dragging = dragKind == p.kind, grid = grid, drag = drag,
+                        compact = panelCompact(p, m, data),
                         onEnterEdit = {
                             if (!editing) {
                                 editing = true
@@ -280,12 +295,13 @@ fun HomeScreen(
                         },
                         onDrag = { delta ->
                             drag.total += delta
-                            val to = drag.target(grid, p.kind.id, local.kinds.map { it.id })
-                            if (to != null && to != local.kinds.indexOf(p.kind)) {
+                            val order = local.kinds.map { it.id }
+                            val to = drag.target(grid, p.kind.id, order)
+                            if (to != null && to in order.indices && to != local.kinds.indexOf(p.kind)) {
                                 local = local.move(p.kind, to)
                                 Haptics.tick(view)
                             }
-                            scope.launch { drag.autoScroll(grid) }
+                            scope.launch { runCatching { drag.autoScroll(grid) } }
                         },
                         onDragEnd = {
                             dragKind = null
@@ -317,6 +333,7 @@ fun HomeScreen(
                 }
             }
             StatusBarScrim()
+            NavBarScrim(Modifier.align(Alignment.BottomCenter))
         }
     }
     if (picker) {
@@ -459,6 +476,7 @@ private fun PanelFrame(
     dragging: Boolean,
     grid: LazyGridState,
     drag: PanelDrag,
+    compact: Boolean,
     onEnterEdit: () -> Unit,
     onRemove: () -> Unit,
     onResize: (PanelSize?) -> Unit,
@@ -469,13 +487,22 @@ private fun PanelFrame(
     content: @Composable () -> Unit,
 ) {
     val reduce = LocalReduceMotion.current
+    val ctx = LocalContext.current
+    // The hold-and-drag gesture is keyed on the panel only, so entering edit mode on the hold
+    // doesn't restart it mid-gesture (it used to, which cancelled the drag); it calls the latest callbacks.
+    val enterEdit by rememberUpdatedState(onEnterEdit)
+    val dragStart by rememberUpdatedState(onDragStart)
+    val dragMove by rememberUpdatedState(onDrag)
+    val dragEnd by rememberUpdatedState(onDragEnd)
     val wiggle = rememberInfiniteTransition(label = "wiggle")
     val phase by wiggle.animateFloat(
         -1f, 1f, infiniteRepeatable(tween(WIGGLE_MS + (index % 3) * 18), RepeatMode.Reverse), label = "phase",
     )
     val edit by animateFloatAsState(if (editing) 1f else 0f, Motion.spring(reduce), label = "edit")
     val lift by animateFloatAsState(if (dragging) 1f else 0f, Motion.spring(reduce, stiffness = Spring.StiffnessMedium), label = "lift")
-    val height by androidx.compose.animation.core.animateDpAsState(panelHeight(p.size), Motion.spring(reduce), label = "h")
+    val height by androidx.compose.animation.core.animateDpAsState(
+        if (compact) PANEL_COMPACT_HEIGHT else panelHeight(p.size), Motion.spring(reduce), label = "h",
+    )
     val sign = if (index % 2 == 0) 1f else -1f
     Box(
         modifier
@@ -488,10 +515,11 @@ private fun PanelFrame(
                     translationY = t.y
                 }
                 rotationZ = if (editing && !dragging && !reduce) phase * WIGGLE_DEG * sign else 0f
-                val s = 1f - 0.02f * edit + 0.04f * lift
+                // Springs overshoot; clamp so nothing (elevation, scale) ever goes negative.
+                val s = 1f - 0.02f * edit.clamp01() + 0.04f * lift.clamp01()
                 scaleX = s
                 scaleY = s
-                shadowElevation = 28f * lift
+                shadowElevation = 28f * lift.clamp01()
                 shape = RoundedCornerShape(PANEL_RADIUS)
                 clip = false
             }
@@ -508,17 +536,20 @@ private fun PanelFrame(
                     customActions = if (p.kind.sizes.size > 1) listOf(remove, resize) else listOf(remove)
                 }
             }
-            .pointerInput(p.kind, editing) {
+            .pointerInput(p.kind) {
+                // Guarded: a bad index or layout lookup ends the drag, never the app.
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
-                        onEnterEdit()
-                        onDragStart()
+                        guarded(ctx, "home.dragStart") {
+                            enterEdit()
+                            dragStart()
+                        }
                     },
-                    onDragEnd = onDragEnd,
-                    onDragCancel = onDragEnd,
+                    onDragEnd = { guarded(ctx, "home.dragEnd") { dragEnd() } },
+                    onDragCancel = { guarded(ctx, "home.dragCancel") { dragEnd() } },
                     onDrag = { change, amount ->
                         change.consume()
-                        onDrag(amount)
+                        guarded(ctx, "home.drag") { dragMove(amount) }
                     },
                 )
             },
@@ -527,60 +558,67 @@ private fun PanelFrame(
             Modifier.fillMaxSize().clip(RoundedCornerShape(PANEL_RADIUS)).background(if (dragging) Mono.SurfaceHigh else Mono.Surface)
                 .border(1.dp, if (dragging) Mono.Muted else Mono.Line, RoundedCornerShape(PANEL_RADIUS)),
         ) { content() }
-        // Edit chrome springs in.
-        if (edit > 0.01f) {
-            RemoveBadge(p.kind.title, edit, onRemove, Modifier.align(Alignment.TopStart).offset((-8).dp, (-8).dp))
-            if (p.kind.sizes.size > 1) {
-                ResizeHandle(p, edit, onResize, Modifier.align(Alignment.BottomEnd))
-            }
+        // Edit chrome springs in. Always composed (hidden and inert outside edit mode): adding
+        // children to a lazy item mid-frame inside the app's SharedTransitionLayout (a lookahead
+        // scope) threw "Placement happened before lookahead" and closed the app (0.5.3 crash).
+        RemoveBadge(p.kind.title, editing, { edit.clamp01() }, onRemove, Modifier.align(Alignment.TopStart).offset((-8).dp, (-8).dp))
+        if (p.kind.sizes.size > 1) {
+            ResizeHandle(p, editing, { edit.clamp01() }, onResize, Modifier.align(Alignment.BottomEnd))
         }
     }
 }
 
 @Composable
-private fun RemoveBadge(title: String, shown: Float, onRemove: () -> Unit, modifier: Modifier) {
+private fun RemoveBadge(title: String, editing: Boolean, shown: () -> Float, onRemove: () -> Unit, modifier: Modifier) {
     val source = remember { MutableInteractionSource() }
     Box(
         modifier.graphicsLayer {
-            scaleX = shown
-            scaleY = shown
-            alpha = shown
+            val v = shown()
+            scaleX = v
+            scaleY = v
+            alpha = v
         }.pressScale(source).size(28.dp).clip(CircleShape).background(Mono.SurfaceHigh).border(1.dp, Mono.Line, CircleShape)
-            .clickable(source, null, role = Role.Button, onClick = onRemove)
-            .semantics { contentDescription = "Remove $title" },
+            .clickable(source, null, enabled = editing, role = Role.Button, onClick = onRemove)
+            .then(if (editing) Modifier.semantics { contentDescription = "Remove $title" } else Modifier.clearAndSetSemantics {}),
         contentAlignment = Alignment.Center,
     ) { Icon(Icons.Outlined.Remove, contentDescription = null, tint = Mono.Text, modifier = Modifier.size(16.dp)) }
 }
 
 /** The resize corner: tap for the next size, or drag outward (bigger) / inward (smaller). */
 @Composable
-private fun ResizeHandle(p: Panel, shown: Float, onResize: (PanelSize?) -> Unit, modifier: Modifier) {
+private fun ResizeHandle(p: Panel, editing: Boolean, shown: () -> Float, onResize: (PanelSize?) -> Unit, modifier: Modifier) {
     val density = LocalDensity.current
+    val ctx = LocalContext.current
     val threshold = with(density) { 36.dp.toPx() }
     Box(
-        modifier.size(44.dp).graphicsLayer { alpha = shown }
-            .pointerInput(p.kind, p.size) {
-                detectTapGestures { onResize(null) }
+        modifier.size(44.dp).graphicsLayer { alpha = shown() }
+            .pointerInput(p.kind, p.size, editing) {
+                if (!editing) return@pointerInput
+                detectTapGestures { guarded(ctx, "home.resizeTap") { onResize(null) } }
             }
-            .pointerInput(p.kind, p.size) {
+            .pointerInput(p.kind, p.size, editing) {
+                if (!editing) return@pointerInput
                 var acc = 0f
                 detectDragGestures(onDragStart = { acc = 0f }) { change, amount ->
                     change.consume()
                     acc += amount.x + amount.y
                     val i = p.kind.sizes.indexOf(p.size)
-                    when {
-                        acc > threshold && i < p.kind.sizes.lastIndex -> {
-                            onResize(p.kind.sizes[i + 1])
-                            acc = 0f
-                        }
-                        acc < -threshold && i > 0 -> {
-                            onResize(p.kind.sizes[i - 1])
-                            acc = 0f
+                    guarded(ctx, "home.resizeDrag") {
+                        when {
+                            i < 0 -> Unit
+                            acc > threshold && i < p.kind.sizes.lastIndex -> {
+                                onResize(p.kind.sizes[i + 1])
+                                acc = 0f
+                            }
+                            acc < -threshold && i > 0 -> {
+                                onResize(p.kind.sizes[i - 1])
+                                acc = 0f
+                            }
                         }
                     }
                 }
             }
-            .semantics { contentDescription = "Resize ${p.kind.title}" },
+            .then(if (editing) Modifier.semantics { contentDescription = "Resize ${p.kind.title}" } else Modifier.clearAndSetSemantics {}),
     ) {
         Canvas(Modifier.fillMaxSize().padding(6.dp)) {
             val w = 3.dp.toPx()
@@ -609,6 +647,23 @@ fun StatusBarScrim() {
             Modifier.fillMaxWidth().height(12.dp)
                 .background(Brush.verticalGradient(listOf(Mono.Bg, Mono.Bg.copy(alpha = 0f)))),
         )
+    }
+}
+
+/**
+ * The same for the gesture/navigation bar at the bottom (0.5.3 fix: on a phone the last visible
+ * panel sat under the gesture handle). Only as tall as the bar; nothing on a three-button-less
+ * screen without a bottom inset.
+ */
+@Composable
+fun NavBarScrim(modifier: Modifier = Modifier) {
+    if (WindowInsets.navigationBars.getBottom(LocalDensity.current) == 0) return
+    Column(modifier.fillMaxWidth()) {
+        Box(
+            Modifier.fillMaxWidth().height(12.dp)
+                .background(Brush.verticalGradient(listOf(Mono.Bg.copy(alpha = 0f), Mono.Bg))),
+        )
+        Box(Modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars).background(Mono.Bg))
     }
 }
 

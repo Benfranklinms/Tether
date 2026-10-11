@@ -442,6 +442,7 @@ private fun TetherApp(rt: TetherRuntime) {
                     phoneFingerprint = state.fingerprint, connected = state.link is LinkState.Connected,
                     listenerEnabled = listenerOn, version = BuildConfig.VERSION_NAME,
                     batteryOptimized = pm?.isIgnoringBatteryOptimizations(ctx.packageName) == false,
+                    lastCrash = remember { dev.benfranklin.tether.log.CrashLog.stamp(ctx) },
                 ),
                 a = object : SettingsActions {
                     override fun update(change: (AppSettings) -> AppSettings) = rt.settings.update(change)
@@ -463,6 +464,9 @@ private fun TetherApp(rt: TetherRuntime) {
                     override fun unpair() = rt.unpair()
                     override fun exportLogs() = exportLogs(activity, state)
                     override fun openLicenses() = nav.navigate("licenses")
+                    override fun copyLastCrash() {
+                        dev.benfranklin.tether.log.CrashLog.read(ctx)?.let { copyText(ctx, it) }
+                    }
                     override fun openFeatures() = nav.navigate("features")
                     override fun openSetup() = nav.navigate("setup")
                     override fun openMore5() = nav.navigate("more5")

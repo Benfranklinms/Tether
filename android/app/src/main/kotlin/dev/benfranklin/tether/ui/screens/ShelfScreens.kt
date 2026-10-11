@@ -95,6 +95,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,6 +109,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -130,7 +132,9 @@ import dev.benfranklin.tether.core.features.ShelfCardText
 import dev.benfranklin.tether.core.features.ShelfSearch
 import dev.benfranklin.tether.core.proto.ShelfItem
 import dev.benfranklin.tether.core.proto.ShelfKinds
+import dev.benfranklin.tether.log.guarded
 import dev.benfranklin.tether.ui.Haptics
+import dev.benfranklin.tether.ui.clamp01
 import dev.benfranklin.tether.ui.pressScale
 import dev.benfranklin.tether.ui.sharedContainer
 import dev.benfranklin.tether.ui.theme.LocalReduceMotion
@@ -522,14 +526,22 @@ private fun ShelfRow(
 ) {
     val reduce = LocalReduceMotion.current
     val view = LocalView.current
+    val ctx = LocalContext.current
+    // The gesture outlives recompositions (it is keyed on the row), so it calls the latest callbacks.
+    val currentDragStart by rememberUpdatedState(onDragStart)
+    val currentDrag by rememberUpdatedState(onDrag)
+    val currentDragEnd by rememberUpdatedState(onDragEnd)
     // Long-press without moving opens the menu; long-press and drag reorders.
     var menu by remember { mutableStateOf(false) }
     var travelled by remember { mutableFloatStateOf(0f) }
+    var held by remember { mutableStateOf(false) }
     // Spring in when the row arrives (sync / add).
     val appear = remember { Animatable(if (isNew && !reduce) 0.86f else 1f) }
     LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow)) }
     // Lift while dragging: a little larger, raised, on a soft card.
-    val lift by animateFloatAsState(if (dragging) 1f else 0f, Motion.spring(reduce, stiffness = Spring.StiffnessMedium), label = "lift")
+    // Read through clamp01(): the spring overshoots below 0 on the way down, and a negative corner
+    // radius threw "Corner size in Px can't be negative" the moment a hold was released (0.5.3 crash).
+    val liftAnim by animateFloatAsState(if (dragging) 1f else 0f, Motion.spring(reduce, stiffness = Spring.StiffnessMedium), label = "lift")
     val dismiss = rememberSwipeToDismissBoxState(
         confirmValueChange = { v ->
             if (v != SwipeToDismissBoxValue.Settled) onRemove()
@@ -545,10 +557,10 @@ private fun ShelfRow(
         gesturesEnabled = !dragging,
         modifier = modifier.graphicsLayer {
             translationY = dragDy
-            val s = appear.value * (1f + 0.03f * lift)
+            val s = appear.value * (1f + 0.03f * liftAnim.clamp01())
             scaleX = s
             scaleY = s
-            shadowElevation = 24f * lift
+            shadowElevation = 24f * liftAnim.clamp01()
             shape = RoundedCornerShape(18.dp)
             clip = false
         },
@@ -573,26 +585,45 @@ private fun ShelfRow(
         Box(
             Modifier.fillMaxWidth()
                 .sharedContainer("shelf-${item.id}", reduce)
-                .clip(RoundedCornerShape((18 * lift).dp)).background(rowBg)
+                .clip(RoundedCornerShape((18 * liftAnim.clamp01()).dp)).background(rowBg)
                 .pointerInput(item.id, reorder) {
+                    // Every callback is guarded: a bad index in a reorder stops the drag, never the app.
                     detectDragGesturesAfterLongPress(
                         onDragStart = {
-                            travelled = 0f
-                            if (reorder) onDragStart() else Haptics.confirm(view)
+                            guarded(ctx, "shelf.dragStart") {
+                                travelled = 0f
+                                held = true
+                                if (reorder) currentDragStart() else Haptics.confirm(view)
+                            }
                         },
                         onDragEnd = {
-                            if (reorder) onDragEnd()
-                            if (travelled < MENU_SLOP_PX) menu = true
+                            guarded(ctx, "shelf.dragEnd") {
+                                if (reorder) currentDragEnd()
+                                if (travelled < MENU_SLOP_PX) menu = true
+                                held = false
+                            }
                         },
-                        onDragCancel = { if (reorder) onDragEnd() },
+                        // The row's click handler takes the finger-up of a still hold, so the drag
+                        // detector sees it as a cancel: a hold that didn't move still opens the menu.
+                        onDragCancel = {
+                            guarded(ctx, "shelf.dragCancel") {
+                                if (reorder) currentDragEnd()
+                                if (held && travelled < MENU_SLOP_PX) menu = true
+                                held = false
+                            }
+                        },
                         onDrag = { change, amount ->
                             change.consume()
-                            travelled += kotlin.math.abs(amount.y) + kotlin.math.abs(amount.x)
-                            if (reorder) onDrag(amount.y)
+                            guarded(ctx, "shelf.drag") {
+                                travelled += kotlin.math.abs(amount.y) + kotlin.math.abs(amount.x)
+                                if (reorder) currentDrag(amount.y)
+                            }
                         },
                     )
                 }
                 .clickable(source, androidx.compose.material3.ripple(), role = Role.Button) {
+                    // The release of a hold is not a tap (it used to open the item under the menu).
+                    if (held) return@clickable
                     Haptics.tick(view)
                     a.open(item.id)
                 }

@@ -80,6 +80,7 @@ import dev.benfranklin.tether.core.transfer.Direction
 import dev.benfranklin.tether.core.transfer.TransferRecord
 import dev.benfranklin.tether.core.transfer.TransferStatus
 import dev.benfranklin.tether.core.transfer.Transport
+import dev.benfranklin.tether.log.guarded
 import dev.benfranklin.tether.ui.Haptics
 import dev.benfranklin.tether.ui.pressScale
 import dev.benfranklin.tether.ui.screenPadding
@@ -232,6 +233,7 @@ private fun FilterChips(selected: TransferList.Filter, onSelect: (TransferList.F
 private fun TransferItem(t: TransferRecord, now: Long, zone: ZoneId, last: Boolean, a: TransfersActions, onOpenFailed: (String) -> Unit) {
     val reduce = LocalReduceMotion.current
     val view = LocalView.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var menu by remember { mutableStateOf(false) }
     val progress by animateFloatAsState(t.progress, Motion.spring(reduce, stiffness = Spring.StiffnessLow, damping = 1f),
         label = "progress")
@@ -252,8 +254,10 @@ private fun TransferItem(t: TransferRecord, now: Long, zone: ZoneId, last: Boole
                 .combinedClickable(
                     interactionSource = remember { MutableInteractionSource() }, indication = ripple(),
                     onLongClick = {
-                        Haptics.confirm(view)
-                        menu = true
+                        guarded(ctx, "transfers.longPress") {
+                            Haptics.confirm(view)
+                            menu = true
+                        }
                     },
                 ) {
                     when {

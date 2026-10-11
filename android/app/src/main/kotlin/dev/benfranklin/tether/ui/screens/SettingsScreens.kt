@@ -89,6 +89,8 @@ data class DeviceInfo(
     val listenerEnabled: Boolean,
     val version: String,
     val batteryOptimized: Boolean,
+    /** When the stored last crash happened; null hides "Copy last crash". */
+    val lastCrash: String? = null,
 )
 
 @Suppress("TooManyFunctions")
@@ -106,6 +108,8 @@ interface SettingsActions {
     fun unpair()
     fun exportLogs()
     fun openLicenses()
+    /** Copies the stored last crash (stack trace) to the clipboard. */
+    fun copyLastCrash() = Unit
     fun openFeatures() = Unit
     fun openSetup() = Unit
     fun openMore5() = Unit
@@ -319,6 +323,18 @@ fun SettingsScreen(
                         NavRow("Open-source licenses", null, onClick = a::openLicenses)
                         Divider()
                         InfoRow("Version", d.version)
+                        // Only there after a crash (0.5.3 safety net): the stack trace, ready to send.
+                        if (d.lastCrash != null) {
+                            Divider()
+                            NavRow(
+                                "Copy last crash", null, valueText = androidx.compose.ui.text.buildAnnotatedString {
+                                    pushStyle(androidx.compose.ui.text.SpanStyle(fontFamily = dev.benfranklin.tether.ui.theme.MonoCode))
+                                    append(d.lastCrash)
+                                    pop()
+                                },
+                                chevron = false, onClick = a::copyLastCrash,
+                            )
+                        }
                     }
                 }
             }

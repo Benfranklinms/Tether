@@ -89,6 +89,13 @@ fun TetherMark(size: Dp, linked: Boolean, pulse: Boolean, modifier: Modifier = M
 private const val PULSE_MS = 1400
 
 /** Light, system-standard haptic ticks. Silent when the user disabled touch feedback. */
+/**
+ * A spring's value clamped to 0…1 (0.5.3 crash fix). Springs with damping < 1 overshoot, so a
+ * "lift" animating 1 → 0 dips just below zero; used as a corner radius, elevation or alpha that
+ * dip threw "Corner size in Px can't be negative" and closed the app on release of a hold.
+ */
+fun Float.clamp01(): Float = coerceIn(0f, 1f)
+
 object Haptics {
     fun confirm(v: View) {
         v.performHapticFeedback(

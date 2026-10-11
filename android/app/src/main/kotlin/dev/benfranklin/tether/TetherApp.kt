@@ -1,6 +1,7 @@
 package dev.benfranklin.tether
 
 import android.app.Application
+import dev.benfranklin.tether.log.CrashLog
 import dev.benfranklin.tether.log.Log
 import dev.benfranklin.tether.service.Notifications
 import dev.benfranklin.tether.service.TetherService
@@ -19,6 +20,8 @@ class TetherApp : Application() {
             Thread.sleep(CRASH_FLUSH_MS) // give the log thread a moment
             previous?.uncaughtException(t, e)
         }
+        // Writes the stack trace to files/last-crash.txt synchronously, then the handler above runs.
+        CrashLog.install(this)
         if (runtime.ui.value.peer != null) TetherService.start(this)
     }
 

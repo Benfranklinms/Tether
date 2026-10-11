@@ -173,6 +173,21 @@ class ScreenshotTest {
         HomeScreen(linked, l, homeActions, homeData())
     }
 
+    /**
+     * 0.5.3 fix check: Home as on Ben's phone with nothing in it: empty Shelf, nothing playing, no
+     * transfers, a phone number on the clipboard (never shown: "Tap to send"). Empty panels are compact.
+     */
+    @Test
+    fun homeIdle() = shot("home-idle") {
+        HomeScreen(
+            linked.copy(transfers = emptyList()), dev.benfranklin.tether.core.features.HomeLayout.DEFAULT, homeActions,
+            dev.benfranklin.tether.ui.screens.HomeData(
+                clipboard = "+917554626501",
+                mac = dev.benfranklin.tether.v7.MacStatusUi(40, false, null, now),
+            ),
+        )
+    }
+
     private fun many(): List<TransferRecord> = listOf(
         rec("Screenshot_2026-10-11-08-41.jpg", Direction.OUT, 282_000, 282_000, TransferStatus.DONE, Transport.WIFI),
         rec("AdaFace_Summary.pdf", Direction.OUT, 20_000, 20_000, TransferStatus.DONE, Transport.WIFI),
