@@ -26,6 +26,14 @@ import dev.benfranklin.tether.core.proto.CallState
 import dev.benfranklin.tether.core.proto.CallStates
 import dev.benfranklin.tether.core.proto.Caps3
 import dev.benfranklin.tether.core.proto.Caps5
+import dev.benfranklin.tether.core.proto.Caps6
+import dev.benfranklin.tether.core.proto.Caps8
+import dev.benfranklin.tether.core.proto.ShelfFile
+import dev.benfranklin.tether.core.proto.ShelfFolder
+import dev.benfranklin.tether.core.proto.ShelfItem
+import dev.benfranklin.tether.core.proto.ShelfSync
+import dev.benfranklin.tether.core.proto.ShelfTomb
+import dev.benfranklin.tether.core.features.ShelfFolders
 import dev.benfranklin.tether.core.proto.FileKinds5
 import dev.benfranklin.tether.core.proto.MsgType
 import dev.benfranklin.tether.core.transfer.Direction
@@ -94,6 +102,8 @@ class InteropTest {
     private val oldPeerPath: String? = System.getenv("TETHER_SWIFT_PEER_OLD")
     /** The released 0.4.3 Swift Mac core (tag v0.4.3): the 0.5 old-peer compatibility target. */
     private val old043PeerPath: String? = System.getenv("TETHER_SWIFT_PEER_OLD043")
+    /** The released 0.5.3 Swift Mac core (tag v0.5.3): the 0.5.4 (Shelf folders) old-peer target. */
+    private val old053PeerPath: String? = System.getenv("TETHER_SWIFT_PEER_OLD053")
     /** Largest fragment the Kotlin phone wrote towards the Swift Mac in this test. */
     private val maxPhoneFragment = java.util.concurrent.atomic.AtomicInteger()
 
@@ -209,7 +219,7 @@ class InteropTest {
             peer.has(
                 "CAPS",
                 "battery,call,callctl,calllog,capture,clip,clipimg,continue,dial,dnd,file,findmac,fs,hotspot,macstatus,media,notif,notifaccess," +
-                    "nowplaying,openurl,otp,photos,proximity,reply,ring,screen,shelf,sms,status,type",
+                    "nowplaying,openurl,otp,photos,proximity,reply,ring,screen,shelf,shelffolders,sms,status,type",
             )
         }
         peer.send("ECHO on")
@@ -627,5 +637,80 @@ class InteropTest {
         clipBothWays(loop, phone, peer)
         assertFalse(peer.has("CLOSED"))
         assertFalse(peer.has("DECODE_ERROR"))
+    }
+
+    // ---------------- revision 8 (0.5.4): Shelf folders ----------------
+
+    private val folderSync = ShelfSync(
+        items = listOf(
+            ShelfItem("a", "text", "Note", "Buy milk", null, "phone", 1, 2, -1.0, folderId = "f1"),
+            ShelfItem("b", "file", "cv.pdf", "application/pdf", null, "mac", 1, 3, -2.0, ShelfFile("cv.pdf", 80_000, "application/pdf", "ab", "mac")),
+        ),
+        removed = listOf(ShelfTomb("x", 4)), full = true,
+        folders = listOf(ShelfFolder("f1", "Placement", 1.0, 5)), removedFolders = listOf(ShelfTomb("f0", 6)),
+    )
+
+    /** Folders travel phone -> Mac -> phone unchanged through the real Swift core. */
+    @Test
+    fun shelfFoldersRoundTrip() = session(244, 244, qr = true) { loop, phone, peer ->
+        assertTrue(phone.controller.peerSupports(Caps8.SHELF_FOLDERS))
+        peer.send("ECHO on")
+        val before = phone.messages.size
+        loop.execute { assertTrue(phone.controller.send(folderSync)) }
+        loop.runUntil(10_000) { phone.messages.size > before }
+        assertEquals(folderSync, phone.messages.last())
+        // And encoded on the Mac side.
+        val b2 = phone.messages.size
+        peer.send("SEND " + Hex.encode(MessageCodec.encode(folderSync)))
+        loop.runUntil(10_000) { phone.messages.size > b2 }
+        assertEquals(folderSync, phone.messages.last())
+        assertFalse(peer.has("DECODE_ERROR"))
+    }
+
+    /** A 500-item Shelf goes as pages that each fit a Bluetooth record, at real fragment sizes. */
+    @Test
+    fun fiveHundredItemShelfIsPaged() = session(514, 512, qr = true) { loop, phone, peer ->
+        peer.send("ECHO on")
+        val items = (0 until 500).map { ShelfItem("i$it", "text", "t$it", "x".repeat(900), null, "phone", it.toLong(), it.toLong(), it.toDouble()) }
+        val pages = ShelfFolders.pages(ShelfSync(items, full = true)) { MessageCodec.json.encodeToString(ShelfItem.serializer(), it).length }
+        assertTrue(pages.size > 5)
+        val before = phone.messages.size
+        for (p in pages) loop.execute { assertTrue(phone.controller.send(p)) }
+        loop.runUntil(60_000) { phone.messages.size >= before + pages.size }
+        val back = phone.messages.drop(before).filterIsInstance<ShelfSync>().flatMap { it.items }
+        assertEquals(items.map { it.id }.toSet(), back.map { it.id }.toSet())
+        assertFalse(peer.has("CLOSED"))
+    }
+
+    /** A Mac announcing no "shelffolders" (0.5.3 caps): the phone sees the cap missing and strips folders. */
+    @Test
+    fun v053MacDoesNotGetFolders() = session(185, 185, qr = true, "v053") { loop, phone, peer ->
+        assertTrue(phone.controller.peerSupports(Caps6.SHELF))
+        assertFalse(phone.controller.peerSupports(Caps8.SHELF_FOLDERS))
+        peer.send("ECHO on")
+        val stripped = ShelfFolders.forPeer(folderSync, folders = phone.controller.peerSupports(Caps8.SHELF_FOLDERS))
+        val before = phone.messages.size
+        loop.execute { assertTrue(phone.controller.send(stripped)) }
+        loop.runUntil(10_000) { phone.messages.size > before }
+        assertEquals(stripped, phone.messages.last())
+        assertTrue((phone.messages.last() as ShelfSync).items.all { it.folderId == null })
+    }
+
+    /**
+     * The real released 0.5.3 Mac core: SHELF_SYNC with folder fields (even unstripped) decodes, the
+     * unknown fields are ignored and the items come back loose; nothing closes the link.
+     */
+    @Test
+    fun released053MacIgnoresFolderFields() = session(244, 244, qr = true, path = old053PeerPath) { loop, phone, peer ->
+        assertTrue(phone.controller.peerSupports(Caps6.SHELF))
+        assertFalse(phone.controller.peerSupports(Caps8.SHELF_FOLDERS))
+        peer.send("ECHO on")
+        val before = phone.messages.size
+        loop.execute { assertTrue(phone.controller.send(folderSync)) }
+        loop.runUntil(10_000) { phone.messages.size > before }
+        assertEquals(ShelfFolders.forPeer(folderSync, folders = false), phone.messages.last())
+        assertFalse(peer.has("DECODE_ERROR"))
+        assertFalse(peer.has("CLOSED"))
+        clipBothWays(loop, phone, peer)
     }
 }

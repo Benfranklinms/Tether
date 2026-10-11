@@ -65,9 +65,9 @@ final class Release052Tests: XCTestCase {
 
     func testShelfAddMoveRemoveRestoreAndLimit() {
         var s = ShelfState()
-        for i in 1...55 { s = s.add(item("i\(i)", Int64(i))) }
-        XCTAssertEqual(s.items.count, 50)
-        XCTAssertEqual(s.ordered.first?.id, "i55")
+        for i in 1...505 { s = s.add(item("i\(i)", Int64(i))) }
+        XCTAssertEqual(s.items.count, 500)
+        XCTAssertEqual(s.ordered.first?.id, "i505")
         s = ShelfState().add(item("a", 1)).add(item("b", 2)).add(item("c", 3))
         XCTAssertEqual(s.ordered.map(\.id), ["c", "b", "a"])
         s = s.move("a", to: 0, now: 10)

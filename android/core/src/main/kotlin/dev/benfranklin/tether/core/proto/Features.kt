@@ -23,7 +23,7 @@ object Caps {
 
     /** What this build announces. */
     val CURRENT: List<String> =
-        V1 + listOf(REPLY, MEDIA, BATTERY, RING, SCREEN) + Caps3.ALL + Caps4.ALL + Caps5.ALL + Caps6.ALL + Caps7.ALL
+        V1 + listOf(REPLY, MEDIA, BATTERY, RING, SCREEN) + Caps3.ALL + Caps4.ALL + Caps5.ALL + Caps6.ALL + Caps7.ALL + Caps8.ALL
 }
 
 /** One button on a mirrored notification. [reply] marks a RemoteInput (inline text) action. */

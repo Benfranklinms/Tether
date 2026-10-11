@@ -132,11 +132,11 @@ class Release052Test {
     private fun item(id: String, t: Long, from: String = "mac", order: Double = 0.0) =
         ShelfItem(id, ShelfKinds.TEXT, "t$id", "b$t", null, from, t, t, order)
 
-    @Test fun shelfAddPutsNewItemsOnTopAndCapsAtFifty() {
+    @Test fun shelfAddPutsNewItemsOnTopAndCapsAtFiveHundred() {
         var s = ShelfState()
-        for (i in 1..55) s = s.add(item("i$i", i.toLong()))
-        assertEquals(50, s.items.size)
-        assertEquals("i55", s.ordered.first().id)
+        for (i in 1..505) s = s.add(item("i$i", i.toLong()))
+        assertEquals(500, s.items.size)
+        assertEquals("i505", s.ordered.first().id)
         assertFalse(s.items.any { it.id == "i1" })
     }
 

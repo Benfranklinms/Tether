@@ -169,6 +169,8 @@ object ShelfKinds {
     val updated: Long,
     val order: Double,
     val file: ShelfFile? = null,
+    /** Revision 8 (0.5.4, cap "shelffolders"): the folder this item is in; null = loose. Older builds ignore it. */
+    val folderId: String? = null,
 )
 
 @Serializable data class ShelfTomb(val id: String, val ts: Long)
@@ -181,6 +183,10 @@ object ShelfKinds {
     val items: List<ShelfItem> = emptyList(),
     val removed: List<ShelfTomb> = emptyList(),
     val full: Boolean = false,
+    /** Revision 8 (0.5.4, cap "shelffolders"): folders, merged like items (newest [ShelfFolder.updated] wins). */
+    val folders: List<ShelfFolder> = emptyList(),
+    /** Revision 8: deleted folders (tombstones; a removal wins over any copy not newer than it). */
+    val removedFolders: List<ShelfTomb> = emptyList(),
 ) : Message {
     override val type get() = MsgType.SHELF_SYNC
 }

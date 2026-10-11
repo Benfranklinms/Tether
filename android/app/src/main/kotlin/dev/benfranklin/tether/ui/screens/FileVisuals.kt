@@ -128,7 +128,8 @@ fun ShelfLeading(
     val radius = RoundedCornerShape(size * 0.24f)
     if (f != null && ShelfMeta.hasPicture(item)) {
         var bmp by remember(item.id, f.sha256) { mutableStateOf<ImageBitmap?>(null) }
-        LaunchedEffect(item.id, f.sha256, state) { if (state == ShelfCache.State.LOCAL) bmp = thumbnail(item) }
+        // 0.5.4: an evicted copy keeps its (saved) thumbnail, so ask whatever the state.
+        LaunchedEffect(item.id, f.sha256, state) { thumbnail(item)?.let { bmp = it } }
         Box(Modifier.size(size).clip(radius).background(Mono.SurfaceHigh).border(1.dp, Mono.Line, radius)) {
             AnimatedContent(
                 bmp, label = "thumb",

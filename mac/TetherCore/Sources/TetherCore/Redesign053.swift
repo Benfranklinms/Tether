@@ -127,7 +127,7 @@ public enum ShelfMeta {
         switch item.kind {
         case ShelfKinds.file:
             guard let f = item.file else { return (item.title, "File") }
-            let parts = [kind(mime: f.mime, name: f.name), size(f.size), missing ? "Not downloaded" : nil]
+            let parts = [kind(mime: f.mime, name: f.name), size(f.size), missing ? ShelfOffline.away : nil]
             return (item.title, parts.compactMap { $0 }.joined(separator: " · "))
         case ShelfKinds.wifi:
             let secret = item.secret ?? ""

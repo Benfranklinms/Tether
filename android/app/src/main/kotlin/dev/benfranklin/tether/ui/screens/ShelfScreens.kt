@@ -8,7 +8,8 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -109,6 +110,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.OfflinePin
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
@@ -136,7 +141,10 @@ import dev.benfranklin.tether.log.guarded
 import dev.benfranklin.tether.ui.Haptics
 import dev.benfranklin.tether.ui.clamp01
 import dev.benfranklin.tether.ui.pressScale
+import dev.benfranklin.tether.ui.LocalSharedScopes
 import dev.benfranklin.tether.ui.sharedContainer
+import androidx.compose.ui.geometry.Offset
+import dev.benfranklin.tether.core.proto.ShelfFolder
 import dev.benfranklin.tether.ui.theme.LocalReduceMotion
 import dev.benfranklin.tether.ui.theme.Mono
 import dev.benfranklin.tether.ui.theme.MonoCode
@@ -145,8 +153,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Which Shelf files have a local copy / are being fetched, and whether the Mac is connected (0.5.3). */
-data class ShelfFilesUi(val local: Set<String> = emptySet(), val fetching: Set<String> = emptySet(), val connected: Boolean = true) {
+/** Which Shelf files have a local copy / are being fetched (with progress), and whether the Mac is connected (0.5.3). */
+data class ShelfFilesUi(
+    val local: Set<String> = emptySet(),
+    val fetching: Set<String> = emptySet(),
+    val connected: Boolean = true,
+    val progress: Map<String, Float> = emptyMap(),
+) {
     fun state(item: ShelfItem): ShelfCache.State =
         ShelfCache.state(haveLocal = item.id in local, fetching = item.id in fetching, connected = connected)
 }
@@ -168,8 +181,26 @@ interface ShelfActions {
     /** Renames an item (synced); false when nothing changed. */
     fun rename(id: String, title: String): Boolean = false
     fun share(item: ShelfItem): String = "Shared"
-    /** A small picture for an image file with a local copy (decoded off the main thread). */
+    /** A small picture for an image file (decoded off the main thread; kept after the copy is evicted). */
     suspend fun thumbnail(item: ShelfItem): ImageBitmap? = null
+
+    // ----- 0.5.4 folders and offline copies -----
+    /** Add text into a folder (null = loose). */
+    fun addTextTo(text: String, folderId: String?) = addText(text)
+    /** Pick files to add into a folder (null = loose). */
+    fun addFileTo(folderId: String?) = addFile()
+    /** Reorder within one folder's list (null = the loose items). */
+    fun moveWithin(folderId: String?, id: String, to: Int) = move(id, to)
+    fun createFolder(name: String): String? = null
+    fun renameFolder(id: String, name: String): Boolean = false
+    fun deleteFolder(id: String) = Unit
+    /** False when nothing changed (dropped onto the folder it is already in). */
+    fun moveTo(itemId: String, folderId: String?): Boolean = false
+    fun openFolder(id: String) = Unit
+    fun keepOffline(itemId: String) = Unit
+    fun keepFolderOffline(folderId: String) = Unit
+    fun keptOffline(item: ShelfItem): Boolean = false
+    fun folderKeptOffline(folderId: String): Boolean = false
 }
 
 /** Badge text for a card's kind. Pure; unit-tested. */
@@ -232,19 +263,39 @@ fun ShelfScreen(
     initialQuery: String = "",
     now: Long = System.currentTimeMillis(),
     zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+    /** 0.5.4: the Shelf's folders (chip order) and which one this page shows (null = the Shelf itself). */
+    folders: List<ShelfFolder> = emptyList(),
+    folderId: String? = null,
 ) {
     val reduce = LocalReduceMotion.current
     val view = LocalView.current
+    val ctx = LocalContext.current
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var adding by remember { mutableStateOf(false) }
-    var query by rememberSaveable { mutableStateOf(initialQuery) }
+    var query by rememberSaveable(folderId) { mutableStateOf(initialQuery) }
     var renaming by remember { mutableStateOf<ShelfItem?>(null) }
+    // 0.5.4 folders: which sheet / menu / dialog is up.
+    var moving by remember { mutableStateOf<ShelfItem?>(null) }
+    var naming by remember { mutableStateOf<FolderNaming?>(null) }
+    var folderMenu by remember { mutableStateOf<ShelfFolder?>(null) }
+    var deleting by remember { mutableStateOf<ShelfFolder?>(null) }
+    val folderIds = remember(folders) { folders.map { it.id }.toSet() }
+    fun placeOf(i: ShelfItem): String? = i.folderId?.takeIf { it in folderIds }
+    val counts = remember(items, folderIds) { items.mapNotNull { placeOf(it) }.groupingBy { it }.eachCount() }
+    val folder = folders.firstOrNull { it.id == folderId }
+    // This page's items: the loose ones on the Shelf, or one folder's.
+    val pageItems = remember(items, folderIds, folderId) { items.filter { placeOf(it) == folderId } }
     // Local copy so a drag can reorder instantly; the shelf store is updated when the drag ends.
-    var local by remember { mutableStateOf(items) }
+    var local by remember { mutableStateOf(pageItems) }
     var dragId by remember { mutableStateOf<String?>(null) }
     var dragDy by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(items) { if (dragId == null) local = items }
+    var dragDx by remember { mutableFloatStateOf(0f) }
+    // Where the finger is (root coordinates) while a row is dragged, and the chip under it.
+    var pointer by remember { mutableStateOf(Offset.Zero) }
+    var hover by remember { mutableStateOf<String?>(null) }
+    val chipBounds = remember { HashMap<String, androidx.compose.ui.geometry.Rect>() }
+    LaunchedEffect(pageItems) { if (dragId == null) local = pageItems }
     // Rows that weren't here when the screen opened spring in (a sync from the Mac, a new add).
     val initial = remember { items.map { it.id }.toSet() }
     val listState = rememberLazyListState()
@@ -262,16 +313,32 @@ fun ShelfScreen(
         }
     }
 
-    SharedTransitionLayout(Modifier.fillMaxSize()) {
+    fun moveItem(itemId: String, to: String?) {
+        if (a.moveTo(itemId, to)) {
+            Haptics.confirm(view)
+            val name = folders.firstOrNull { it.id == to }?.name
+            scope.launch {
+                snack.currentSnackbarData?.dismiss()
+                snack.showSnackbar(if (name != null) "Moved to $name" else "Moved to Shelf", duration = SnackbarDuration.Short)
+            }
+        }
+    }
+
+    // 0.5.4 crash fix ("layouts are not part of the same hierarchy" on open/resume): no nested
+    // SharedTransitionLayout here any more. The + ⇄ add-sheet morph and the row ⇄ detail container
+    // transform both use the one app-level scope (LocalSharedScopes), and nothing shared runs
+    // inside a popup, dialog or bottom sheet.
+    val shared = LocalSharedScopes.current?.shared
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = Mono.Bg,
         topBar = {
-            LargeTitle("Shelf", onBack, heroKey = "shelf-title", count = local.size.takeIf { it > 0 }) {
+            val addButton: @Composable () -> Unit = {
                 AnimatedVisibility(!adding, enter = fadeIn(Motion.fade(reduce)), exit = fadeOut(Motion.fade(reduce))) {
                     val source = remember { MutableInteractionSource() }
                     Box(
                         Modifier
-                            .then(if (reduce) Modifier else Modifier.sharedBounds(rememberSharedContentState("shelf-add"), this))
+                            .addMorph(shared, this, reduce)
                             .pressScale(source).size(44.dp).clip(CircleShape).background(Mono.SurfaceHigh)
                             .clickable(source, null, role = Role.Button) {
                                 Haptics.tick(view)
@@ -282,14 +349,26 @@ fun ShelfScreen(
                     ) { Icon(Icons.Outlined.Add, contentDescription = null, tint = Mono.Text) }
                 }
             }
+            if (folder != null) {
+                FolderHeader(folder, pageItems.size, onBack, onAdd = { adding = true }, onMore = { folderMenu = folder }) {
+                    FolderMenu(
+                        folderMenu?.takeIf { it.id == folder.id }, a.folderKeptOffline(folder.id), onDismiss = { folderMenu = null },
+                        onRename = { naming = FolderNaming.Rename(folder) }, onKeep = { a.keepFolderOffline(folder.id) },
+                        onDelete = { deleting = folder },
+                    )
+                }
+            } else {
+                LargeTitle("Shelf", onBack, heroKey = "shelf-title", count = items.size.takeIf { it > 0 }) { addButton() }
+            }
         },
         snackbarHost = { SnackbarHost(snack) },
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(screenPadding(pad, bottom = 0.dp))) {
-                val shown = if (query.isBlank()) local else ShelfSearch.filter(local, query)
+                // Search: the whole Shelf on the Shelf page, one folder on a folder page.
                 val searching = query.isNotBlank()
+                val shown = if (!searching) local else ShelfSearch.filter(if (folderId == null) items else local, query)
                 val headers = remember(shown, searching, now) { if (searching) emptyMap() else ShelfMeta.sections(shown, now, zone) }
-                if (local.isEmpty()) {
+                if (items.isEmpty() && folderId == null && folders.isEmpty()) {
                     ShelfEmpty(connected)
                 } else {
                     LazyColumn(
@@ -297,13 +376,40 @@ fun ShelfScreen(
                         contentPadding = PaddingValues(top = 0.dp, bottom = 120.dp),
                     ) {
                         item(key = "search") {
-                            ShelfSearchBar(query, onChange = { query = it })
+                            ShelfSearchBar(query, onChange = { query = it }, placeholder = folder?.let { "Search ${it.name}" } ?: "Search")
+                        }
+                        if (folderId == null) {
+                            item(key = "chips") {
+                                Box {
+                                    FolderChipRow(
+                                        folders, counts, hover, chipBounds,
+                                        onNew = { naming = FolderNaming.New(null) },
+                                        onOpen = { f -> a.openFolder(f.id) },
+                                        onMenu = { f -> folderMenu = f },
+                                    )
+                                    FolderMenu(
+                                        folderMenu, folderMenu?.let { a.folderKeptOffline(it.id) } == true, onDismiss = { folderMenu = null },
+                                        onRename = { folderMenu?.let { naming = FolderNaming.Rename(it) } },
+                                        onKeep = { folderMenu?.let { a.keepFolderOffline(it.id) } },
+                                        onDelete = { deleting = folderMenu },
+                                    )
+                                }
+                            }
                         }
                         if (searching && shown.isEmpty()) {
                             item(key = "nomatch") {
                                 Text(
                                     "No match for “${query.trim()}”", style = MaterialTheme.typography.bodyMedium,
                                     color = Mono.Muted, modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp).animateItem(),
+                                )
+                            }
+                        } else if (!searching && shown.isEmpty()) {
+                            item(key = "pageempty") {
+                                Text(
+                                    if (folderId != null) "Nothing in this folder yet. Hold an item on your Shelf and choose Move to, or drag it onto the folder."
+                                    else "Everything is in folders.",
+                                    style = MaterialTheme.typography.bodyMedium, color = Mono.Muted,
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp).animateItem(),
                                 )
                             }
                         }
@@ -320,17 +426,32 @@ fun ShelfScreen(
                                 val dragging = dragId == item.id
                                 ShelfRow(
                                     item = item, isNew = item.id !in initial, dragging = dragging, dragDy = if (dragging) dragDy else 0f,
+                                    dragDx = if (dragging) dragDx else 0f, overChip = dragging && hover != null,
                                     a = a, onRemove = { removeWithUndo(item.id) },
-                                    state = files.state(item), reorder = !searching, now = now, zone = zone,
+                                    state = files.state(item), progress = files.progress[item.id],
+                                    reorder = !searching, now = now, zone = zone,
                                     divider = index < shown.lastIndex && headers[index + 1] == null,
                                     onRename = { renaming = item },
-                                    onDragStart = {
+                                    onMove = { moving = item },
+                                    onDragStart = { at ->
                                         dragId = item.id
                                         dragDy = 0f
+                                        dragDx = 0f
+                                        pointer = at
+                                        hover = null
                                         Haptics.confirm(view)
                                     },
-                                    onDrag = { dy ->
-                                        dragDy += dy
+                                    onDrag = { amount ->
+                                        dragDy += amount.y
+                                        dragDx += amount.x
+                                        pointer += amount
+                                        // Over a chip: highlight it and leave the order alone.
+                                        val over = if (folderId == null) chipBounds.entries.firstOrNull { it.value.contains(pointer) }?.key else null
+                                        if (over != hover) {
+                                            hover = over
+                                            if (over != null) Haptics.tick(view)
+                                        }
+                                        if (over != null) return@ShelfRow
                                         val visible = listState.layoutInfo.visibleItemsInfo
                                             .filter { it.key is String && it.key !in NON_CARD_KEYS && !(it.key as String).startsWith("h-") }
                                         val me = visible.firstOrNull { it.key == item.id } ?: return@ShelfRow
@@ -339,7 +460,7 @@ fun ShelfScreen(
                                         val from = visible.indexOf(me)
                                         val to = shelfDropIndex(slots, from, centre)
                                         if (to != from) {
-                                            val target = visible[to]
+                                            val target = visible.getOrNull(to) ?: return@ShelfRow
                                             val li = local.indexOfFirst { it.id == item.id }
                                             val ti = local.indexOfFirst { it.id == target.key }
                                             if (li >= 0 && ti >= 0) {
@@ -351,11 +472,18 @@ fun ShelfScreen(
                                     },
                                     onDragEnd = {
                                         val id = dragId
+                                        val target = hover
                                         dragId = null
                                         dragDy = 0f
-                                        if (id != null) {
+                                        dragDx = 0f
+                                        hover = null
+                                        if (id != null && target != null) {
+                                            // Dropped on a chip: into that folder (the list order is left as it was).
+                                            local = pageItems
+                                            guarded(ctx, "shelf.dropOnChip") { moveItem(id, target) }
+                                        } else if (id != null) {
                                             val to = local.indexOfFirst { it.id == id }
-                                            if (to >= 0 && items.indexOfFirst { it.id == id } != to) a.move(id, to)
+                                            if (to >= 0 && pageItems.indexOfFirst { it.id == id } != to) a.moveWithin(folderId, id, to)
                                         }
                                     },
                                     modifier = Modifier
@@ -396,9 +524,10 @@ fun ShelfScreen(
                     }
                     AddSheet(
                         a = a,
+                        folderId = folderId,
                         onDone = { adding = false },
                         modifier = Modifier
-                            .then(if (reduce) Modifier else Modifier.sharedBounds(rememberSharedContentState("shelf-add"), this))
+                            .addMorph(shared, this, reduce || folder != null)
                             .graphicsLayer {
                                 val s = 1f - 0.08f * back
                                 scaleX = s
@@ -415,14 +544,69 @@ fun ShelfScreen(
             renaming = null
         })
     }
+    moving?.let { m ->
+        MoveSheet(
+            m, placeOf(m), folders, counts, files.state(m), { a.thumbnail(it) },
+            onPick = { to ->
+                moving = null
+                moveItem(m.id, to)
+            },
+            onNewFolder = {
+                moving = null
+                naming = FolderNaming.New(m)
+            },
+            onDismiss = { moving = null },
+        )
+    }
+    naming?.let { n ->
+        when (n) {
+            is FolderNaming.New -> FolderNameSheet("New folder", "Create", "") { name ->
+                naming = null
+                if (name != null) {
+                    val id = a.createFolder(name)
+                    if (id != null) {
+                        Haptics.confirm(view)
+                        n.thenMove?.let { moveItem(it.id, id) }
+                    }
+                }
+            }
+            is FolderNaming.Rename -> FolderNameSheet("Rename folder", "Save", n.folder.name) { name ->
+                naming = null
+                if (name != null && a.renameFolder(n.folder.id, name)) Haptics.confirm(view)
+            }
+        }
+    }
+    deleting?.let { f ->
+        DeleteFolderDialog(f, counts[f.id] ?: 0) { yes ->
+            deleting = null
+            if (yes) {
+                // On its own page, the page leaves by itself once the folder is gone (no double back).
+                a.deleteFolder(f.id)
+                Haptics.confirm(view)
+            }
+        }
+    }
+}
+
+/** The + ⇄ add-sheet morph, in the app-level shared scope only (a no-op without one, or with reduce motion). */
+@Composable
+private fun Modifier.addMorph(shared: SharedTransitionScope?, visibility: AnimatedVisibilityScope, off: Boolean): Modifier {
+    if (shared == null || off) return this
+    return with(shared) { this@addMorph.sharedBounds(rememberSharedContentState("shelf-add"), visibility) }
+}
+
+/** Which folder-name sheet is up: a new folder (then [thenMove] goes into it) or a rename. */
+private sealed interface FolderNaming {
+    data class New(val thenMove: ShelfItem?) : FolderNaming
+    data class Rename(val folder: ShelfFolder) : FolderNaming
 }
 
 /** Search the Shelf (0.5.3): title, content, file name and type; results filter with the list's own animation. */
 @Composable
-private fun ShelfSearchBar(query: String, onChange: (String) -> Unit) {
+private fun ShelfSearchBar(query: String, onChange: (String) -> Unit, placeholder: String = "Search") {
     OutlinedTextField(
         value = query, onValueChange = onChange, singleLine = true,
-        placeholder = { Text("Search", color = Mono.Muted, style = MaterialTheme.typography.bodyLarge) },
+        placeholder = { Text(placeholder, color = Mono.Muted, style = MaterialTheme.typography.bodyLarge) },
         leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = Mono.Muted) },
         trailingIcon = {
             AnimatedVisibility(query.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
@@ -513,11 +697,17 @@ private fun ShelfRow(
     dragDy: Float,
     a: ShelfActions,
     onRemove: () -> Unit,
-    onDragStart: () -> Unit,
-    onDrag: (Float) -> Unit,
+    /** The finger's position in root coordinates when the drag starts. */
+    onDragStart: (Offset) -> Unit,
+    onDrag: (Offset) -> Unit,
     onDragEnd: () -> Unit,
     modifier: Modifier,
     state: ShelfCache.State = ShelfCache.State.LOCAL,
+    dragDx: Float = 0f,
+    /** 0.5.4: the dragged row is over a folder chip (it shrinks towards it). */
+    overChip: Boolean = false,
+    progress: Float? = null,
+    onMove: () -> Unit = {},
     reorder: Boolean = true,
     now: Long = System.currentTimeMillis(),
     zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
@@ -531,8 +721,10 @@ private fun ShelfRow(
     val currentDragStart by rememberUpdatedState(onDragStart)
     val currentDrag by rememberUpdatedState(onDrag)
     val currentDragEnd by rememberUpdatedState(onDragEnd)
-    // Long-press without moving opens the menu; long-press and drag reorders.
+    // Long-press without moving opens the menu; long-press and drag reorders (or drops onto a chip).
     var menu by remember { mutableStateOf(false) }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val shrink by animateFloatAsState(if (overChip) 1f else 0f, Motion.spring(reduce), label = "shrink")
     var travelled by remember { mutableFloatStateOf(0f) }
     var held by remember { mutableStateOf(false) }
     // Spring in when the row arrives (sync / add).
@@ -555,9 +747,10 @@ private fun ShelfRow(
         state = dismiss,
         enableDismissFromStartToEnd = false,
         gesturesEnabled = !dragging,
-        modifier = modifier.graphicsLayer {
+        modifier = modifier.onGloballyPositioned { origin = it.positionInRoot() }.graphicsLayer {
             translationY = dragDy
-            val s = appear.value * (1f + 0.03f * liftAnim.clamp01())
+            translationX = dragDx
+            val s = appear.value * (1f + 0.03f * liftAnim.clamp01()) * (1f - 0.38f * shrink.clamp01())
             scaleX = s
             scaleY = s
             shadowElevation = 24f * liftAnim.clamp01()
@@ -589,11 +782,11 @@ private fun ShelfRow(
                 .pointerInput(item.id, reorder) {
                     // Every callback is guarded: a bad index in a reorder stops the drag, never the app.
                     detectDragGesturesAfterLongPress(
-                        onDragStart = {
+                        onDragStart = { at ->
                             guarded(ctx, "shelf.dragStart") {
                                 travelled = 0f
                                 held = true
-                                if (reorder) currentDragStart() else Haptics.confirm(view)
+                                if (reorder) currentDragStart(origin + at) else Haptics.confirm(view)
                             }
                         },
                         onDragEnd = {
@@ -616,7 +809,7 @@ private fun ShelfRow(
                             change.consume()
                             guarded(ctx, "shelf.drag") {
                                 travelled += kotlin.math.abs(amount.y) + kotlin.math.abs(amount.x)
-                                if (reorder) currentDrag(amount.y)
+                                if (reorder) currentDrag(amount)
                             }
                         },
                     )
@@ -642,11 +835,18 @@ private fun ShelfRow(
                                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp), maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                             )
-                            Text(
-                                detail, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp), color = Mono.Muted,
-                                    maxLines = 1,
-                                overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
-                            )
+                            Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                // 0.5.4: a file without a copy here keeps its picture and details, plus a small cloud
+                                // ("Available when connected" spelled out while the Mac is away) or a ring while it downloads.
+                                if (item.file != null && state != ShelfCache.State.LOCAL) {
+                                    OfflineGlyph(state, progress)
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(
+                                    detail, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp), color = Mono.Muted,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(horizontalAlignment = Alignment.End) {
@@ -660,7 +860,7 @@ private fun ShelfRow(
                     Box(Modifier.fillMaxWidth().height(1.dp).background(line))
                 }
             }
-            ShelfMenu(menu, item, a, onDismiss = { menu = false }, onRename = onRename, onRemove = onRemove)
+            ShelfMenu(menu, item, a, onDismiss = { menu = false }, onRename = onRename, onRemove = onRemove, onMove = onMove)
         }
     }
 }
@@ -688,6 +888,7 @@ private fun ShelfThumb(item: ShelfItem, state: ShelfCache.State, a: ShelfActions
 @Composable
 private fun ShelfMenu(
     open: Boolean, item: ShelfItem, a: ShelfActions, onDismiss: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit,
+    onMove: () -> Unit = {},
 ) {
     DropdownMenu(expanded = open, onDismissRequest = onDismiss) {
         val primary = ShelfDetect.action(item.kind)
@@ -709,6 +910,22 @@ private fun ShelfMenu(
             onDismiss()
             a.share(item)
         })
+        DropdownMenuItem(text = { Text("Move to…") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.DriveFileMove, null) }, onClick = {
+            onDismiss()
+            onMove()
+        })
+        if (item.file != null) {
+            val kept = a.keptOffline(item)
+            DropdownMenuItem(
+                text = { Text("Keep offline") },
+                leadingIcon = { Icon(Icons.Outlined.OfflinePin, null) },
+                trailingIcon = { Icon(Icons.Outlined.Check, null, tint = if (kept) Mono.Text else Mono.Bg.copy(alpha = 0f)) },
+                onClick = {
+                    onDismiss()
+                    a.keepOffline(item.id)
+                },
+            )
+        }
         DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(Icons.Outlined.Delete, null) }, onClick = {
             onDismiss()
             onRemove()
@@ -717,7 +934,7 @@ private fun ShelfMenu(
 }
 
 private const val MENU_SLOP_PX = 24f
-private val NON_CARD_KEYS = setOf("hint", "search", "nomatch")
+private val NON_CARD_KEYS = setOf("hint", "search", "nomatch", "chips", "pageempty")
 
 @Composable
 private fun KindBadge(kind: String) {
@@ -728,7 +945,7 @@ private fun KindBadge(kind: String) {
 }
 
 @Composable
-private fun AddSheet(a: ShelfActions, onDone: () -> Unit, modifier: Modifier) {
+private fun AddSheet(a: ShelfActions, onDone: () -> Unit, modifier: Modifier, folderId: String? = null) {
     val view = LocalView.current
     var text by remember { mutableStateOf("") }
     val guess = remember(text) { if (text.isBlank()) null else ShelfDetect.classify(text) }
@@ -762,7 +979,7 @@ private fun AddSheet(a: ShelfActions, onDone: () -> Unit, modifier: Modifier) {
                 Text("Paste")
             }
             TextButton(onClick = {
-                a.addFile()
+                a.addFileTo(folderId)
                 onDone()
             }) {
                 Icon(Icons.Outlined.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -778,7 +995,7 @@ private fun AddSheet(a: ShelfActions, onDone: () -> Unit, modifier: Modifier) {
                 modifier = Modifier.graphicsLayer { this.alpha = alpha }.pressScale(source).clip(RoundedCornerShape(14.dp))
                     .background(Mono.Text)
                     .clickable(source, null, enabled = enabled, role = Role.Button) {
-                        a.addText(text)
+                        a.addTextTo(text, folderId)
                         Haptics.confirm(view)
                         onDone()
                     }
@@ -820,8 +1037,10 @@ fun ShelfDetailScreen(item: ShelfItem?, a: ShelfActions, onBack: () -> Unit, fil
                         style = MaterialTheme.typography.labelSmall, color = Mono.Muted,
                     )
                 }
+                // 0.5.4 fix: a snippet titled from its own first line showed that line twice (title, then body).
+                val text = ShelfCardText.detail(item)
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
-                    Text(item.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    Text(text.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                     IconButton(onClick = {
                         Haptics.tick(view)
                         renaming = true
@@ -868,9 +1087,9 @@ fun ShelfDetailScreen(item: ShelfItem?, a: ShelfActions, onBack: () -> Unit, fil
                                 )
                                 ShelfThumb(item, files.state(item), a)
                             }
-                            else -> if (item.body.isNotEmpty()) {
+                            else -> if (text.preview.isNotEmpty()) {
                                 Text(
-                                    item.body, style = MaterialTheme.typography.bodyLarge,
+                                    text.preview, style = MaterialTheme.typography.bodyLarge,
                                     fontFamily = if (item.kind == ShelfKinds.SNIPPET) MonoCode else null,
                                     modifier = Modifier.padding(top = 12.dp),
                                 )

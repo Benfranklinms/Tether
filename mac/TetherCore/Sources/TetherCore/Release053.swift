@@ -176,6 +176,16 @@ public enum ShelfCardText {
         let rest = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return Parts(title: first.count > t.count ? first : title, preview: rest)
     }
+
+    /// 0.5.4: the detail view's title and body. Text-like items use `split`, so a snippet whose
+    /// title came from its own first line no longer shows that line twice (title, then again as
+    /// the body's first line). Files and Wi-Fi keep their own title and body.
+    public static func detail(_ item: ShelfItem) -> Parts {
+        switch item.kind {
+        case ShelfKinds.file, ShelfKinds.wifi: return Parts(title: item.title, preview: item.body)
+        default: return split(title: item.title, body: item.body)
+        }
+    }
 }
 
 // MARK: - Shelf file cache

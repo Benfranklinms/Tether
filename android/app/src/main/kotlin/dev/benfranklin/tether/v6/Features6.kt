@@ -21,6 +21,8 @@ import dev.benfranklin.tether.core.features.CaptureNaming
 import dev.benfranklin.tether.core.features.CapturePolicy
 import dev.benfranklin.tether.core.features.FileKinds
 import dev.benfranklin.tether.core.features.ShelfCache
+import dev.benfranklin.tether.core.features.ShelfFolders
+import dev.benfranklin.tether.core.features.ShelfOffline
 import dev.benfranklin.tether.core.features.ShelfRename
 import dev.benfranklin.tether.core.features.ShelfDetect
 import dev.benfranklin.tether.core.features.ShelfState
@@ -29,6 +31,9 @@ import dev.benfranklin.tether.core.proto.CaptureReq
 import dev.benfranklin.tether.core.proto.CaptureResult
 import dev.benfranklin.tether.core.proto.CaptureStates
 import dev.benfranklin.tether.core.proto.Caps6
+import dev.benfranklin.tether.core.proto.Caps8
+import dev.benfranklin.tether.core.proto.MessageCodec
+import dev.benfranklin.tether.core.proto.ShelfFolder
 import dev.benfranklin.tether.core.proto.FileKinds6
 import dev.benfranklin.tether.core.proto.FindActions
 import dev.benfranklin.tether.core.proto.FindMac
@@ -72,7 +77,15 @@ data class HotspotUi(val state: String? = null, val reason: String? = null)
 /** An Insert from Phone request waiting for the camera / scanner. */
 data class CaptureUi(val ref: String, val kind: String)
 
-@Serializable private data class ShelfDisk(val items: List<ShelfItem> = emptyList(), val tombs: List<ShelfTomb> = emptyList())
+@Serializable private data class ShelfDisk(
+    val items: List<ShelfItem> = emptyList(),
+    val tombs: List<ShelfTomb> = emptyList(),
+    val folders: List<ShelfFolder> = emptyList(),
+    val folderTombs: List<ShelfTomb> = emptyList(),
+)
+
+/** Offline copies of Shelf files as Settings › Shelf shows them (0.5.4; local to this phone). */
+data class ShelfOfflineUi(val used: Long = 0, val cap: Long = ShelfOffline.PHONE_DEFAULT, val pins: ShelfOffline.Pins = ShelfOffline.Pins())
 
 /**
  * 0.5.2 on the phone: Insert from Phone (camera / document scanner for the Mac), Find my Mac,
@@ -114,6 +127,13 @@ class Features6(
     private val inFlight = HashMap<String, Long>()
     private val _fetching = MutableStateFlow<Set<String>>(emptySet())
     val fetching: StateFlow<Set<String>> = _fetching.asStateFlow()
+    /** 0.5.4: download progress (0..1) of Shelf files being fetched, by item id. */
+    private val _progress = MutableStateFlow<Map<String, Float>>(emptyMap())
+    val progress: StateFlow<Map<String, Float>> = _progress.asStateFlow()
+    /** 0.5.4: offline copies (space used, cap, "Keep offline" pins). */
+    private val pinsFile = File(app.filesDir, "shelf-pins.sealed")
+    private val _offline = MutableStateFlow(ShelfOfflineUi())
+    val offline: StateFlow<ShelfOfflineUi> = _offline.asStateFlow()
     private val launcher = CaptureLauncher(app, foreground)
     /** The open Insert from Phone request: its ref and when its screen actually opened (null = not yet). */
     private var captureOpenedAt: Long? = null
@@ -144,7 +164,7 @@ class Features6(
 
     /** Link up: send our whole shelf (the Mac does the same; both merge), then fetch missing files. */
     fun linkUp() {
-        if (supports(Caps6.SHELF)) send(_shelf.value.snapshot())
+        shelfOut(_shelf.value.snapshot())
         io.execute { syncFiles() }
     }
 
@@ -152,8 +172,11 @@ class Features6(
     fun linkChanged() {
         val (connected, _) = link()
         if (!connected) {
+            // Nothing can arrive now: no spinner may outlive the link.
             synchronized(inFlight) { inFlight.clear() }
+            synchronized(wantedFiles) { wantedFiles.clear() }
             _fetching.value = emptySet()
+            _progress.value = emptyMap()
         }
         io.execute { syncFiles() }
     }
@@ -344,17 +367,33 @@ class Features6(
     // ===================== Shelf =====================
 
     private fun loadShelf() {
+        loadPins()
         val bytes = Vault.readFile(shelfFile) ?: return
-        runCatching { json.decodeFromString(ShelfDisk.serializer(), bytes.toString(Charsets.UTF_8)) }
-            .onSuccess { _shelf.value = ShelfState(it.items, it.tombs) }
-            .onFailure { Log.w("shelf.load_failed", "error" to it.javaClass.simpleName) }
+        val text = bytes.toString(Charsets.UTF_8)
+        runCatching { json.decodeFromString(ShelfDisk.serializer(), text) }
+            .onSuccess { _shelf.value = ShelfState(it.items, it.tombs, it.folders, it.folderTombs) }
+            .onFailure {
+                // 0.5.4: one damaged entry must not cost the whole Shelf; keep every entry that still reads.
+                Log.w("shelf.load_failed", "error" to it.javaClass.simpleName)
+                _shelf.value = ShelfDiskSalvage.salvage(json, text)
+            }
     }
 
     private fun saveShelf(s: ShelfState) {
         io.execute {
-            val text = json.encodeToString(ShelfDisk.serializer(), ShelfDisk(s.items, s.tombs))
+            val text = json.encodeToString(ShelfDisk.serializer(), ShelfDisk(s.items, s.tombs, s.folders, s.folderTombs))
             Vault.writeFile(shelfFile, text.toByteArray(Charsets.UTF_8))
         }
+    }
+
+    /**
+     * Sends a Shelf change: without folder fields to a Mac that doesn't know them (0.5.3), and a
+     * big snapshot as pages that each fit a Bluetooth record.
+     */
+    private fun shelfOut(sync: ShelfSync) {
+        if (!supports(Caps6.SHELF)) return
+        val s = ShelfFolders.forPeer(sync, supports(Caps8.SHELF_FOLDERS))
+        for (page in ShelfFolders.pages(s) { MessageCodec.json.encodeToString(ShelfItem.serializer(), it).length }) send(page)
     }
 
     private fun commit(s: ShelfState, sync: ShelfSync?) {
@@ -362,7 +401,7 @@ class Features6(
         val pruned = s.pruned(System.currentTimeMillis())
         _shelf.value = pruned
         saveShelf(pruned)
-        if (sync != null) engine.execute { if (supports(Caps6.SHELF)) send(sync) }
+        if (sync != null) engine.execute { shelfOut(sync) }
         // Items that went away take their file copies with them.
         val live = pruned.items.map { it.id }.toSet()
         before.items.filter { it.file != null && it.id !in live }.forEach { gone -> io.execute { shelfFiles.remove(gone.id) } }
@@ -376,15 +415,16 @@ class Features6(
         commit(_shelf.value.merge(m), null)
     }
 
-    @Synchronized fun addText(text: String) {
+    @Synchronized fun addText(text: String, folderId: String? = null) {
         val t = text.trim()
         if (t.isEmpty()) return
-        val item = ShelfState.itemFrom(t, UUID.randomUUID().toString(), "phone", System.currentTimeMillis())
+        val folder = folderId?.takeIf { f -> _shelf.value.folders.any { it.id == f } }
+        val item = ShelfState.itemFrom(t, UUID.randomUUID().toString(), "phone", System.currentTimeMillis(), folder)
         val next = _shelf.value.add(item)
         commit(next, ShelfSync(next.items.filter { it.id == item.id }))
     }
 
-    fun addFile(uri: Uri) {
+    fun addFile(uri: Uri, folderId: String? = null) {
         io.execute {
             try {
                 val id = UUID.randomUUID().toString()
@@ -394,7 +434,8 @@ class Features6(
                 shelfFiles.ingest(id, plain, move = true)
                 val f = ShelfFile(staged.name, staged.size, staged.mime, staged.sha256, "phone")
                 synchronized(this) {
-                    val item = ShelfState.fileItem(f, id, "phone", System.currentTimeMillis())
+                    val folder = folderId?.takeIf { fid -> _shelf.value.folders.any { it.id == fid } }
+                    val item = ShelfState.fileItem(f, id, "phone", System.currentTimeMillis(), folder)
                     val next = _shelf.value.add(item)
                     commit(next, ShelfSync(next.items.filter { it.id == id }))
                 }
@@ -421,6 +462,101 @@ class Features6(
     @Synchronized fun move(id: String, to: Int) {
         val next = _shelf.value.move(id, to, System.currentTimeMillis())
         commit(next, ShelfSync(next.items.filter { it.id == id }))
+    }
+
+    /** Reorder within one folder's list (null = the loose items), as the screen shows it. */
+    @Synchronized fun moveWithin(folderId: String?, id: String, to: Int) {
+        val s = _shelf.value
+        val next = s.moveWithin(s.itemsIn(folderId), id, to, System.currentTimeMillis())
+        if (next !== s) commit(next, next.syncOf(listOf(id)))
+    }
+
+    // ----- folders (0.5.4) -----
+
+    /** A new folder; returns its id, or null when the name is blank (or 100 folders exist). */
+    @Synchronized fun createFolder(name: String): String? {
+        val id = UUID.randomUUID().toString()
+        val next = _shelf.value.createFolder(id, name, System.currentTimeMillis()) ?: return null
+        commit(next, next.syncOf(folderIds = listOf(id)))
+        Log.i("shelf.folder_created")
+        return id
+    }
+
+    @Synchronized fun renameFolder(id: String, name: String): Boolean {
+        val next = _shelf.value.renameFolder(id, name, System.currentTimeMillis()) ?: return false
+        commit(next, next.syncOf(folderIds = listOf(id)))
+        return true
+    }
+
+    /** Deletes a folder; its items become loose (never removed). */
+    @Synchronized fun deleteFolder(id: String) {
+        val s = _shelf.value
+        if (s.folders.none { it.id == id }) return
+        val moved = s.items.filter { it.folderId == id }.map { it.id }
+        val next = s.deleteFolder(id, System.currentTimeMillis())
+        commit(next, next.syncOf(moved, listOf(id)))
+        Log.i("shelf.folder_deleted", "items" to moved.size)
+    }
+
+    /** Moves an item into a folder (null = loose). False when nothing changed (same folder, folder gone). */
+    @Synchronized fun moveTo(itemId: String, folderId: String?): Boolean {
+        val next = _shelf.value.moveTo(itemId, folderId, System.currentTimeMillis()) ?: return false
+        commit(next, next.syncOf(listOf(itemId)))
+        return true
+    }
+
+    // ----- offline copies (0.5.4, this phone only) -----
+
+    private fun cap(): Long = settings().shelfOfflineCap
+
+    private fun loadPins() {
+        val bytes = Vault.readFile(pinsFile) ?: return
+        runCatching { json.decodeFromString(ShelfOffline.Pins.serializer(), bytes.toString(Charsets.UTF_8)) }
+            .onSuccess { p -> _offline.value = _offline.value.copy(pins = p) }
+            .onFailure { Log.w("shelf.pins_load_failed", "error" to it.javaClass.simpleName) }
+    }
+
+    private fun savePins(p: ShelfOffline.Pins) {
+        _offline.value = _offline.value.copy(pins = p)
+        io.execute { Vault.writeFile(pinsFile, json.encodeToString(ShelfOffline.Pins.serializer(), p).toByteArray(Charsets.UTF_8)) }
+    }
+
+    /** "Keep offline" on an item: pinned copies are fetched and never evicted. */
+    @Synchronized fun toggleKeepOffline(itemId: String) {
+        savePins(_offline.value.pins.toggleItem(itemId))
+        io.execute { syncFiles() }
+    }
+
+    /** "Keep offline" on a folder: every item in it. */
+    @Synchronized fun toggleKeepFolderOffline(folderId: String) {
+        savePins(_offline.value.pins.toggleFolder(folderId))
+        io.execute { syncFiles() }
+    }
+
+    fun keptOffline(item: ShelfItem): Boolean = ShelfOffline.pinned(item, _shelf.value.folderOf(item), _offline.value.pins)
+
+    /** The cap changed in Settings: evict or fetch to match. */
+    fun offlineChanged() {
+        io.execute { syncFiles() }
+    }
+
+    /**
+     * Settings › Shelf › Remove offline copies: drops every copy fetched from the Mac (Shelf items
+     * stay, with their thumbnails; files added on this phone are the originals and stay too).
+     */
+    fun removeOfflineCopies() {
+        io.execute {
+            for (i in _shelf.value.items) {
+                val f = i.file ?: continue
+                if (f.owner != ME && shelfFiles.has(i.id) && synchronized(wantedFiles) { i.id !in wantedFiles }) shelfFiles.evict(i.id)
+            }
+            refreshLocal()
+            Log.i("shelf.offline_removed")
+        }
+    }
+
+    private fun markOpened(id: String) {
+        synchronized(this) { savePins(_offline.value.pins.opened(id, System.currentTimeMillis())) }
     }
 
     /** Rename (0.5.3): the title, and for files the name used when opening / copying. Synced; false when nothing changed. */
@@ -494,9 +630,9 @@ class Features6(
         val (connected, _) = link()
         if (!connected || !supports(Caps6.SHELF)) {
             main.post {
-                android.widget.Toast.makeText(app, "Not downloaded yet · connect your Mac", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(app, "${ShelfOffline.AWAY} · connect your Mac", android.widget.Toast.LENGTH_SHORT).show()
             }
-            return "Not downloaded"
+            return ShelfOffline.AWAY
         }
         synchronized(wantedFiles) { wantedFiles[item.id] = want }
         request(item, force = true)
@@ -504,6 +640,7 @@ class Features6(
     }
 
     private fun act(item: ShelfItem, want: Want) {
+        markOpened(item.id)
         val f = shelfFiles.materialize(item) ?: return Log.w("shelf.materialize_failed")
         val uri = FileProvider.getUriForFile(app, app.packageName + ".files", f)
         val mime = item.file?.mime?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
@@ -531,19 +668,44 @@ class Features6(
 
     private fun refreshLocal() {
         _localFiles.value = _shelf.value.items.filter { it.file != null && shelfFiles.has(it.id) }.map { it.id }.toSet()
+        _offline.value = _offline.value.copy(used = shelfFiles.usedBytes(), cap = cap())
     }
 
-    /** Ask the Mac for every Shelf file we don't have yet (≤100 MB; over Bluetooth only small ones). */
+    /**
+     * 0.5.4: keep the offline copies within the cap (least recently opened go first, pinned and
+     * own files never), then ask the Mac for the copies the plan keeps (over Bluetooth only small ones).
+     * Runs on [io]; never on the main thread.
+     */
     private fun syncFiles() {
+        val s = _shelf.value
+        val pins = _offline.value.pins.pruned(s.items.map { it.id }.toSet(), s.folders.map { it.id }.toSet())
+        val local = s.items.filter { it.file != null && shelfFiles.has(it.id) }.map { it.id }.toSet()
+        val plan = ShelfOffline.plan(ShelfOffline.entries(s.items, s::folderOf, local, pins, ME), cap())
+        for (id in plan.evict) {
+            val busy = synchronized(wantedFiles) { id in wantedFiles } || synchronized(inFlight) { id in inFlight }
+            if (!busy) shelfFiles.evict(id)
+        }
+        if (plan.evict.isNotEmpty()) Log.i("shelf.evicted", "n" to plan.evict.size)
+        refreshLocal()
         val (connected, wifi) = link()
         if (!connected || !supports(Caps6.SHELF)) return
         val now = System.currentTimeMillis()
         synchronized(inFlight) { inFlight.entries.removeAll { now - it.value > FETCH_TIMEOUT_MS } }
-        for (item in _shelf.value.items) {
+        _fetching.value = synchronized(inFlight) { inFlight.keys.toSet() }
+        val byId = s.items.associateBy { it.id }
+        for (id in plan.fetch) {
+            val item = byId[id] ?: continue
             val f = item.file ?: continue
             val busy = synchronized(inFlight) { item.id in inFlight }
-            if (ShelfCache.shouldFetch(f, shelfFiles.has(item.id), busy, connected, wifi)) request(item, force = false)
+            if (ShelfCache.shouldFetch(f, false, busy, connected, wifi)) request(item, force = false)
         }
+    }
+
+    /** A Shelf file transfer moved on: progress for the row's ring (0.5.4). */
+    fun transferProgress(r: TransferRecord) {
+        if (r.kind != FileKinds6.SHELF || r.direction != Direction.IN || r.size <= 0) return
+        val item = _shelf.value.items.firstOrNull { it.file?.sha256.equals(r.sha256, true) } ?: return
+        _progress.value = _progress.value + (item.id to (r.transferred.toFloat() / r.size).coerceIn(0f, 1f))
     }
 
     private fun request(item: ShelfItem, force: Boolean) {
@@ -589,15 +751,31 @@ class Features6(
             inFlight.remove(item.id)
             _fetching.value = inFlight.keys.toSet()
         }
+        _progress.value = _progress.value - item.id
         refreshLocal()
         val want = synchronized(wantedFiles) { wantedFiles.remove(item.id) }
         if (want != null) act(item, want)
     }
 
     companion object {
+        private const val ME = "phone"
         private const val FETCH_TIMEOUT_MS = 10 * 60_000L
         private const val ID_HOTSPOT = 7_101
         private const val AP_ACTION = "android.net.wifi.WIFI_AP_STATE_CHANGED"
         private const val AP_ENABLED = 13
+    }
+}
+
+/** Reads what still reads from a damaged Shelf file (0.5.4): each item, tombstone and folder on its own. */
+internal object ShelfDiskSalvage {
+    fun salvage(json: Json, text: String): ShelfState {
+        val root = runCatching { json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject }.getOrNull() ?: return ShelfState()
+        fun <T> list(key: String, s: kotlinx.serialization.KSerializer<T>): List<T> =
+            (root[key] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { e -> runCatching { json.decodeFromJsonElement(s, e) }.getOrNull() }
+                ?: emptyList()
+        return ShelfState(
+            list("items", ShelfItem.serializer()), list("tombs", ShelfTomb.serializer()),
+            list("folders", ShelfFolder.serializer()), list("folderTombs", ShelfTomb.serializer()),
+        )
     }
 }

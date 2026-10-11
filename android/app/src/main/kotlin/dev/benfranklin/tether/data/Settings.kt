@@ -76,6 +76,8 @@ data class AppSettings(
     val allowTyping: Boolean = true,
     /** Do Not Disturb follows the Mac's Focus, and the Mac sees this phone's DND. */
     val dndSync: Boolean = true,
+    /** 0.5.4 Settings › Shelf › Offline files: storage cap for automatic copies (bytes; 0 = Off). */
+    val shelfOfflineCap: Long = dev.benfranklin.tether.core.features.ShelfOffline.PHONE_DEFAULT,
     /** Images on the clipboard travel both ways. */
     val clipImages: Boolean = true,
     /** Check for updates when Tether opens (at most daily). */
@@ -109,6 +111,11 @@ data class AppSettings(
 /** App settings as a hot flow, persisted atomically on every change. */
 class SettingsRepository(context: Context) {
     private val file = JsonFile(File(context.filesDir, "settings.json"), AppSettings.serializer())
+    /**
+     * 0.5.4: settings were on disk before this launch, so this app was used before: a missing
+     * "What's new" version means an update from a build that never saved one, not a fresh install.
+     */
+    val existedBefore: Boolean = File(context.filesDir, "settings.json").exists()
     private val state = MutableStateFlow(file.read() ?: AppSettings())
 
     init {

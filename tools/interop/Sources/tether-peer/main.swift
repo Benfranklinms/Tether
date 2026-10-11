@@ -1,6 +1,6 @@
 // Mac-role (responder) Tether peer over stdin/stdout, for Kotlin<->Swift interop tests.
 //
-// args:   [maxFragment] [legacy]      ("legacy" announces only the 0.1.x caps)
+// args:   [maxFragment] [legacy|v03|v04|v053|future]  ("legacy" announces only the 0.1.x caps; v053 all but Shelf folders)
 // stdin:  "F <hex>"     BLE fragment from the phone
 //         "W <hex>"     Wi-Fi record from the phone
 //         "CONFIRM" | "CLIP <text>" | "QUIT"
@@ -96,15 +96,17 @@ let maxFragment = args.count > 1 ? Int(args[1]) ?? 182 : 182
 let legacy = args.contains("legacy")
 let v03 = args.contains("v03") // a 0.3.x Mac: revision 3 caps, no calling (0.4) caps
 let v04 = args.contains("v04") // a 0.4.x Mac: revision 4 caps, none of 0.5
+let v053 = args.contains("v053") // a 0.5.3 Mac: everything but revision 8 (Shelf folders)
 let future = args.contains("future") // a hypothetical protocol v2 build: must be refused cleanly
 let mem = Mem()
 let listener = L()
 controller = TetherController(role: .responder, identity: mem,
                               localHello: {
                                   let caps = legacy ? Caps.v1 : v03 ? Caps.current.filter { !Caps4.all.contains($0) && !Caps5.all.contains($0) }
-                                      : v04 ? Caps.current.filter { !Caps5.all.contains($0) } : Caps.current
+                                      : v04 ? Caps.current.filter { !Caps5.all.contains($0) }
+                                      : v053 ? Caps.current.filter { !Caps8.all.contains($0) } : Caps.current
                                   var h = Hello(name: "Alex’s MacBook Air", platform: "macos",
-                                                app: legacy ? "0.1.1" : v03 ? "0.3.1" : v04 ? "0.4.3" : "0.5.0", caps: caps)
+                                                app: legacy ? "0.1.1" : v03 ? "0.3.1" : v04 ? "0.4.3" : v053 ? "0.5.3" : "0.5.4", caps: caps)
                                   if future { h.v = 2 }
                                   return h
                               },

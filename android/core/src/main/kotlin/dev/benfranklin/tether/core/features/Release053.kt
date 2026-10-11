@@ -187,6 +187,16 @@ object ShelfCardText {
         val rest = lines.drop(1).joinToString("\n").trim()
         return Parts(if (first.length > t.length) first else title, rest)
     }
+
+    /**
+     * 0.5.4: the detail page's title and body. Text-like items use [split], so a snippet whose
+     * title came from its own first line no longer shows that line twice. Files and Wi-Fi keep
+     * their own title and body.
+     */
+    fun detail(item: dev.benfranklin.tether.core.proto.ShelfItem): Parts = when (item.kind) {
+        dev.benfranklin.tether.core.proto.ShelfKinds.FILE, dev.benfranklin.tether.core.proto.ShelfKinds.WIFI -> Parts(item.title, item.body)
+        else -> split(item.title, item.body)
+    }
 }
 
 // ---------------- Shelf file cache ----------------

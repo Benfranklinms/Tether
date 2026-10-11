@@ -960,6 +960,8 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             if (important && record.status.isFinal) {
                 v6.transferDone(record)
                 engine.execute { controller.removeTransfer(record.id) }
+            } else if (!record.status.isFinal) {
+                v6.transferProgress(record)
             }
             return
         }

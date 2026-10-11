@@ -112,6 +112,7 @@ import dev.benfranklin.tether.ui.screens.TransfersScreen
 import dev.benfranklin.tether.core.features.WhatsNewPolicy
 import dev.benfranklin.tether.ui.screens.ShelfDetailScreen
 import dev.benfranklin.tether.ui.screens.ShelfScreen
+import dev.benfranklin.tether.ui.screens.ShelfSettingsScreen
 import dev.benfranklin.tether.ui.screens.UpdateSheet
 import dev.benfranklin.tether.ui.screens.UpdateSheetModel
 import dev.benfranklin.tether.ui.screens.WhatsNewSheet
@@ -206,8 +207,9 @@ private fun TetherApp(rt: TetherRuntime) {
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         if (uris.isNotEmpty()) rt.sendFiles(uris)
     }
+    val shelfPickFolder = remember { arrayOfNulls<String>(1) }
     val shelfFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        uris.forEach(rt.v6::addFile)
+        uris.forEach { rt.v6.addFile(it, shelfPickFolder[0]) }
         if (uris.isNotEmpty()) rt.note(if (uris.size == 1) "Added to Shelf" else "Added ${uris.size} items to Shelf")
     }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -266,7 +268,9 @@ private fun TetherApp(rt: TetherRuntime) {
     var whatsNew by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val s = rt.settings.current
-        val used = s.onboardingDone || rt.ui.value.peer != null
+        // 0.5.4 fix: also when settings were already on disk (the peer may not be loaded yet this early,
+        // and older builds never set onboardingDone), so an upgrade is never mistaken for a fresh install.
+        val used = s.onboardingDone || rt.ui.value.peer != null || rt.settings.existedBefore
         when (WhatsNewPolicy.decide(BuildConfig.VERSION_NAME, s.whatsNewSeen, used)) {
             WhatsNewPolicy.Action.SHOW -> whatsNew = true
             WhatsNewPolicy.Action.RECORD -> rt.settings.update { it.copy(whatsNewSeen = BuildConfig.VERSION_NAME) }
@@ -336,11 +340,17 @@ private fun TetherApp(rt: TetherRuntime) {
     val shelfLocal by rt.v6.localFiles.collectAsStateWithLifecycle()
     val shelfFetching by rt.v6.fetching.collectAsStateWithLifecycle()
     val shelfConnected = state.link is LinkState.Connected && Caps6.SHELF in state.peerCaps
-    val shelfFiles = ShelfFilesUi(shelfLocal, shelfFetching, shelfConnected)
+    val shelfProgress by rt.v6.progress.collectAsStateWithLifecycle()
+    val shelfOffline by rt.v6.offline.collectAsStateWithLifecycle()
+    val shelfFiles = ShelfFilesUi(shelfLocal, shelfFetching, shelfConnected, shelfProgress)
     val shelfActions = remember(rt) { RuntimeShelfActions(ctx, rt) }
     val nav = rememberNavController()
     shelfActions.navigate = { id -> nav.navigate("shelf/$id") }
-    shelfActions.pickFile = { shelfFilePicker.launch(arrayOf("*/*")) }
+    shelfActions.pickFile = { folder ->
+        shelfPickFolder[0] = folder
+        shelfFilePicker.launch(arrayOf("*/*"))
+    }
+    shelfActions.navigateFolder = { id -> nav.navigate("shelf/folder/$id") }
     val reduce = LocalReduceMotion.current
     // iOS-style push: the new screen slides in from the right on a spring while the old one
     // drifts left by a third. Predictive back (Android 14+) scrubs the same animation.
@@ -502,6 +512,7 @@ private fun TetherApp(rt: TetherRuntime) {
                     override fun openSetup() = nav.navigate("setup")
                     override fun openMore5() = nav.navigate("more5")
                     override fun openShelf() = nav.navigate("shelf")
+                    override fun openShelfSettings() = nav.navigate("shelfsettings")
                     override fun openHotspot() = nav.navigate("hotspot")
                     override fun setupSummary() = setupSummary(setupRows(ctx))
                 },
@@ -538,9 +549,38 @@ private fun TetherApp(rt: TetherRuntime) {
           CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
             ShelfScreen(
                 items = shelf.ordered, connected = shelfConnected,
-                a = shelfActions, onBack = { nav.popBackStack() }, files = shelfFiles,
+                a = shelfActions, onBack = { nav.popBackStack() }, files = shelfFiles, folders = shelf.orderedFolders,
             )
           }
+        }
+        composable("shelf/folder/{fid}") { entry ->
+          CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
+            val fid = entry.arguments?.getString("fid")
+            // A folder deleted (here or on the Mac) while its page is open: back to the Shelf.
+            var left by remember { mutableStateOf(false) }
+            LaunchedEffect(fid, shelf.folders) {
+                if (!left && shelf.folders.none { it.id == fid }) {
+                    left = true
+                    nav.popBackStack()
+                }
+            }
+            ShelfScreen(
+                items = shelf.ordered, connected = shelfConnected,
+                a = shelfActions, onBack = { nav.popBackStack() }, files = shelfFiles, folders = shelf.orderedFolders, folderId = fid,
+            )
+          }
+        }
+        composable("shelfsettings") {
+            ShelfSettingsScreen(
+                used = shelfOffline.used, cap = settings.shelfOfflineCap,
+                onCap = { c ->
+                    rt.settings.update { it.copy(shelfOfflineCap = c) }
+                    rt.v6.offlineChanged()
+                },
+                onRemoveCopies = rt.v6::removeOfflineCopies,
+                onOpenShelf = { nav.navigate("shelf") },
+                onBack = { nav.popBackStack() },
+            )
         }
         composable("shelf/{id}") { entry ->
           CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
@@ -764,9 +804,22 @@ private fun updateOffered(st: dev.benfranklin.tether.v5.Updater.State): dev.benf
 /** Shelf actions backed by the runtime; [navigate] and [pickFile] are set by the composable that owns the NavController. */
 private class RuntimeShelfActions(private val ctx: Context, private val rt: TetherRuntime) : ShelfActions {
     var navigate: (String) -> Unit = {}
-    var pickFile: () -> Unit = {}
+    var navigateFolder: (String) -> Unit = {}
+    var pickFile: (String?) -> Unit = {}
     override fun addText(text: String) = rt.v6.addText(text)
-    override fun addFile() = pickFile()
+    override fun addFile() = pickFile(null)
+    override fun addTextTo(text: String, folderId: String?) = rt.v6.addText(text, folderId)
+    override fun addFileTo(folderId: String?) = pickFile(folderId)
+    override fun moveWithin(folderId: String?, id: String, to: Int) = rt.v6.moveWithin(folderId, id, to)
+    override fun createFolder(name: String): String? = rt.v6.createFolder(name)
+    override fun renameFolder(id: String, name: String): Boolean = rt.v6.renameFolder(id, name)
+    override fun deleteFolder(id: String) = rt.v6.deleteFolder(id)
+    override fun moveTo(itemId: String, folderId: String?): Boolean = rt.v6.moveTo(itemId, folderId)
+    override fun openFolder(id: String) = navigateFolder(id)
+    override fun keepOffline(itemId: String) = rt.v6.toggleKeepOffline(itemId)
+    override fun keepFolderOffline(folderId: String) = rt.v6.toggleKeepFolderOffline(folderId)
+    override fun keptOffline(item: dev.benfranklin.tether.core.proto.ShelfItem): Boolean = rt.v6.keptOffline(item)
+    override fun folderKeptOffline(folderId: String): Boolean = folderId in rt.v6.offline.value.pins.folders
     override fun pasteText(): String? = readClipboardText(ctx)
     override fun remove(id: String) = rt.v6.remove(id)
     override fun restore(item: dev.benfranklin.tether.core.proto.ShelfItem) = rt.v6.restore(item)

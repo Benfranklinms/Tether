@@ -49,7 +49,7 @@ final class Redesign053Tests: XCTestCase {
         let pdf = ShelfFile(name: "Set.pdf", size: 454_000, mime: "application/pdf", sha256: "0", owner: "mac")
         XCTAssertEqual(ShelfMeta.lines(item(ShelfKinds.file, "Set.pdf", file: pdf), size: kb).detail, "PDF · 454 KB")
         XCTAssertEqual(ShelfMeta.lines(item(ShelfKinds.file, "Set.pdf", file: pdf), size: kb, missing: true).detail,
-                       "PDF · 454 KB · Not downloaded")
+                       "PDF · 454 KB · Available when connected")
         XCTAssertEqual(ShelfMeta.lines(item(ShelfKinds.link, "Titan", body: "https://forms.gle/x7Tq2"), size: kb).detail, "forms.gle")
         XCTAssertEqual(ShelfMeta.lines(item(ShelfKinds.wifi, "MEC_Lab_5G", secret: "pw"), size: kb).detail, "Wi-Fi · •••••••••")
         let s = ShelfMeta.lines(item(ShelfKinds.snippet, "adb mdns services", body: "adb mdns services\nadb connect 1.2.3.4"), size: kb)

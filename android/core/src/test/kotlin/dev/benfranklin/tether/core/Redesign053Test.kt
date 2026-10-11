@@ -182,7 +182,7 @@ class Redesign053Test {
     @Test fun rowLinesNeverRepeatTheTitle() {
         assertEquals("PDF · 454 KB", ShelfMeta.lines(item("1", ShelfKinds.FILE, "Set.pdf", file = file("Set.pdf", 454_000, "application/pdf")), kb).second)
         assertEquals(
-            "Word · 11 KB · Not downloaded",
+            "Word · 11 KB · Available when connected",
             ShelfMeta.lines(item("1", ShelfKinds.FILE, "q.docx", file = file("q.docx", 11_000, "")), kb, missing = true).second,
         )
         assertEquals("forms.gle", ShelfMeta.lines(item("2", ShelfKinds.LINK, "Titan Engineering registration", "https://forms.gle/x7Tq2"), kb).second)

@@ -25,6 +25,7 @@ public enum Caps {
         all += Caps5.all
         all += Caps6.all
         all += Caps7.all
+        all += Caps8.all
         return all
     }()
 }

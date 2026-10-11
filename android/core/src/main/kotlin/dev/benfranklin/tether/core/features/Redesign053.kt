@@ -272,7 +272,7 @@ object ShelfMeta {
         ShelfKinds.FILE -> {
             val f = item.file
             item.title to if (f == null) "File" else {
-                listOfNotNull(kind(f.mime, f.name), sizeLabel(f.size), "Not downloaded".takeIf { missing }).joinToString(" · ")
+                listOfNotNull(kind(f.mime, f.name), sizeLabel(f.size), ShelfOffline.AWAY.takeIf { missing }).joinToString(" · ")
             }
         }
         ShelfKinds.WIFI -> item.title to (if (item.secret.isNullOrEmpty()) "Wi-Fi · Open" else "Wi-Fi · " + "•".repeat(SECRET_DOTS))

@@ -114,6 +114,8 @@ interface SettingsActions {
     fun openSetup() = Unit
     fun openMore5() = Unit
     fun openShelf() = Unit
+    /** 0.5.4 Settings › Shelf (offline files); the Shelf itself before. */
+    fun openShelfSettings() = openShelf()
     fun openHotspot() = Unit
     /** "12 of 16 ready" for the setup row. */
     fun setupSummary(): String = ""
@@ -150,7 +152,7 @@ fun SettingsScreen(
                             "Continue, files & updates", null, subtitle = "Continue on Mac, phone files, updates", onClick = a::openMore5,
                         )
                         Divider()
-                        NavRow("Shelf", null, subtitle = "Links, Wi-Fi, addresses and notes, synced with your Mac", onClick = a::openShelf)
+                        NavRow("Shelf", null, subtitle = "Synced with your Mac · offline files", onClick = a::openShelfSettings)
                         Divider()
                         NavRow(
                             "Instant Hotspot", if (s.allowHotspot) "On" else "Off",

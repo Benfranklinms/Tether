@@ -28,7 +28,9 @@ import java.security.SecureRandom
 class ShelfFiles(private val app: Context) {
     private val store = File(app.filesDir, "shelf-store").apply { mkdirs() }
     private val openDir = File(app.cacheDir, "shelf-open")
-    private val thumbs = LruCache<String, Bitmap>(24)
+    /** 0.5.4: small sealed JPEG thumbnails, kept when the copy itself is dropped (an evicted photo keeps its picture). */
+    private val thumbDir = File(app.filesDir, "shelf-thumbs").apply { mkdirs() }
+    private val thumbs = LruCache<String, Bitmap>(96)
 
     @Volatile private var keyBytes: ByteArray? = null
 
@@ -95,13 +97,23 @@ class ShelfFiles(private val app: Context) {
         }
     }
 
-    /** A small picture for an image item, decoded from the local copy (null when it isn't one or isn't here). */
+    private fun thumbFile(id: String) = File(thumbDir, "$id.tsf")
+
+    /**
+     * A small picture for an image item: memory cache, then the sealed thumbnail on disk (which
+     * survives eviction of the copy), then decoded from the local copy and saved. Off the main thread only.
+     */
     fun thumbnail(item: ShelfItem, px: Int = 160): Bitmap? {
         val f = item.file ?: return null
-        if (!FileKinds.isImage(f.mime, f.name) || !has(item.id)) return null
+        if (!FileKinds.isImage(f.mime, f.name)) return null
         val key = item.id + "|" + f.sha256
         thumbs.get(key)?.let { return it }
         val k = key() ?: return null
+        savedThumb(item.id, k)?.let {
+            thumbs.put(key, it)
+            return it
+        }
+        if (!has(item.id)) return null
         val tmp = File(app.cacheDir, "shelf-thumb-${item.id}")
         return try {
             blob(item.id).inputStream().use { input -> tmp.outputStream().use { ChunkSeal.decrypt(input, it, k) } }
@@ -109,7 +121,10 @@ class ShelfFiles(private val app: Context) {
             BitmapFactory.decodeFile(tmp.path, bounds)
             var sample = 1
             while (bounds.outWidth / (sample * 2) >= px && bounds.outHeight / (sample * 2) >= px) sample *= 2
-            BitmapFactory.decodeFile(tmp.path, BitmapFactory.Options().apply { inSampleSize = sample })?.also { thumbs.put(key, it) }
+            BitmapFactory.decodeFile(tmp.path, BitmapFactory.Options().apply { inSampleSize = sample })?.also {
+                thumbs.put(key, it)
+                saveThumb(item.id, it, k)
+            }
         } catch (e: Exception) {
             Log.w("shelf.thumb_failed", "error" to e.javaClass.simpleName)
             null
@@ -118,8 +133,49 @@ class ShelfFiles(private val app: Context) {
         }
     }
 
+    private fun savedThumb(id: String, k: ByteArray): Bitmap? {
+        val t = thumbFile(id)
+        if (!t.exists()) return null
+        return try {
+            val out = java.io.ByteArrayOutputStream()
+            t.inputStream().use { ChunkSeal.decrypt(it, out, k) }
+            val bytes = out.toByteArray()
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } catch (e: Exception) {
+            t.delete()
+            null
+        }
+    }
+
+    private fun saveThumb(id: String, bmp: Bitmap, k: ByteArray) {
+        try {
+            val jpeg = java.io.ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.JPEG, THUMB_QUALITY, jpeg)
+            val tmp = File(thumbDir, "$id.tmp")
+            tmp.outputStream().use { ChunkSeal.encrypt(jpeg.toByteArray().inputStream(), it, k) }
+            tmp.renameTo(thumbFile(id))
+        } catch (e: Exception) {
+            Log.w("shelf.thumb_save_failed", "error" to e.javaClass.simpleName)
+        }
+    }
+
+    /** Bytes held by offline copies (sealed blobs; thumbnails are tiny and not counted). */
+    fun usedBytes(): Long = store.listFiles()?.filter { it.name.endsWith(".tsf") }?.sumOf { it.length() } ?: 0L
+
+    /** Size of one local copy (0 when absent). */
+    fun size(id: String): Long = blob(id).length()
+
+    /**
+     * Drops the offline copy but keeps the item's thumbnail (eviction / "Remove offline copies").
+     * A plain copy another app may still be reading (opened / shared) stays until the next launch.
+     */
+    fun evict(id: String) {
+        blob(id).delete()
+    }
+
     fun remove(id: String) {
         blob(id).delete()
+        thumbFile(id).delete()
         File(openDir, id).deleteRecursively()
         thumbs.evictAll()
     }
@@ -130,6 +186,7 @@ class ShelfFiles(private val app: Context) {
             val id = f.name.removeSuffix(".tmp").removeSuffix(".tsf")
             if (id !in live || f.name.endsWith(".tmp")) f.delete()
         }
+        thumbDir.listFiles()?.forEach { f -> if (f.name.removeSuffix(".tmp").removeSuffix(".tsf") !in live || f.name.endsWith(".tmp")) f.delete() }
     }
 
     fun clearOpened() {
@@ -160,5 +217,6 @@ class ShelfFiles(private val app: Context) {
 
     companion object {
         private const val KEY_PREF = "shelf_file_key"
+        private const val THUMB_QUALITY = 80
     }
 }

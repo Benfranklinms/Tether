@@ -182,9 +182,11 @@ public struct ShelfItem: Codable, Equatable, Hashable, Identifiable {
     public var updated: Int64
     public var order: Double
     public var file: ShelfFile?
+    /// Revision 8 (0.5.4, cap "shelffolders"): the folder this item is in; nil = loose. Older builds ignore it.
+    public var folderId: String?
 
     public init(id: String, kind: String, title: String, body: String = "", secret: String? = nil, from: String, created: Int64,
-                updated: Int64, order: Double, file: ShelfFile? = nil) {
+                updated: Int64, order: Double, file: ShelfFile? = nil, folderId: String? = nil) {
         self.id = id
         self.kind = kind
         self.title = title
@@ -195,9 +197,10 @@ public struct ShelfItem: Codable, Equatable, Hashable, Identifiable {
         self.updated = updated
         self.order = order
         self.file = file
+        self.folderId = folderId
     }
 
-    enum CodingKeys: String, CodingKey { case id, kind, title, body, secret, from, created, updated, order, file }
+    enum CodingKeys: String, CodingKey { case id, kind, title, body, secret, from, created, updated, order, file, folderId }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -210,7 +213,8 @@ public struct ShelfItem: Codable, Equatable, Hashable, Identifiable {
         created = try c.decode(Int64.self, forKey: .created)
         updated = try c.decode(Int64.self, forKey: .updated)
         order = try c.decode(Double.self, forKey: .order)
-        file = try c.decodeIfPresent(ShelfFile.self, forKey: .file)
+        file = try? c.decodeIfPresent(ShelfFile.self, forKey: .file)
+        folderId = try? c.decodeIfPresent(String.self, forKey: .folderId)
     }
 }
 
@@ -227,20 +231,28 @@ public struct ShelfSyncPayload: Codable, Equatable {
     public var items: [ShelfItem]
     public var removed: [ShelfTomb]
     public var full: Bool
+    /// Revision 8 (0.5.4, cap "shelffolders").
+    public var folders: [ShelfFolder]
+    public var removedFolders: [ShelfTomb]
 
-    public init(items: [ShelfItem] = [], removed: [ShelfTomb] = [], full: Bool = false) {
+    public init(items: [ShelfItem] = [], removed: [ShelfTomb] = [], full: Bool = false, folders: [ShelfFolder] = [],
+                removedFolders: [ShelfTomb] = []) {
         self.items = items
         self.removed = removed
         self.full = full
+        self.folders = folders
+        self.removedFolders = removedFolders
     }
 
-    enum CodingKeys: String, CodingKey { case items, removed, full }
+    enum CodingKeys: String, CodingKey { case items, removed, full, folders, removedFolders }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         items = try c.decodeIfPresent([ShelfItem].self, forKey: .items) ?? []
         removed = try c.decodeIfPresent([ShelfTomb].self, forKey: .removed) ?? []
         full = try c.decodeIfPresent(Bool.self, forKey: .full) ?? false
+        folders = (try? c.decodeIfPresent([ShelfFolder].self, forKey: .folders)) ?? []
+        removedFolders = (try? c.decodeIfPresent([ShelfTomb].self, forKey: .removedFolders)) ?? []
     }
 }
 
