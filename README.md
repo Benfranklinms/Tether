@@ -19,11 +19,6 @@
   <img src="docs/launch.webp" width="100%" alt="Tether in action: the phone and the Mac linked over Bluetooth">
 </p>
 
-<p align="center">
-  <img src="docs/screenshots/mac/main-home.png" width="49%" alt="Tether on the Mac in Dark mode: sidebar with Home, Messages, Calls, Notifications, Files, Photos, Shelf, Phone screen and Clipboard; Home shows a one-time code, Continue on Mac cards and quick actions">
-  <img src="docs/screenshots/mac/main-home-light.png" width="49%" alt="The same Home page in Light mode">
-</p>
-
 Tether brings your Android phone to your Mac: texts, calls, notifications you can reply to, your phone's files and photos, one-time codes on the clipboard, clipboard sync, media controls and screen mirroring. The two devices talk to each other over Bluetooth LE, with a direct Wi-Fi fast path when they share a network, end-to-end encrypted with the Noise protocol. Nothing goes through a server.
 
 **Why Tether:** it works over Bluetooth, so the phone and the Mac don't need to share a Wi-Fi network; Wi-Fi is only used, when it's there, to make big things faster. And it's free and open source.
