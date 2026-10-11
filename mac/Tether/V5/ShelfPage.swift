@@ -394,10 +394,16 @@ struct ShelfCard: View {
             ShelfLeading(item: item, state: m.shelfState(item), size: 46)
             VStack(alignment: .leading, spacing: 4) {
                 ShelfTitle(item: item, shown: lines.title).hero("s-title-\(item.id)", in: hero, active: heroActive)
-                Text(lines.detail).font(Typo.sans(13)).foregroundColor(Mono.muted).lineLimit(1).truncationMode(.tail)
+                // Detail and the trailing "Phone · 1h" share one row, so a long detail truncates
+                // before the meta instead of running into it.
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(lines.detail).font(Typo.sans(13)).foregroundColor(Mono.muted).lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 0)
+                    trailingMeta.transition(.opacity)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.trailing, hover ? 150 : 0)
-            Spacer(minLength: 8)
         }
         .padding(.horizontal, 20).padding(.vertical, 18)
         .frame(minHeight: 84)
@@ -406,24 +412,6 @@ struct ShelfCard: View {
                 ShelfHoverActions(item: item).padding(.top, 14).padding(.trailing, 14)
                     .transition(reduce ? .opacity : .scale(scale: 0.85, anchor: .trailing).combined(with: .opacity))
             }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            Group {
-                if editing {
-                    HStack(spacing: 6) {
-                        Text("Save").font(Typo.sans(11)).foregroundColor(Mono.muted)
-                        Text("⏎").font(Typo.mono(10)).foregroundColor(Mono.muted)
-                            .padding(.horizontal, 5).padding(.vertical, 1).overlay(RoundedRectangle(cornerRadius: 4).stroke(Mono.line))
-                    }
-                } else if !hover {
-                    TimelineView(.periodic(from: .now, by: 30)) { ctx in
-                        Text(ShelfMeta.source(item) + " · " + When.short(item.created, now: Int64(ctx.date.timeIntervalSince1970 * 1000)))
-                            .font(Typo.sans(11)).foregroundColor(Mono.muted)
-                    }
-                }
-            }
-            .padding(.trailing, 20).padding(.bottom, 16)
-            .transition(.opacity)
         }
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous).fill(hover || selected ? Mono.surfaceHigh : Mono.surface)
@@ -444,6 +432,24 @@ struct ShelfCard: View {
         .onHover { hover = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(lines.title), \(lines.detail), from \(ShelfMeta.source(item))")
+    }
+
+    /// "Save ⏎" while renaming, else "Phone · 1h" (hidden while the hover actions show).
+    @ViewBuilder private var trailingMeta: some View {
+        if editing {
+            HStack(spacing: 6) {
+                Text("Save").font(Typo.sans(11)).foregroundColor(Mono.muted)
+                Text("⏎").font(Typo.mono(10)).foregroundColor(Mono.muted)
+                    .padding(.horizontal, 5).padding(.vertical, 1).overlay(RoundedRectangle(cornerRadius: 4).stroke(Mono.line))
+            }
+            .fixedSize()
+        } else if !hover {
+            TimelineView(.periodic(from: .now, by: 30)) { ctx in
+                Text(ShelfMeta.source(item) + " · " + When.short(item.created, now: Int64(ctx.date.timeIntervalSince1970 * 1000)))
+                    .font(Typo.sans(11)).foregroundColor(Mono.muted).lineLimit(1)
+            }
+            .fixedSize()
+        }
     }
 
     /// "11 KB · Word document" (0.5.3: friendly kinds, not MIME types), plus "Not downloaded yet"
