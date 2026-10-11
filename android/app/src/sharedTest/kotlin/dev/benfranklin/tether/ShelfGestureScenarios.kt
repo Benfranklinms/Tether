@@ -9,12 +9,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.test.click
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import dev.benfranklin.tether.core.proto.ShelfFolder
@@ -143,7 +144,7 @@ object ShelfGestureScenarios {
         rule.onNodeWithText("Move to…").performClick()
         rule.waitForIdle()
         rule.onNodeWithText("Move to").assertExists()
-        rule.onNodeWithContentDescription("Trip").performClick()
+        rule.onNodeWithContentDescription("Trip").performSemanticsAction(SemanticsActions.OnClick)
         rule.waitForIdle()
         check(a.moves == listOf("s2" to "f2")) { "Move to sheet moved ${a.moves}" }
         // Again, this time into a new folder made from the sheet.
@@ -151,11 +152,10 @@ object ShelfGestureScenarios {
         rule.waitForIdle()
         rule.onNodeWithText("Move to…").performClick()
         rule.waitForIdle()
-        rule.onNodeWithText("New folder").performClick()
+        rule.onNodeWithText("New folder").performSemanticsAction(SemanticsActions.OnClick)
         rule.waitForIdle()
-        rule.onNodeWithContentDescription("Folder name").performTouchInput { click() }
         rule.onNodeWithContentDescription("Folder name").performTextInput("Receipts")
-        rule.onNodeWithText("Create").performClick()
+        rule.onNodeWithText("Create").performSemanticsAction(SemanticsActions.OnClick)
         rule.waitForIdle()
         check(a.created == listOf("Receipts")) { "created ${a.created}" }
         check(a.moves.last() == ("s2" to "new-1")) { "new folder move ${a.moves}" }

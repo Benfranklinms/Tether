@@ -214,28 +214,32 @@ private fun FolderChip(
     }
 }
 
-/** Long-press menu on a chip (or the "…" on a folder page): Rename, Keep offline, Delete folder. */
+/**
+ * Long-press menu on a chip (or the "…" on a folder page): Rename, Keep offline, Delete folder.
+ * Each action runs before the menu is dismissed: the chip row's callbacks read the folder from the
+ * same state the dismiss clears (0.5.4 bug: Delete / Rename from a chip did nothing).
+ */
 @Composable
 fun FolderMenu(
     folder: ShelfFolder?, kept: Boolean, onDismiss: () -> Unit, onRename: () -> Unit, onKeep: () -> Unit, onDelete: () -> Unit,
 ) {
     DropdownMenu(expanded = folder != null, onDismissRequest = onDismiss) {
         DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, onClick = {
-            onDismiss()
             onRename()
+            onDismiss()
         })
         DropdownMenuItem(
             text = { Text("Keep offline") },
             leadingIcon = { Icon(Icons.Outlined.OfflinePin, null) },
             trailingIcon = { Icon(Icons.Outlined.Check, null, tint = if (kept) Mono.Text else Mono.Bg.copy(alpha = 0f)) },
             onClick = {
-                onDismiss()
                 onKeep()
+                onDismiss()
             },
         )
         DropdownMenuItem(text = { Text("Delete folder") }, leadingIcon = { Icon(Icons.Outlined.Delete, null) }, onClick = {
-            onDismiss()
             onDelete()
+            onDismiss()
         })
     }
 }

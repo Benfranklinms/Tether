@@ -344,7 +344,8 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         radioRestarts++
         Log.w(
             "radio.restart", "reason" to reason, "attempt" to watchdog.attempts, "total" to radioRestarts,
-            "wifi" to controller.wifiReady, "stage" to state.value.diag.stage.name, "nextS" to watchdog.thresholdMs(interactive()) / MS_PER_S,
+            "wifi" to controller.wifiReady, "stage" to state.value.diag.stage.name,
+            "nextS" to watchdog.thresholdMs(interactive()) / MS_PER_S,
         )
         if (!controller.wifiReady) stopWifi()
         central.hardRestart(reason)
