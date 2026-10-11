@@ -27,10 +27,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * In-app updates. Default source: the public Tether GitHub releases (an optional
- * fine-grained read-only token kept in [TokenStore], Keystore-encrypted, raises the API rate limit). Optional alternative: a
- * custom public https feed (tether-update.json). Downloads the APK over HTTPS, verifies its SHA-256 (when the
- * source provides one), its package name, that it is newer, and that it is signed with the
+ * In-app updates from Tether's public GitHub releases (no token, no custom feed since 0.5.3).
+ * Downloads the APK over HTTPS, verifies its SHA-256 (when GitHub provides one), its package name, that it is newer, and that it is signed with the
  * same certificate as the installed app, then hands it to Android's package installer
  * (REQUEST_INSTALL_PACKAGES; Android asks the user to confirm).
  */
@@ -43,65 +41,47 @@ class Updater(private val context: Context) {
         data class Downloading(val info: UpdateInfo, val progress: Float) : State
         data class Installing(val info: UpdateInfo) : State
         data class Failed(val reason: String) : State
-        /** No token saved and no custom feed: "Add a GitHub token to check for updates". */
-        data object NeedsToken : State
+    }
+
+    init {
+        Thread({ purgeLegacyToken(context) }, "tether-update-purge").start()
     }
 
     private val state = MutableStateFlow<State>(State.Idle)
     val status: StateFlow<State> = state.asStateFlow()
 
-    /** The source: a custom https feed when set, else the private releases API. */
-    fun sources(custom: String?): List<String> =
-        listOf(custom?.trim()?.takeIf { it.startsWith("https://") } ?: GitHubReleases.LATEST_URL)
-
-    /** Token for api.github.com requests (never with a custom feed). */
-    private fun token(custom: String?): String? =
-        if (custom?.trim()?.startsWith("https://") == true) null else TokenStore.read(context)
-
-    fun check(custom: String?, done: ((State) -> Unit)? = null) {
+    fun check(done: ((State) -> Unit)? = null) {
         if (state.value is State.Checking || state.value is State.Downloading) return
         state.value = State.Checking
         Thread({
-            val result = runCheck(custom)
+            val result = runCheck()
             state.value = result
             Log.i("update.check", "result" to result::class.simpleName)
             done?.invoke(result)
         }, "tether-update").start()
     }
 
-    private fun runCheck(custom: String?): State {
-        val token = token(custom)
-        val errors = ArrayList<String>()
-        for (src in sources(custom)) {
-            try {
-                val text = get(src, token)
-                val info = UpdateFeed.parse(text) ?: run {
-                    errors += "${host(src)}: not an update feed"
-                    null
-                } ?: continue
-                return if (Versions.newer(info.version, BuildConfig.VERSION_NAME) && info.android != null) {
-                    State.Available(info)
-                } else {
-                    State.UpToDate(info.version)
-                }
-            } catch (e: IOException) {
-                errors += "${host(src)}: ${e.message ?: "unreachable"}"
-            }
+    private fun runCheck(): State = try {
+        val info = UpdateFeed.parse(get(GitHubReleases.LATEST_URL)) ?: throw IOException("GitHub sent no release")
+        if (Versions.newer(info.version, BuildConfig.VERSION_NAME) && info.android != null) {
+            State.Available(info)
+        } else {
+            State.UpToDate(info.version)
         }
-        return State.Failed(errors.joinToString("; ").take(MAX_REASON).ifEmpty { "No update source answered" })
+    } catch (e: IOException) {
+        State.Failed((e.message ?: "GitHub is unreachable").take(MAX_REASON))
     }
 
-    fun download(info: UpdateInfo, custom: String? = null) {
+    fun download(info: UpdateInfo) {
         val asset = info.android ?: return
-        val token = token(custom)
-        val url = asset.apiUrl?.takeIf { token != null } ?: asset.url
+        val url = asset.url
         state.value = State.Downloading(info, 0f)
         Thread({
             try {
                 val dir = File(context.cacheDir, "updates").apply { mkdirs() }
                 dir.listFiles()?.forEach { it.delete() }
                 val apk = File(dir, "Tether-${info.version}.apk")
-                val sha = fetch(url, token, apk) { p -> state.value = State.Downloading(info, p) }
+                val sha = fetch(url, apk) { p -> state.value = State.Downloading(info, p) }
                 asset.sha256?.let { if (!it.equals(sha, ignoreCase = true)) throw IOException("checksum mismatch") }
                 verifyArchive(apk, asset.versionCode)
                 state.value = State.Installing(info)
@@ -166,8 +146,8 @@ class Updater(private val context: Context) {
         state.value = State.Failed(reason)
     }
 
-    private fun get(url: String, token: String?): String {
-        val c = open(url, token, binary = false)
+    private fun get(url: String): String {
+        val c = open(url, binary = false)
         try {
             val code = c.responseCode
             if (code != HttpURLConnection.HTTP_OK) throw IOException(GitHubReleases.explain(code))
@@ -177,8 +157,8 @@ class Updater(private val context: Context) {
         }
     }
 
-    private fun fetch(url: String, token: String?, to: File, progress: (Float) -> Unit): String {
-        val c = open(url, token, binary = true)
+    private fun fetch(url: String, to: File, progress: (Float) -> Unit): String {
+        val c = open(url, binary = true)
         val md = MessageDigest.getInstance("SHA-256")
         try {
             if (c.responseCode != HttpURLConnection.HTTP_OK) throw IOException(GitHubReleases.explain(c.responseCode))
@@ -204,11 +184,8 @@ class Updater(private val context: Context) {
         return Hex.encode(md.digest())
     }
 
-    /**
-     * Opens [url], following redirects by hand: the Authorization header goes only to
-     * api.github.com (GitHubReleases.headers), so the asset CDN never sees the token.
-     */
-    private fun open(url: String, token: String?, binary: Boolean): HttpURLConnection {
+    /** Opens [url], following redirects by hand so every hop is checked to be HTTPS. */
+    private fun open(url: String, binary: Boolean): HttpURLConnection {
         var current = url
         repeat(MAX_REDIRECTS) {
             if (!current.startsWith("https://")) throw IOException("refusing a non-HTTPS URL")
@@ -217,7 +194,7 @@ class Updater(private val context: Context) {
                 readTimeout = TIMEOUT_MS
                 instanceFollowRedirects = false
                 setRequestProperty("User-Agent", "Tether-Android/${BuildConfig.VERSION_NAME}")
-                GitHubReleases.headers(current, token, binary).forEach { (k, v) -> setRequestProperty(k, v) }
+                GitHubReleases.headers(binary).forEach { (k, v) -> setRequestProperty(k, v) }
             }
             val code = c.responseCode
             if (code !in REDIRECTS) return c
@@ -228,8 +205,6 @@ class Updater(private val context: Context) {
         throw IOException("too many redirects")
     }
 
-    private fun host(u: String) = runCatching { URL(u).host }.getOrDefault(u)
-
     companion object {
         const val GITHUB_API = GitHubReleases.LATEST_URL
         private const val MAX_REDIRECTS = 5
@@ -239,6 +214,22 @@ class Updater(private val context: Context) {
         private const val MAX_APK = 200L * 1024 * 1024
         private const val MAX_REASON = 240
         @Volatile var instance: Updater? = null
+
+        /**
+         * 0.5.0–0.5.2 could keep a GitHub token (Keystore key "tether.github-token", encrypted in
+         * prefs "tether_secure" › "github_token"). Updates no longer use one: delete both.
+         */
+        fun purgeLegacyToken(c: Context) {
+            c.getSharedPreferences("tether_secure", Context.MODE_PRIVATE).edit().remove("github_token").apply()
+            try {
+                val ks = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+                if (ks.containsAlias("tether.github-token")) ks.deleteEntry("tether.github-token")
+            } catch (e: java.security.GeneralSecurityException) {
+                Log.w("update.legacy_token_purge_failed", "error" to e.javaClass.simpleName)
+            } catch (e: IOException) {
+                Log.w("update.legacy_token_purge_failed", "error" to e.javaClass.simpleName)
+            }
+        }
     }
 }
 

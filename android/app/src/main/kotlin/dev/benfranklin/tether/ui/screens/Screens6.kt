@@ -2,6 +2,7 @@
 
 package dev.benfranklin.tether.ui.screens
 
+import dev.benfranklin.tether.ui.screenPadding
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -393,7 +394,7 @@ fun HotspotScreen(
         }
     }
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Instant Hotspot", onBack) }) { pad ->
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding(), bottom = 40.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(pad)) {
             item {
                 Text(
                     "When your Mac has no Wi-Fi it can ask this phone for its hotspot. Android doesn't let apps read the " +

@@ -4,6 +4,20 @@ import TetherCore
 
 /// Sample 0.5.0 data for --demo and the CI screenshots.
 enum Demo5 {
+    /// 0.5.3: file cards show a friendly kind, not their MIME type.
+    static func demoShelfFiles(_ start: ShelfState, now t: Int64) -> ShelfState {
+        var shelf = start
+        let files: [(String, Int64, String)] = [
+            ("Quiz_answer_script.docx", 11_264, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            ("Aptitude Practice Set 15.pdf", 464_896, "application/pdf"),
+        ]
+        for (i, f) in files.enumerated() {
+            let file = ShelfFile(name: f.0, size: f.1, mime: f.2, sha256: "demo\(i)", owner: "mac")
+            shelf = shelf.add(ShelfState.fileItem(file, id: "demo-file-\(i)", from: "mac", now: t - Int64(i + 1) * 60_000))
+        }
+        return shelf
+    }
+
     static func load(_ m: AppModel) {
         guard m.peer != nil else { return }
         let t = Demo.now()
@@ -21,7 +35,7 @@ enum Demo5 {
         for (i, s) in samples.enumerated() {
             shelf = shelf.add(ShelfState.item(from: s.0, id: "demo-\(i)", from: s.1, now: t - s.2))
         }
-        v.shelf = shelf
+        v.shelf = demoShelfFiles(shelf, now: t)
         v.otp = OtpPayload(code: "482913", app: "Messages", src: "sms", ts: t - 20_000)
         _ = v.continueCards.add(ContinuePayload(id: "p1", kind: ContinueKinds.photo, title: "IMG_20261010_163210.jpg",
                                                 subtitle: "Just now · 3.1 MB", root: FsRoots.dcim, path: "Camera/IMG_20261010_163210.jpg",
@@ -78,7 +92,6 @@ enum Demo5 {
             PermInfo(id: "sensitive", label: "Sensitive notifications (adb)", ok: false),
         ], sdk: 35, ts: t)
         v.setupGate = SetupHomeGate()
-        v.update.tokenSet = false
         v.update.phase = .idle
     }
 

@@ -1,0 +1,25 @@
+{
+  "comment": "FileKinds.describe / isImage (0.5.3). Shared by android/core Release053Test and mac TetherCore Release053Tests.",
+  "cases": [
+    {"mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "name": "PES_quiz_answer_script.docx", "kind": "Word document", "image": false},
+    {"mime": "application/pdf", "name": "General Aptitude Practice Set 15 Questions.pdf", "kind": "PDF", "image": false},
+    {"mime": "application/octet-stream", "name": "Resume.PDF", "kind": "PDF", "image": false},
+    {"mime": "image/jpeg", "name": "IMG_20261010_163210.jpg", "kind": "JPEG image", "image": true},
+    {"mime": "image/jpeg", "name": "photo", "kind": "JPEG image", "image": true},
+    {"mime": "image/png", "name": "Screenshot.png", "kind": "PNG image", "image": true},
+    {"mime": "application/octet-stream", "name": "IMG_0001.HEIC", "kind": "HEIC image", "image": true},
+    {"mime": "image/svg+xml", "name": "logo.svg", "kind": "SVG image", "image": false},
+    {"mime": "image/x-unknown", "name": "frame", "kind": "Image", "image": true},
+    {"mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "name": "marks.xlsx", "kind": "Excel spreadsheet", "image": false},
+    {"mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation", "name": "deck.pptx", "kind": "PowerPoint presentation", "image": false},
+    {"mime": "video/mp4", "name": "clip.mp4", "kind": "MP4 video", "image": false},
+    {"mime": "video/x-matroska", "name": "movie", "kind": "Video", "image": false},
+    {"mime": "audio/mpeg", "name": "song.mp3", "kind": "MP3 audio", "image": false},
+    {"mime": "application/zip", "name": "notes.zip", "kind": "ZIP archive", "image": false},
+    {"mime": "application/vnd.android.package-archive", "name": "Tether-0.5.2.apk", "kind": "Android app", "image": false},
+    {"mime": "text/plain; charset=utf-8", "name": "readme", "kind": "Plain text", "image": false},
+    {"mime": "application/octet-stream", "name": "data.bin", "kind": "BIN file", "image": false},
+    {"mime": "application/octet-stream", "name": "noextension", "kind": "File", "image": false},
+    {"mime": "", "name": ".hidden", "kind": "File", "image": false}
+  ]
+}

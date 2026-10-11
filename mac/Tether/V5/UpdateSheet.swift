@@ -2,22 +2,19 @@ import AppKit
 import SwiftUI
 import TetherCore
 
-/// What 0.5.2 brings, shown once after updating (bundled, so it works offline).
+/// What this version brings, shown once after updating: this version's section of the
+/// CHANGELOG.md bundled in the app (0.5.3; no hand-kept copy that can drift or go stale).
 enum WhatsNew {
-    static let version = "0.5.2"
-    /// Kept in step with the 0.5.2 section of CHANGELOG.md (which becomes the release notes).
-    static let notes = """
-    - **Animations in both apps.** Pages slide the way you move, notifications and messages open with a hero \
-    transition, photos zoom out of their tile and back, lists cascade in and swipe away. Reduce Motion turns it into a fade.
-    - **Videos play in Photos**, fetched over Wi-Fi (Bluetooth when that's all there is) with a progress ring and the macOS controls.
-    - **The Wi-Fi fast path comes back by itself** when the network changes or the Mac joins your phone's hotspot.
-    - **Shelf** — a pinned list on both devices: text, links, Wi-Fi, addresses, snippets and files.
-    - **Insert from Phone** — choose Take Photo or Scan Document, use your phone's camera, and it lands in the app you're using.
-    - **Find my Mac** from your phone: a loud chime and a full-screen "Found it", or lock it.
-    - **Instant Hotspot** (best effort) — one click turns on your phone's hotspot and joins it. Save the hotspot name and \
-    password once in Tether on the phone and turn on Tether control.
-    - **Update popup** — new versions show up here with their notes, and this sheet after each update.
-    """
+    static var version: String { WhatsNewPolicy.base(Engine.version) }
+
+    static var notes: String {
+        guard let url = Bundle.main.url(forResource: "CHANGELOG", withExtension: "md"),
+              let text = try? String(contentsOf: url, encoding: .utf8),
+              let section = WhatsNewPolicy.section(text, version: Engine.version) else {
+            return "Tether is up to date. Thanks for updating!"
+        }
+        return section
+    }
 }
 
 extension AppModel {
@@ -53,14 +50,17 @@ extension AppModel {
         objectWillChange.send()
     }
 
+    /// Builds before 0.5.2 never saved a seen version: when it's missing but Tether was clearly used
+    /// before (a paired phone, a remembered main-window page), this launch follows an update.
     func maybeShowWhatsNew() {
         let d = UserDefaults.standard
-        let seen = d.string(forKey: Self.seenKey)
-        // A fresh install (no previous version recorded) gets no sheet; an update from an older version does.
-        let previous = seen ?? (d.object(forKey: "mainPage") != nil ? "0.5.1" : nil)
-        if UpdatePrompt.showWhatsNew(current: Engine.version, seen: previous) && Engine.version == WhatsNew.version {
+        let used = peer != nil || d.object(forKey: MainPage.storeKey) != nil
+        switch WhatsNewPolicy.decide(current: Engine.version, seen: d.string(forKey: Self.seenKey), usedBefore: used) {
+        case .show:
             windows?.show(.main)
             v5.whatsNew = true
+        case .record, .none:
+            break
         }
         d.set(Engine.version, forKey: Self.seenKey)
     }

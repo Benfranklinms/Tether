@@ -2,6 +2,7 @@
 
 package dev.benfranklin.tether.v6
 
+import dev.benfranklin.tether.ui.tetherEdgeToEdge
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -45,6 +46,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -101,6 +103,7 @@ class CaptureActivity : ComponentActivity() {
     private var photoFile: File? = null
     private var finished = false
     private val step = mutableStateOf<Step>(Step.Intro)
+    private val kindUi = mutableStateOf(CaptureKinds.PHOTO)
 
     private sealed interface Step {
         data object Intro : Step
@@ -126,16 +129,37 @@ class CaptureActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        tetherEdgeToEdge()
         super.onCreate(savedInstanceState)
         ref = intent.getStringExtra(EXTRA_REF) ?: return finish()
         kind = intent.getStringExtra(EXTRA_KIND) ?: CaptureKinds.PHOTO
+        kindUi.value = kind
+        // Tells the phone side the launch got through (it falls back to a notification otherwise).
+        applicationContext.runtime.v6.captureOpened(ref)
         setContent {
             TetherTheme {
-                CaptureScreen(kind, step.value as? Step.Crop != null, step.value is Step.Sending, (step.value as? Step.Crop)?.bitmap,
+                CaptureScreen(
+                    kindUi.value, step.value as? Step.Crop != null, step.value is Step.Sending, (step.value as? Step.Crop)?.bitmap,
                     onShutter = ::start, onCancel = { done(null, 0) }, onUse = ::useCrop, onRetake = ::startCamera)
             }
         }
         if (savedInstanceState == null) window.decorView.postDelayed({ if (step.value is Step.Intro) start() }, 650)
+    }
+
+    /** singleTask: a new request while this screen is still up takes it over. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val newRef = intent.getStringExtra(EXTRA_REF) ?: return
+        if (newRef == ref) return
+        setIntent(intent)
+        ref = newRef
+        kind = intent.getStringExtra(EXTRA_KIND) ?: CaptureKinds.PHOTO
+        kindUi.value = kind
+        finished = false
+        photoFile = null
+        step.value = Step.Intro
+        applicationContext.runtime.v6.captureOpened(ref)
+        window.decorView.postDelayed({ if (step.value is Step.Intro) start() }, 650)
     }
 
     private fun start() {
@@ -263,7 +287,7 @@ private fun CaptureScreen(
                 enter.togetherWith(fadeOut(tween(160)))
             }
         },
-        modifier = Modifier.fillMaxSize().background(Mono.Bg),
+        modifier = Modifier.fillMaxSize().background(Mono.Bg).safeDrawingPadding(),
         label = "capture",
     ) { s ->
         when (s) {

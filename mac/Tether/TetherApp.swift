@@ -225,6 +225,16 @@ enum Screenshots {
         Shot(name: "call-banner", scene: .call) { AnyView(FloatingCallView(onClose: { _ in }).padding(20)) },
         // 0.5.2
         Shot(name: "main-shelf", scene: .connected) { AnyView(main(.shelf)) },
+        // 0.5.3
+        Shot(name: "main-shelf-search", scene: .connected) { AnyView(MainShot(page: .shelf) { m in m.v5.shelfQuery = "word" }) },
+        Shot(name: "main-shelf-rename", scene: .connected) {
+            AnyView(MainShot(page: .shelf) { m in m.v5.shelfRenaming = "demo-file-0" })
+        },
+        Shot(name: "capture-card-tap", scene: .connected) {
+            AnyView(CaptureCard(session: CaptureSession(ref: "r", kind: CaptureKinds.photo, state: CaptureStates.open,
+                                                        reason: CaptureReasons.tapPhone, frontmostPid: nil, started: 0))
+                .frame(width: 340).padding(20))
+        },
         Shot(name: "find-my-mac", scene: .connected) { AnyView(FindMacOverlay(phone: "Alex's Pixel") {}.frame(width: 900, height: 560)) },
         Shot(name: "capture-card", scene: .connected) {
             AnyView(CaptureCard(session: CaptureSession(ref: "r", kind: CaptureKinds.scan, state: CaptureStates.open, reason: nil,

@@ -45,7 +45,10 @@ struct MainWindowView: View {
         .onChange(of: v5.page) { p in UserDefaults.standard.set(p.rawValue, forKey: MainPage.storeKey) }
         .onChange(of: v5.searchFocus) { _ in searchFocused = true }
         .sheet(item: $v5.preview) { p in PreviewSheet(item: p).environmentObject(m) }
-        .background(Button("") { v5.searchFocus += 1 }.keyboardShortcut("f", modifiers: .command).opacity(0))
+        // ⌘F: the Shelf page has its own search (0.5.3); everywhere else it's universal search.
+        .background(Button("") {
+            if v5.page == .shelf { v5.shelfSearchFocus += 1 } else { v5.searchFocus += 1 }
+        }.keyboardShortcut("f", modifiers: .command).opacity(0))
     }
 
     private var sidebar: some View {

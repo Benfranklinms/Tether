@@ -113,6 +113,12 @@ final class ClipboardWatcher {
         lastCount = pb.changeCount
     }
 
+    /// Our own pasteboard write: don't send it to the phone.
+    func markOwnWrite() {
+        ownCount = NSPasteboard.general.changeCount
+        lastCount = NSPasteboard.general.changeCount
+    }
+
     /// An image from the phone: put it on the pasteboard without echoing it back.
     func setImage(_ image: NSImage) {
         let pb = NSPasteboard.general

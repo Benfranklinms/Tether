@@ -79,6 +79,29 @@ android {
     }
 }
 
+// 0.5.3: CHANGELOG.md ships inside the APK, so "What's new" shows this version's notes however
+// the update was installed (in-app updater, a downloaded APK, adb).
+abstract class CopyChangelog : DefaultTask() {
+    @get:InputFile abstract val source: RegularFileProperty
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+
+    @TaskAction fun copy() {
+        val dir = outputDir.get().asFile
+        dir.mkdirs()
+        source.get().asFile.copyTo(File(dir, "CHANGELOG.md"), overwrite = true)
+    }
+}
+
+val copyChangelog = tasks.register<CopyChangelog>("copyChangelog") {
+    source.set(rootProject.layout.projectDirectory.file("../CHANGELOG.md"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(copyChangelog, CopyChangelog::outputDir)
+    }
+}
+
 roborazzi {
     outputDir.set(file("$rootDir/../docs/screenshots/android"))
 }

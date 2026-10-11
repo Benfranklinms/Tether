@@ -137,7 +137,7 @@ struct CaptureCard: View {
                 Text(session.kind == CaptureKinds.scan ? "SCAN DOCUMENT" : "TAKE PHOTO").font(Typo.mono(9, .medium)).tracking(0.8)
                     .foregroundColor(Mono.muted)
                 Text(done || failed ? (session.reason ?? CaptureText.status(kind: session.kind, state: session.state, reason: nil))
-                     : CaptureText.status(kind: session.kind, state: session.state, reason: session.reason))
+                     : CaptureText.line(kind: session.kind, state: session.state, reason: session.reason))
                     .font(Typo.sans(12, .medium)).foregroundColor(Mono.text).lineLimit(2)
                     .id(session.state).transition(.opacity.combined(with: .move(edge: .bottom)))
             }

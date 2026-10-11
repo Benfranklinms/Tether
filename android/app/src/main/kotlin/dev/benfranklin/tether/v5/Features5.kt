@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import dev.benfranklin.tether.R
 import dev.benfranklin.tether.core.features.ContinueGate
+import dev.benfranklin.tether.core.features.MediaReady
 import dev.benfranklin.tether.core.features.DndSync
 import dev.benfranklin.tether.core.features.OtpDetector
 import dev.benfranklin.tether.core.proto.Albums
@@ -463,17 +464,62 @@ class Features5(
             }
             if (id == lastPhotoId || System.currentTimeMillis() - added > FRESH_MS) return
             lastPhotoId = id
-            val name = c.getString(1) ?: "photo"
-            val size = c.getLong(2)
-            val shot = name.contains("screenshot", ignoreCase = true)
-            val thumb = phoneFiles.thumbnail(FsRoots.PHOTOS, id.toString(), CARD_THUMB, CARD_THUMB_BYTES).first ?: ByteArray(0)
-            card(
-                ContinueCard(
-                    "photo-$id", ContinueKinds.PHOTO, name, (if (shot) "Screenshot" else "Photo") + " · " + human(size),
-                    root = FsRoots.PHOTOS, path = id.toString(), size = size, ts = System.currentTimeMillis(), thumb = thumb,
-                ),
-            )
+            awaitStable(id, c.getString(1) ?: "photo", previous = null, attempt = 0)
         }
+    }
+
+    /**
+     * 0.5.3: a screenshot shows up in MediaStore before the screenshot service has finished writing
+     * it, so 0.5.2 sent a card with a 15 KB size and a solid-black thumbnail. Wait until the file is
+     * published and its size holds still between two looks, then make the thumbnail.
+     */
+    private fun awaitStable(id: Long, name: String, previous: Long?, attempt: Int) {
+        val (size, pending) = photoState(id)
+        if (!MediaReady.stable(pending, size, previous)) {
+            if (attempt >= STABLE_TRIES) {
+                Log.w("continue.photo_unstable", "size" to size, "pending" to pending)
+                if (pending || size <= 0) return
+            } else {
+                main.postDelayed({ io.execute { awaitStable(id, name, size, attempt + 1) } }, STABLE_GAP_MS)
+                return
+            }
+        }
+        sendPhotoCard(id, name, size, thumbTry = 0)
+    }
+
+    /** Current bytes on disk and the pending flag (a row hidden while pending reads as pending). */
+    private fun photoState(id: Long): Pair<Long, Boolean> {
+        val uri = phoneFiles.mediaUri(id)
+        var pending = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching {
+                app.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.IS_PENDING), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) pending = c.getInt(0) == 1
+                }
+            }
+        } else {
+            pending = false
+        }
+        val bytes = runCatching { app.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: 0L }.getOrDefault(0L)
+        return bytes to pending
+    }
+
+    private fun sendPhotoCard(id: Long, name: String, size: Long, thumbTry: Int) {
+        val thumb = phoneFiles.thumbnail(FsRoots.PHOTOS, id.toString(), CARD_THUMB, CARD_THUMB_BYTES).first
+        val blank = thumb == null || PhoneFiles.isBlankJpeg(thumb)
+        if (blank && thumbTry < THUMB_TRIES) {
+            main.postDelayed({ io.execute { sendPhotoCard(id, name, size, thumbTry + 1) } }, THUMB_RETRY_MS)
+            return
+        }
+        // Still flat black (e.g. a FLAG_SECURE screen): no thumbnail, the Mac shows a placeholder.
+        val shot = name.contains("screenshot", ignoreCase = true)
+        card(
+            ContinueCard(
+                "photo-$id", ContinueKinds.PHOTO, name, (if (shot) "Screenshot" else "Photo") + " · " + human(size),
+                root = FsRoots.PHOTOS, path = id.toString(), size = size, ts = System.currentTimeMillis(),
+                thumb = if (blank) ByteArray(0) else thumb!!,
+            ),
+        )
     }
 
     private fun scanNewDownload() {
@@ -607,6 +653,10 @@ class Features5(
         private const val MAX_MESSAGE = 120 * 1024
         private const val THUMB_BYTES = 92 * 1024
         private const val CARD_THUMB = 192
+        private const val STABLE_TRIES = 12
+        private const val STABLE_GAP_MS = 600L
+        private const val THUMB_TRIES = 3
+        private const val THUMB_RETRY_MS = 1_000L
         private const val CARD_THUMB_BYTES = 24 * 1024
         private const val SHARE_SAMPLE = 8
         private const val CLIP_IMAGE_MAX = 16L * 1024 * 1024

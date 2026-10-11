@@ -13,7 +13,10 @@ extension AppModel {
                   app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
             self?.v5.lastOtherApp = app.processIdentifier
         }
-        if !demo { loadShelf() }
+        if !demo {
+            loadShelf()
+            setUpShelfFiles()
+        }
         Self.cleanVideoCache()
     }
 
@@ -21,6 +24,8 @@ extension AppModel {
         if isConnected && !wasConnected && supports(Caps6.shelf) {
             engine?.send(.shelfSync(v5.shelf.snapshot()))
         }
+        // 0.5.3: fetch missing Shelf files (and bigger ones once the Wi-Fi fast path is up).
+        shelfLinkChanged()
         if !isConnected {
             if let c = v5.capture, c.state != CaptureStates.done, c.state != CaptureStates.failed {
                 captureFailed("Your phone disconnected")
@@ -137,6 +142,11 @@ extension AppModel {
         let ref = newRef()
         v5.capture = CaptureSession(ref: ref, kind: kind, state: "asking", reason: nil, frontmostPid: pid, started: Self.nowMs)
         engine?.send(.captureReq(CaptureReq(ref: ref, kind: kind))) { [weak self] in self?.captureFailed("Not connected") }
+        // 0.5.3: a phone that never answers is reported within seconds, not after 3 minutes.
+        DispatchQueue.main.asyncAfter(deadline: .now() + CaptureText.askTimeout) { [weak self] in
+            guard let self, let c = self.v5.capture, c.ref == ref, c.state == "asking" else { return }
+            self.captureFailed(CaptureText.describe("timeout"))
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 180) { [weak self] in
             guard let self, let c = self.v5.capture, c.ref == ref, c.state == "asking" || c.state == CaptureStates.open else { return }
             self.captureFailed(CaptureText.describe("timeout"))
@@ -160,6 +170,8 @@ extension AppModel {
             captureFailed(CaptureText.describe(p.reason ?? "error:unknown"))
         } else if c.state != CaptureStates.done {
             v5.capture?.state = p.state
+            // "open" + tap_phone: the phone posted a notification instead of opening the camera.
+            v5.capture?.reason = p.state == CaptureStates.open ? p.reason : nil
         }
     }
 
@@ -282,7 +294,7 @@ extension AppModel {
     private static let shelfKeyService = "in.benfranklin.tether.shelf-key"
     private static var shelfURL: URL { Paths.support.appendingPathComponent("shelf.sealed") }
 
-    private func shelfKey() -> Data? {
+    func shelfKey() -> Data? {
         if let s = Keychain.read(Self.shelfKeyService), let d = Data(base64Encoded: s) { return d }
         let k = ShelfVault.newKey()
         return Keychain.write(Self.shelfKeyService, k.base64EncodedString()) ? k : nil
@@ -309,10 +321,12 @@ extension AppModel {
         }
     }
 
-    private func commitShelf(_ new: ShelfState, sync: ShelfSyncPayload?) {
+    func commitShelf(_ new: ShelfState, sync: ShelfSyncPayload?) {
+        let before = Set(v5.shelf.items.map(\.id))
         v5.shelf = new.pruned(now: Self.nowMs)
         saveShelf()
         if let sync, supports(Caps6.shelf) { engine?.send(.shelfSync(sync)) }
+        shelfItemsChanged(removed: before.subtracting(v5.shelf.items.map(\.id)))
     }
 
     func addToShelf(text: String) {
@@ -325,19 +339,23 @@ extension AppModel {
 
     func addToShelf(file url: URL) {
         let id = UUID().uuidString.lowercased()
+        let key = shelfKey()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let dir = Paths.sub("Shelf").appendingPathComponent(id, isDirectory: true)
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let dest = dir.appendingPathComponent(url.lastPathComponent)
-            guard (try? FileManager.default.copyItem(at: url, to: dest)) != nil,
-                  let data = try? Data(contentsOf: dest, options: .mappedIfSafe) else {
+            // Hash while streaming, then keep only the encrypted copy (0.5.3: encrypted at rest).
+            guard let key, let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize,
+                  let sha = try? Self.sha256Hex(url) else {
                 DispatchQueue.main.async { self?.toast("Couldn't add \(url.lastPathComponent)") }
                 return
             }
-            var sha = StreamingSHA256()
-            sha.update(data)
+            do {
+                try Self.sealShelfFile(id: id, plain: url, key: key, move: false)
+            } catch {
+                Log.error("shelf.store_failed", error)
+                DispatchQueue.main.async { self?.toast("Couldn't add \(url.lastPathComponent)") }
+                return
+            }
             let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-            let file = ShelfFile(name: url.lastPathComponent, size: Int64(data.count), mime: mime, sha256: sha.finalizeHex(), owner: "mac")
+            let file = ShelfFile(name: url.lastPathComponent, size: Int64(size), mime: mime, sha256: sha, owner: "mac")
             DispatchQueue.main.async {
                 guard let self else { return }
                 let item = ShelfState.fileItem(file, id: id, from: "mac", now: Self.nowMs)
@@ -355,9 +373,6 @@ extension AppModel {
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
             guard let self, self.v5.shelfUndo?.id == id else { return }
             self.v5.shelfUndo = nil
-            if item.file?.owner == "mac" || item.file != nil {
-                try? FileManager.default.removeItem(at: Paths.sub("Shelf").appendingPathComponent(id, isDirectory: true))
-            }
         }
     }
 
@@ -381,62 +396,33 @@ extension AppModel {
         case ShelfKinds.address:
             if let u = ShelfDetect.mapsURL(item) { NSWorkspace.shared.open(u) }
         case ShelfKinds.file:
-            openShelfFile(item)
+            withShelfFile(item, .open)
+            return
         default:
             clipboard.set(ShelfDetect.copyText(item))
         }
         flashSuccess("shelf-\(item.id)")
     }
 
+    /// Copy: text items copy their text; a file copies the file itself (0.5.3), so Finder pastes the
+    /// file and image-aware apps paste the picture.
     func copyShelf(_ item: ShelfItem) {
+        if item.kind == ShelfKinds.file {
+            withShelfFile(item, .copy)
+            return
+        }
         clipboard.set(item.kind == ShelfKinds.link || item.kind == ShelfKinds.address
                       ? [item.title, item.body].filter { !$0.isEmpty }.joined(separator: "\n") : ShelfDetect.copyText(item))
         flashSuccess("shelf-copy-\(item.id)")
     }
 
-    private func shelfLocalFile(_ item: ShelfItem) -> URL? {
-        guard let f = item.file else { return nil }
-        let u = Paths.sub("Shelf").appendingPathComponent(item.id, isDirectory: true).appendingPathComponent(f.name)
-        return FileManager.default.fileExists(atPath: u.path) ? u : nil
-    }
-
-    func openShelfFile(_ item: ShelfItem) {
-        if let u = shelfLocalFile(item) {
-            NSWorkspace.shared.open(u)
-            return
-        }
-        guard supports(Caps6.shelf) else { return toast("Connect your phone to get \(item.title)") }
-        v5.shelfFetching.insert(item.id)
-        engine?.send(.shelfFileReq(ShelfFileReq(id: item.id))) { [weak self] in
-            self?.v5.shelfFetching.remove(item.id)
-            self?.toast("Not connected")
-        }
-    }
-
-    /// A shelf file from the phone (FILE_OFFER kind "shelf") landed in the inbox: file it under its item and open it.
-    func shelfFileArrived(_ r: TransferRecord) {
-        guard let path = r.ref else { return }
-        guard let item = v5.shelf.items.first(where: { $0.file?.sha256 == r.sha256 })
-                ?? v5.shelf.items.first(where: { $0.file?.name == r.name })
-        else { return }
-        let dir = Paths.sub("Shelf").appendingPathComponent(item.id, isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dest = dir.appendingPathComponent(item.file?.name ?? r.name)
-        try? FileManager.default.removeItem(at: dest)
-        try? FileManager.default.moveItem(at: URL(fileURLWithPath: path), to: dest)
-        let wanted = v5.shelfFetching.contains(item.id)
-        v5.shelfFetching.remove(item.id)
-        if wanted { NSWorkspace.shared.open(dest) }
-    }
+    func openShelfFile(_ item: ShelfItem) { withShelfFile(item, .open) }
 
     private func shelfSyncReceived(_ p: ShelfSyncPayload) {
+        let before = Set(v5.shelf.items.map(\.id))
         v5.shelf = v5.shelf.merge(p).pruned(now: Self.nowMs)
         saveShelf()
-    }
-
-    private func shelfFileRequested(_ p: ShelfFileReq) {
-        guard let item = v5.shelf.items.first(where: { $0.id == p.id }), let u = shelfLocalFile(item) else { return }
-        engine?.sendKinded(u, kind: FileKinds6.shelf)
+        shelfItemsChanged(removed: before.subtracting(v5.shelf.items.map(\.id)))
     }
 
     /// Pin a clipboard-history entry.
@@ -448,10 +434,13 @@ extension AppModel {
 }
 
 extension Engine {
-    /// A file for the phone with a FILE_OFFER kind (shelf files).
-    func sendKinded(_ url: URL, kind: String) {
+    /// A file for the phone with a FILE_OFFER kind (shelf files). `staged` runs once the file was
+    /// copied into the outgoing staging area (the source may be deleted then).
+    func sendKinded(_ url: URL, kind: String, staged: (() -> Void)? = nil) {
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            guard let rec = try? MacFiles.stage(url, now: Self.now(), kind: kind) else { return }
+            let rec = try? MacFiles.stage(url, now: Self.now(), kind: kind)
+            staged?()
+            guard let rec else { return }
             queue.async { self.sendStaged(rec) }
         }
     }

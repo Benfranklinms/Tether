@@ -235,28 +235,6 @@ class Features5LogicTest {
         assertEquals(0, Versions.compare("1.0", "1.0.0"))
     }
 
-    @Test fun parsesTetherFeed() {
-        val feed = """
-            {"schema":1,"version":"0.5.0","notes":"Big one","url":"https://github.com/Benfranklinms/Tether-releases/releases/tag/v0.5.0",
-             "published":"2026-10-10T12:00:00Z",
-             "android":{"url":"https://github.com/x/Tether-0.5.0.apk","sha256":"ab12","size":3400000,"versionCode":51,"cert":"661e"},
-             "mac":{"url":"https://github.com/x/Tether-0.5.0.zip","sha256":"CD34","size":4000000,"dmg":"https://github.com/x/Tether-0.5.0.dmg"},
-             "future":{"x":1}}
-        """.trimIndent()
-        val u = UpdateFeed.parse(feed)
-        assertNotNull(u)
-        u!!
-        assertEquals("0.5.0", u.version)
-        assertEquals(51L, u.android!!.versionCode)
-        assertEquals("661e", u.android!!.cert)
-        assertEquals("cd34", u.macZip!!.sha256)
-        assertEquals("https://github.com/x/Tether-0.5.0.dmg", u.macDmg!!.url)
-        assertNull(UpdateFeed.parse("{\"version\":\"\"}"))
-        assertNull(UpdateFeed.parse("not json"))
-        // Plain-http downloads are refused.
-        assertNull(UpdateFeed.parse("""{"version":"1.0","android":{"url":"http://evil/x.apk"}}""")!!.android)
-    }
-
     @Test fun parsesGitHubLatestRelease() {
         val gh = """
             {"tag_name":"v0.5.0","name":"Tether 0.5.0","draft":false,"prerelease":false,"body":"Notes",
@@ -276,31 +254,23 @@ class Features5LogicTest {
     }
 
     @Test
-    fun privateReleasesAuthPolicyAndAssetUrls() {
+    fun publicReleasesNeedNoToken() {
         val gh = """
             {"tag_name":"v0.5.0","assets":[
              {"name":"Tether-0.5.0.apk","url":"https://api.github.com/repos/Benfranklinms/Tether/releases/assets/7",
               "browser_download_url":"https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.apk",
-              "size":10,"digest":"sha256:ABCD"},
-             {"name":"Tether-0.5.0.zip","url":"https://evil.example/repos/Benfranklinms/Tether/releases/assets/8",
-              "browser_download_url":"https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.zip","size":5}]}
+              "size":10,"digest":"sha256:ABCD"}]}
         """.trimIndent()
         val u = dev.benfranklin.tether.core.features.UpdateFeed.parse(gh)!!
-        assertEquals("https://api.github.com/repos/Benfranklinms/Tether/releases/assets/7", u.android?.apiUrl)
+        // Downloads use the public browser URL, never the asset API.
+        assertEquals("https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.apk", u.android?.url)
         assertEquals("abcd", u.android?.sha256)
-        assertEquals(null, u.macZip?.apiUrl)
         val g = dev.benfranklin.tether.core.features.GitHubReleases
-        assertEquals("Bearer github_pat_x", g.headers(g.LATEST_URL, "github_pat_x", false)["Authorization"])
-        assertEquals(null, g.headers("https://objects.githubusercontent.com/a", "github_pat_x", true)["Authorization"])
-        assertEquals("application/octet-stream", g.headers("https://api.github.com/x", null, true)["Accept"])
-        assertEquals(null, g.headers("http://api.github.com/x", "t", false)["Authorization"])
-        assertEquals(null, g.headers("https://api.github.com.evil.example/x", "t", false)["Authorization"])
-        assertEquals(false, g.redirectKeepsAuth("https://objects.githubusercontent.com/x"))
-        assertEquals(true, g.redirectKeepsAuth("https://api.github.com/repos/x"))
-        assertEquals(true, g.looksLikeToken("github_pat_11ABCDEFG0123456789_abcdefghijklmnop"))
-        assertEquals(true, g.looksLikeToken("  ghp_0123456789abcdefghijABCDEFGHIJ0123 "))
-        assertEquals(false, g.looksLikeToken("hello world token value 123"))
-        assertEquals(false, g.looksLikeToken("ghp_short"))
-        assertEquals(false, g.redact("github_pat_secret").contains("secret"))
+        assertEquals(null, g.headers(false)["Authorization"])
+        assertEquals("application/octet-stream", g.headers(true)["Accept"])
+        assertEquals("application/vnd.github+json", g.headers(false)["Accept"])
+        assertEquals("https://api.github.com/repos/Benfranklinms/Tether/releases/latest", g.LATEST_URL)
+        assertTrue(g.explain(403).contains("rate limited"))
+        assertNull(dev.benfranklin.tether.core.features.UpdateFeed.parse("""{"schema":1,"version":"9.0"}"""))
     }
 }

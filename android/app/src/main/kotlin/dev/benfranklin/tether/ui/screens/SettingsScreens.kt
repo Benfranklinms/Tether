@@ -1,5 +1,8 @@
 package dev.benfranklin.tether.ui.screens
 
+import dev.benfranklin.tether.ui.screenPadding
+import dev.benfranklin.tether.core.proto.FindActions
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -118,12 +121,19 @@ private fun SettingsActions.notif(change: (NotificationSettings) -> Notification
     update { it.copy(notifications = change(it.notifications)) }
 
 @Composable
-fun SettingsScreen(s: AppSettings, d: DeviceInfo, a: SettingsActions, onBack: () -> Unit) {
+fun SettingsScreen(
+    s: AppSettings,
+    d: DeviceInfo,
+    a: SettingsActions,
+    onBack: () -> Unit,
+    find: FindModel? = null,
+    onFind: (String) -> Unit = {},
+) {
     var confirmUnpair by remember { mutableStateOf(false) }
     val reduce = LocalReduceMotion.current
     val n = s.notifications
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Settings", onBack) }) { pad ->
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding(), bottom = 40.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(pad)) {
             item { SectionHeader("Features") }
             item {
                 Card {
@@ -147,6 +157,16 @@ fun SettingsScreen(s: AppSettings, d: DeviceInfo, a: SettingsActions, onBack: ()
                             "Insert from Phone", "Your Mac can open this phone's camera or document scanner", s.allowCapture,
                         ) { v -> a.update { it.copy(allowCapture = v) } }
                     }
+                }
+            }
+            // 0.5.3: Find my Mac lives here (it used to sit on Home). Null = not paired.
+            find?.let { f ->
+                item(key = "find-header") { SectionHeader("Find my Mac") }
+                item(key = "find") {
+                    FindMacCard(
+                        f, onRing = { onFind(FindActions.RING) }, onStop = { onFind(FindActions.STOP) },
+                        onLock = { onFind(FindActions.LOCK) },
+                    )
                 }
             }
             item { SectionHeader("Clipboard") }
@@ -341,7 +361,7 @@ fun AppsScreen(apps: List<AppRow>, onSet: (String, AppRule) -> Unit, onBack: () 
     var query by rememberSaveable { mutableStateOf("") }
     val shown = apps.filter { query.isBlank() || it.label.contains(query, true) || it.pkg.contains(query, true) }
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Apps", onBack) }) { pad ->
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding(), bottom = 40.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(pad)) {
             item {
                 OutlinedTextField(
                     value = query, onValueChange = { query = it }, singleLine = true,
@@ -428,7 +448,7 @@ fun KeywordsScreen(words: List<String>, onChange: (List<String>) -> Unit, onBack
         draft = ""
     }
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Muted words", onBack) }) { pad ->
-        Column(Modifier.fillMaxSize().padding(top = pad.calculateTopPadding())) {
+        Column(Modifier.fillMaxSize().padding(screenPadding(pad, bottom = 0.dp))) {
             Text(
                 "Notifications whose title or text contains any of these words aren't mirrored. Not case-sensitive.",
                 style = MaterialTheme.typography.bodyMedium, color = Mono.Muted, modifier = Modifier.padding(20.dp),
@@ -472,7 +492,7 @@ fun LicensesScreen(onBack: () -> Unit) {
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("Licenses", onBack) }) { pad ->
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = pad.calculateTopPadding(), start = 20.dp, end = 20.dp, bottom = 40.dp),
+            contentPadding = screenPadding(pad, start = 20.dp, end = 20.dp),
         ) {
             items(LICENSES) { (name, text) ->
                 Text(name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))

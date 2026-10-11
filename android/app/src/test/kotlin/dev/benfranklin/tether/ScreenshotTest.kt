@@ -70,7 +70,7 @@ class ScreenshotTest {
         HomeScreen(
             HomeModel(
                 title = "MacBook Air", subtitle = "Connected · Wi-Fi fast path", connected = true, searching = false,
-                wifi = true, error = null, notice = null, mirroringOff = false,
+                wifi = true, error = null, notice = null, mirroringOff = false, now = now + 60_000,
                 transfers = listOf(
                     rec("IMG_2041.HEIC", Direction.OUT, 4_800_000, 3_100_000, TransferStatus.ACTIVE, Transport.WIFI),
                     rec("Lecture-notes.pdf", Direction.IN, 2_300_000, 2_300_000, TransferStatus.DONE, Transport.BLE),
@@ -80,11 +80,44 @@ class ScreenshotTest {
             ),
             {}, {}, {}, {}, {}, {}, {}, {},
             extras = dev.benfranklin.tether.ui.screens.HomeExtras(
-                shelfCount = 4, updateVersion = "0.5.2",
-                find = dev.benfranklin.tether.ui.screens.FindModel(
-                    ringing = false, pending = null, locked = false, error = null, available = true,
-                ),
+                shelfCount = 4, updateVersion = "0.5.3",
             ),
+        )
+    }
+
+    private fun many(): List<TransferRecord> = listOf(
+        rec("Screenshot_2026-10-11-08-41.jpg", Direction.OUT, 282_000, 282_000, TransferStatus.DONE, Transport.WIFI),
+        rec("AdaFace_Summary.pdf", Direction.OUT, 20_000, 20_000, TransferStatus.DONE, Transport.WIFI),
+        rec("IMG_20260604_120359.png", Direction.IN, 1_900_000, 1_900_000, TransferStatus.DONE, Transport.WIFI),
+        rec("IMG20260821093336.jpg", Direction.OUT, 2_900_000, 2_900_000, TransferStatus.DONE, Transport.WIFI),
+        rec("Lecture-notes.pdf", Direction.IN, 2_300_000, 2_300_000, TransferStatus.DONE, Transport.BLE),
+    ).mapIndexed { i, r -> r.copy(createdAt = now - i * 3_600_000L * 7, updatedAt = now - i * 3_600_000L * 7) }
+
+    /** 0.5.3: Home shows the latest three transfers and "See all (N)". */
+    @Test
+    fun homeTransfers() = shot("home-transfers") {
+        HomeScreen(
+            HomeModel(
+                title = "MacBook Air", subtitle = "Connected · Wi-Fi fast path", connected = true, searching = false,
+                wifi = true, error = null, notice = null, mirroringOff = false, transfers = many(), now = now + 60_000,
+            ),
+            {}, {}, {}, {}, {}, {}, {}, {},
+            extras = dev.benfranklin.tether.ui.screens.HomeExtras(shelfCount = 3),
+        )
+    }
+
+    @Test
+    fun transfers() = shot("transfers") {
+        dev.benfranklin.tether.ui.screens.TransfersScreen(
+            many(),
+            object : dev.benfranklin.tether.ui.screens.TransfersActions {
+                override fun cancel(id: String) = Unit
+                override fun retry(id: String) = Unit
+                override fun remove(id: String) = Unit
+                override fun clearFinished() = Unit
+                override fun open(t: TransferRecord): String? = null
+            },
+            onBack = {}, now = now + 60_000,
         )
     }
 
@@ -151,6 +184,9 @@ class ScreenshotTest {
             ),
             DeviceInfo("MacBook Air", "3F9A·0C21·77B4", "8B12·E4D0·19AF", true, true, "0.1.0", false),
             NoActions, onBack = {},
+            find = dev.benfranklin.tether.ui.screens.FindModel(
+                ringing = false, pending = null, locked = false, error = null, available = true,
+            ),
         )
     }
 
@@ -298,13 +334,41 @@ class ScreenshotTest {
         override fun restore(item: dev.benfranklin.tether.core.proto.ShelfItem) = Unit
         override fun move(id: String, to: Int) = Unit
         override fun primary(item: dev.benfranklin.tether.core.proto.ShelfItem) = "Copied"
-        override fun copy(item: dev.benfranklin.tether.core.proto.ShelfItem) = Unit
+        override fun copy(item: dev.benfranklin.tether.core.proto.ShelfItem) = "Copied"
         override fun open(id: String) = Unit
     }
 
     @Test
     fun shelf() = shot("shelf") {
         dev.benfranklin.tether.ui.screens.ShelfScreen(shelfItems, connected = true, a = NoShelf, onBack = {})
+    }
+
+    private val shelfFileItems = listOf(
+        dev.benfranklin.tether.core.proto.ShelfItem(
+            "f1", "file", "PES_quiz_answer_script.docx", "", null, "mac", now, now, -6.0,
+            dev.benfranklin.tether.core.proto.ShelfFile(
+                "PES_quiz_answer_script.docx", 11_264,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "aa", "mac",
+            ),
+        ),
+        dev.benfranklin.tether.core.proto.ShelfItem(
+            "f2", "file", "Aptitude Practice Set 15.pdf", "", null, "mac", now, now, -5.0,
+            dev.benfranklin.tether.core.proto.ShelfFile("Aptitude Practice Set 15.pdf", 464_000, "application/pdf", "bb", "mac"),
+        ),
+    ) + shelfItems
+
+    /** 0.5.3: friendly kinds ("Word document", "PDF") and "Not downloaded yet" while the Mac is away. */
+    @Test
+    fun shelfFiles() = shot("shelf-files") {
+        dev.benfranklin.tether.ui.screens.ShelfScreen(
+            shelfFileItems, connected = false, a = NoShelf, onBack = {},
+            files = dev.benfranklin.tether.ui.screens.ShelfFilesUi(local = setOf("f2"), connected = false),
+        )
+    }
+
+    @Test
+    fun shelfSearch() = shot("shelf-search") {
+        dev.benfranklin.tether.ui.screens.ShelfScreen(shelfFileItems, connected = true, a = NoShelf, onBack = {}, initialQuery = "word")
     }
 
     @Test

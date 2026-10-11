@@ -347,6 +347,21 @@ class PhoneFiles(private val context: Context) {
         }
 
         /** JPEG under [maxBytes]: lowers quality, then halves the size, until it fits. */
+        /** A thumbnail that is one flat dark colour (see MediaReady.isBlank): sampled on an 8×8 grid. */
+        fun isBlankJpeg(data: ByteArray): Boolean {
+            val bmp = BitmapFactory.decodeByteArray(data, 0, data.size) ?: return true
+            val luma = IntArray(BLANK_GRID * BLANK_GRID) { i ->
+                val x = ((i % BLANK_GRID) + 0.5f) * bmp.width / BLANK_GRID
+                val y = ((i / BLANK_GRID) + 0.5f) * bmp.height / BLANK_GRID
+                val p = bmp.getPixel(x.toInt().coerceIn(0, bmp.width - 1), y.toInt().coerceIn(0, bmp.height - 1))
+                (android.graphics.Color.red(p) * 299 + android.graphics.Color.green(p) * 587 + android.graphics.Color.blue(p) * 114) / 1000
+            }
+            bmp.recycle()
+            return dev.benfranklin.tether.core.features.MediaReady.isBlank(luma)
+        }
+
+        private const val BLANK_GRID = 8
+
         fun jpeg(src: Bitmap, maxBytes: Int): ByteArray {
             var bmp = src
             var q = START_QUALITY

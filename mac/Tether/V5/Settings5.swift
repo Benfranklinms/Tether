@@ -146,11 +146,9 @@ struct MacPage5: View {
     }
 }
 
-/// Settings › Updates: private GitHub releases (token) or a custom public feed.
+/// Settings › Updates: Tether's public GitHub releases (no token, no custom feed since 0.5.3).
 struct UpdatesPage5: View {
     @EnvironmentObject var m: AppModel
-    @State private var token = ""
-    @State private var feed = ""
 
     private var u: UpdateState { m.v5.update }
 
@@ -172,42 +170,8 @@ struct UpdatesPage5: View {
                     .frame(maxHeight: 160).padding(14)
             }
         }
-        SectionLabel(text: "GitHub token")
-        Card {
-            if u.tokenSet {
-                Row(title: "Token saved in your Keychain", detail: "Read-only access to Tether releases.", divider: false) {
-                    GhostButton(title: "Remove") { m.removeGithubToken() }
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Optional: a GitHub token").font(Typo.sans(13, .medium)).foregroundColor(Mono.text)
-                    Text("Updates come from Tether's public GitHub releases without one. A fine-grained, "
-                            + "read-only token (Contents: Read-only) only raises GitHub's rate limit.")
-                        .font(Typo.sans(12)).foregroundColor(Mono.muted).fixedSize(horizontal: false, vertical: true)
-                    HStack {
-                        SecureField("github_pat_…", text: $token).textFieldStyle(.roundedBorder)
-                        GhostButton(title: "Save") {
-                            m.saveGithubToken(token)
-                            token = ""
-                        }
-                    }
-                    Button("Create a token on GitHub") {
-                        if let url = URL(string: GitHubReleases.newTokenURL) { NSWorkspace.shared.open(url) }
-                    }
-                    .buttonStyle(.plain).font(Typo.sans(12, .semibold)).foregroundColor(Mono.text).underline()
-                }
-                .padding(14)
-            }
-        }
-        SectionLabel(text: "Custom feed (optional)")
-        Card {
-            Row(title: "Public feed URL", detail: "Leave empty to use GitHub releases. Must be https and in Tether's feed "
-                    + "format.", divider: false) {
-                TextField("https://…", text: $feed, onCommit: { m.settings.updateFeed = feed.isEmpty ? nil : feed })
-                    .textFieldStyle(.roundedBorder).frame(width: 220)
-            }
-        }
-        .onAppear { feed = m.settings.updateFeed ?? "" }
+        Text("Updates come from Tether's public GitHub releases.")
+            .font(Typo.sans(11)).foregroundColor(Mono.muted).padding(.horizontal, 4)
     }
 
     private var statusTitle: String {

@@ -1,5 +1,8 @@
 package dev.benfranklin.tether.device
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.safeDrawingPadding
+import dev.benfranklin.tether.ui.tetherEdgeToEdge
 import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -207,6 +210,7 @@ class RingActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        tetherEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -226,7 +230,8 @@ class RingActivity : ComponentActivity() {
         setContent {
             TetherTheme {
                 Column(
-                    Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    Modifier.fillMaxSize().background(Mono.Bg).safeDrawingPadding().padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
                     TetherMark(96.dp, linked = true, pulse = true)

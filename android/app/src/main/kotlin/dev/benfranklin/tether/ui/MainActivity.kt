@@ -15,7 +15,6 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -108,6 +107,10 @@ import dev.benfranklin.tether.ui.screens.HomeExtras
 import dev.benfranklin.tether.ui.screens.HotspotActions
 import dev.benfranklin.tether.ui.screens.HotspotScreen
 import dev.benfranklin.tether.ui.screens.ShelfActions
+import dev.benfranklin.tether.ui.screens.ShelfFilesUi
+import dev.benfranklin.tether.ui.screens.TransfersActions
+import dev.benfranklin.tether.ui.screens.TransfersScreen
+import dev.benfranklin.tether.core.features.WhatsNewPolicy
 import dev.benfranklin.tether.ui.screens.ShelfDetailScreen
 import dev.benfranklin.tether.ui.screens.ShelfScreen
 import dev.benfranklin.tether.ui.screens.UpdateSheet
@@ -119,7 +122,7 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        tetherEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent { TetherTheme { TetherApp(runtime) } }
     }
@@ -247,6 +250,20 @@ private fun TetherApp(rt: TetherRuntime) {
         }
     }
 
+    // "What's new" once after an update (0.5.3: also after updating from builds that never saved a
+    // version — a paired / onboarded app is an update, not a fresh install). Notes come from the
+    // CHANGELOG.md bundled in the APK, so they show however the update was installed.
+    var whatsNew by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val s = rt.settings.current
+        val used = s.onboardingDone || rt.ui.value.peer != null
+        when (WhatsNewPolicy.decide(BuildConfig.VERSION_NAME, s.whatsNewSeen, used)) {
+            WhatsNewPolicy.Action.SHOW -> whatsNew = true
+            WhatsNewPolicy.Action.RECORD -> rt.settings.update { it.copy(whatsNewSeen = BuildConfig.VERSION_NAME) }
+            WhatsNewPolicy.Action.NONE -> Unit
+        }
+    }
+
     val paired = state.peer != null
     if (!paired || !settings.onboardingDone) {
         val pairView = when (val l = state.link) {
@@ -285,7 +302,7 @@ private fun TetherApp(rt: TetherRuntime) {
         val due = UpdatePrompt.shouldCheck(s.lastUpdateCheck, now, launch = launch, foreground = !launch)
         if (s.autoUpdateCheck && now - s.lastUpdateCheck > CHECK_GAP_MS && due) {
             rt.settings.update { it.copy(lastUpdateCheck = now) }
-            rt.updater.check(s.updateFeed)
+            rt.updater.check()
         }
     }
     LaunchedEffect(Unit) { checkForUpdate(launch = true) }
@@ -306,16 +323,10 @@ private fun TetherApp(rt: TetherRuntime) {
             }
         }
     }
-    // "What's new" once after an update; a fresh install just records the version.
-    var whatsNew by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        val s = rt.settings.current
-        if (s.whatsNewSeen == null) {
-            rt.settings.update { it.copy(whatsNewSeen = BuildConfig.VERSION_NAME) }
-        } else if (UpdatePrompt.showWhatsNew(BuildConfig.VERSION_NAME, s.whatsNewSeen)) {
-            whatsNew = true
-        }
-    }
+    val shelfLocal by rt.v6.localFiles.collectAsStateWithLifecycle()
+    val shelfFetching by rt.v6.fetching.collectAsStateWithLifecycle()
+    val shelfConnected = state.link is LinkState.Connected && Caps6.SHELF in state.peerCaps
+    val shelfFiles = ShelfFilesUi(shelfLocal, shelfFetching, shelfConnected)
     val shelfActions = remember(rt) { RuntimeShelfActions(ctx, rt) }
     val nav = rememberNavController()
     shelfActions.navigate = { id -> nav.navigate("shelf/$id") }
@@ -362,13 +373,9 @@ private fun TetherApp(rt: TetherRuntime) {
                 extras = HomeExtras(
                     shelfCount = shelf.items.size,
                     onShelf = { nav.navigate("shelf") },
-                    find = FindModel(
-                        ringing = find.ringing, pending = find.pending, locked = find.locked, error = find.error,
-                        available = state.link is LinkState.Connected && Caps6.FIND_MAC in state.peerCaps,
-                    ).takeIf { state.peer != null },
-                    onFind = rt.v6::findMac,
                     updateVersion = offered?.version?.takeIf { it != settings.skippedVersion },
                     onUpdate = { showUpdate = true },
+                    onSeeAllTransfers = { nav.navigate("transfers") },
                 ),
             )
           }
@@ -412,6 +419,11 @@ private fun TetherApp(rt: TetherRuntime) {
                     override fun setupSummary() = setupSummary(setupRows(ctx))
                 },
                 onBack = { nav.popBackStack() },
+                find = FindModel(
+                    ringing = find.ringing, pending = find.pending, locked = find.locked, error = find.error,
+                    available = state.link is LinkState.Connected && Caps6.FIND_MAC in state.peerCaps,
+                ).takeIf { state.peer != null },
+                onFind = rt.v6::findMac,
             )
           }
         }
@@ -438,16 +450,31 @@ private fun TetherApp(rt: TetherRuntime) {
         composable("shelf") {
           CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
             ShelfScreen(
-                items = shelf.ordered, connected = state.link is LinkState.Connected && Caps6.SHELF in state.peerCaps,
-                a = shelfActions, onBack = { nav.popBackStack() },
+                items = shelf.ordered, connected = shelfConnected,
+                a = shelfActions, onBack = { nav.popBackStack() }, files = shelfFiles,
             )
           }
         }
         composable("shelf/{id}") { entry ->
           CompositionLocalProvider(LocalSharedScopes provides SharedScopes(sharedScope, this)) {
             val id = entry.arguments?.getString("id")
-            ShelfDetailScreen(item = shelf.items.firstOrNull { it.id == id }, a = shelfActions, onBack = { nav.popBackStack() })
+            ShelfDetailScreen(
+                item = shelf.items.firstOrNull { it.id == id }, a = shelfActions, onBack = { nav.popBackStack() }, files = shelfFiles,
+            )
           }
+        }
+        composable("transfers") {
+            TransfersScreen(
+                transfers = transfers,
+                a = object : TransfersActions {
+                    override fun cancel(id: String) = rt.cancelTransfer(id)
+                    override fun retry(id: String) = rt.retryTransfer(id)
+                    override fun remove(id: String) = rt.removeTransfer(id)
+                    override fun clearFinished() = rt.clearFinishedTransfers()
+                    override fun open(t: dev.benfranklin.tether.core.transfer.TransferRecord): String? = rt.openTransfer(t)
+                },
+                onBack = { nav.popBackStack() },
+            )
         }
         composable("hotspot") {
             var tick by remember { mutableIntStateOf(0) }
@@ -498,38 +525,16 @@ private fun TetherApp(rt: TetherRuntime) {
                         when (val st = upd) {
                             is dev.benfranklin.tether.v5.Updater.State.Available -> {
                                 if (dev.benfranklin.tether.v5.Setup.canInstall(ctx)) {
-                                    rt.updater.download(st.info, settings.updateFeed)
+                                    rt.updater.download(st.info)
                                 } else {
                                     fixSetup(ctx, "install") {}
                                 }
                             }
-                            dev.benfranklin.tether.v5.Updater.State.NeedsToken -> openTokenPage()
-                            else -> rt.updater.check(settings.updateFeed)
+                            else -> rt.updater.check()
                         }
-                    }
-                    override fun saveToken(token: String): Boolean {
-                        val ok = dev.benfranklin.tether.v5.TokenStore.save(ctx, token)
-                        android.widget.Toast.makeText(ctx, if (ok) "Token saved" else "That doesn't look like a GitHub token",
-                            android.widget.Toast.LENGTH_SHORT).show()
-                        if (ok) {
-                            rt.permissionsChanged()
-                            rt.updater.check(settings.updateFeed)
-                        }
-                        return ok
-                    }
-                    override fun removeToken() {
-                        dev.benfranklin.tether.v5.TokenStore.clear(ctx)
-                        rt.permissionsChanged()
-                    }
-                    override fun openTokenPage() {
-                        ctx.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(dev.benfranklin.tether.core.features.GitHubReleases.NEW_TOKEN_URL))
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
                     }
                 },
                 onBack = { nav.popBackStack() },
-                hasToken = remember(permsTick) { dev.benfranklin.tether.v5.TokenStore.has(ctx) },
             )
         }
         composable("features") {
@@ -632,7 +637,7 @@ private fun TetherApp(rt: TetherRuntime) {
                     rt.settings.update {
                         it.copy(whatsNewVersion = sheetInfo.version, whatsNewNotes = UpdatePrompt.changelog(sheetInfo.notes))
                     }
-                    rt.updater.download(sheetInfo, settings.updateFeed)
+                    rt.updater.download(sheetInfo)
                 } else {
                     fixSetup(ctx, "install") {}
                 }
@@ -653,7 +658,7 @@ private fun TetherApp(rt: TetherRuntime) {
         )
     }
     if (whatsNew) {
-        val notes = settings.whatsNewNotes.takeIf { settings.whatsNewVersion == BuildConfig.VERSION_NAME }
+        val notes = remember { bundledNotes(ctx) } ?: settings.whatsNewNotes.takeIf { settings.whatsNewVersion == BuildConfig.VERSION_NAME }
         WhatsNewSheet(BuildConfig.VERSION_NAME, notes) {
             whatsNew = false
             rt.settings.update { it.copy(whatsNewSeen = BuildConfig.VERSION_NAME, whatsNewVersion = null, whatsNewNotes = null) }
@@ -680,10 +685,18 @@ private class RuntimeShelfActions(private val ctx: Context, private val rt: Teth
     override fun restore(item: dev.benfranklin.tether.core.proto.ShelfItem) = rt.v6.restore(item)
     override fun move(id: String, to: Int) = rt.v6.move(id, to)
     override fun primary(item: dev.benfranklin.tether.core.proto.ShelfItem): String = rt.v6.primary(item)
-    override fun copy(item: dev.benfranklin.tether.core.proto.ShelfItem) =
-        rt.v6.copy(dev.benfranklin.tether.core.features.ShelfDetect.copyText(item))
+    override fun copy(item: dev.benfranklin.tether.core.proto.ShelfItem): String = rt.v6.copyItem(item)
     override fun open(id: String) = navigate(id)
+    override fun rename(id: String, title: String): Boolean = rt.v6.rename(id, title)
+    override fun share(item: dev.benfranklin.tether.core.proto.ShelfItem): String = rt.v6.share(item)
+    override suspend fun thumbnail(item: dev.benfranklin.tether.core.proto.ShelfItem): ImageBitmap? =
+        withContext(Dispatchers.IO) { rt.v6.shelfFiles.thumbnail(item)?.asImageBitmap() }
 }
+
+/** This version's section of the CHANGELOG.md bundled in the APK (assets), or null. */
+private fun bundledNotes(c: Context): String? = runCatching {
+    c.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() }
+}.getOrNull()?.let { WhatsNewPolicy.section(it, BuildConfig.VERSION_NAME) }
 
 private fun AppSettings.withQuiet(change: (QuietHours) -> QuietHours) =
     copy(notifications = notifications.copy(quietHours = change(notifications.quietHours)))

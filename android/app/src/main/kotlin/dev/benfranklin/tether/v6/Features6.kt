@@ -18,6 +18,10 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import dev.benfranklin.tether.R
 import dev.benfranklin.tether.core.features.CaptureNaming
+import dev.benfranklin.tether.core.features.CapturePolicy
+import dev.benfranklin.tether.core.features.FileKinds
+import dev.benfranklin.tether.core.features.ShelfCache
+import dev.benfranklin.tether.core.features.ShelfRename
 import dev.benfranklin.tether.core.features.ShelfDetect
 import dev.benfranklin.tether.core.features.ShelfState
 import dev.benfranklin.tether.core.proto.CaptureReasons
@@ -82,6 +86,10 @@ class Features6(
     private val send: (Message) -> Boolean,
     private val sendFile: (TransferRecord) -> Unit,
     private val supports: (String) -> Boolean,
+    /** Tether is in front (an activity start needs no exemption then). */
+    private val foreground: () -> Boolean = { false },
+    /** Linked to the Mac, and whether over the Wi-Fi fast path (Shelf files are fetched in the background). */
+    private val link: () -> Pair<Boolean, Boolean> = { false to false },
 ) {
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "tether-v6").apply { isDaemon = true } }
     private val main = Handler(Looper.getMainLooper())
@@ -96,13 +104,30 @@ class Features6(
     val hotspot: StateFlow<HotspotUi> = _hotspot.asStateFlow()
     private val _capture = MutableStateFlow<CaptureUi?>(null)
     val capture: StateFlow<CaptureUi?> = _capture.asStateFlow()
-    /** Shelf file ids the user asked to open (opened when the bytes arrive). */
-    private val wantedFiles = HashSet<String>()
+    /** What to do with a Shelf file once its bytes arrive (the user asked before it was here). */
+    private enum class Want { OPEN, COPY, SHARE }
+    private val wantedFiles = HashMap<String, Want>()
+    val shelfFiles = ShelfFiles(app)
+    /** Ids with a local (encrypted) copy, and ids being fetched right now (with when the request went out). */
+    private val _localFiles = MutableStateFlow<Set<String>>(emptySet())
+    val localFiles: StateFlow<Set<String>> = _localFiles.asStateFlow()
+    private val inFlight = HashMap<String, Long>()
+    private val _fetching = MutableStateFlow<Set<String>>(emptySet())
+    val fetching: StateFlow<Set<String>> = _fetching.asStateFlow()
+    private val launcher = CaptureLauncher(app, foreground)
+    /** The open Insert from Phone request: its ref and when its screen actually opened (null = not yet). */
+    private var captureOpenedAt: Long? = null
     private var hotspotRef: String? = null
     private var apReceiver: BroadcastReceiver? = null
 
     init {
-        io.execute { loadShelf() }
+        io.execute {
+            shelfFiles.clearOpened()
+            loadShelf()
+            shelfFiles.migrate()
+            shelfFiles.prune(_shelf.value.items.mapNotNull { i -> i.id.takeIf { i.file != null } }.toSet())
+            refreshLocal()
+        }
     }
 
     fun handle(m: Message): Boolean {
@@ -117,9 +142,20 @@ class Features6(
         return true
     }
 
-    /** Link up: send our whole shelf (the Mac does the same; both merge). */
+    /** Link up: send our whole shelf (the Mac does the same; both merge), then fetch missing files. */
     fun linkUp() {
         if (supports(Caps6.SHELF)) send(_shelf.value.snapshot())
+        io.execute { syncFiles() }
+    }
+
+    /** The link changed (e.g. the Wi-Fi fast path came up): larger missing files can be fetched now. */
+    fun linkChanged() {
+        val (connected, _) = link()
+        if (!connected) {
+            synchronized(inFlight) { inFlight.clear() }
+            _fetching.value = emptySet()
+        }
+        io.execute { syncFiles() }
     }
 
     private fun reply(m: Message) = engine.execute { send(m) }
@@ -142,36 +178,38 @@ class Features6(
 
     private fun onCapture(r: CaptureReq) {
         if (!settings().allowCapture) return reply(CaptureResult(r.ref, CaptureStates.FAILED, reason = CaptureReasons.DISABLED))
-        if (_capture.value != null) return reply(CaptureResult(r.ref, CaptureStates.FAILED, reason = CaptureReasons.BUSY))
-        _capture.value = CaptureUi(r.ref, r.kind)
-        val intent = CaptureActivity.intent(app, r.ref, r.kind)
-        if (Settings.canDrawOverlays(app) || ControlService.available) {
-            try {
-                app.startActivity(intent)
-                return reply(CaptureResult(r.ref, CaptureStates.OPEN))
-            } catch (e: SecurityException) {
-                Log.w("capture.blocked", "reason" to e.message)
-            }
+        val now = System.currentTimeMillis()
+        val current = _capture.value
+        if (current != null && CapturePolicy.busy(captureOpenedAt, now)) {
+            return reply(CaptureResult(r.ref, CaptureStates.FAILED, reason = CaptureReasons.BUSY))
         }
-        val pi = PendingIntent.getActivity(app, 7001, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val n = NotificationCompat.Builder(app, Notifications.CH_REQUESTS)
-            .setSmallIcon(R.drawable.ic_stat_tether)
-            .setContentTitle(if (r.kind == "scan") "Scan a document for your Mac" else "Take a photo for your Mac")
-            .setContentText("Tap to open the camera")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setFullScreenIntent(pi, true)
-            .setAutoCancel(true)
-            .setContentIntent(pi)
-            .build()
-        Notifications.postRaw(app, ID_CAPTURE, n)
-        reply(CaptureResult(r.ref, CaptureStates.OPEN, reason = CaptureReasons.TAP_PHONE))
+        // A request whose screen never opened (or is stale) is replaced, never "busy" forever.
+        if (current != null) reply(CaptureResult(current.ref, CaptureStates.FAILED, reason = CaptureReasons.CANCELLED))
+        _capture.value = CaptureUi(r.ref, r.kind)
+        captureOpenedAt = null
+        launcher.launch(r.ref, r.kind) {
+            reply(CaptureResult(r.ref, CaptureStates.OPEN, reason = CaptureReasons.TAP_PHONE))
+        }
+    }
+
+    /** CaptureActivity for [ref] is on screen (called from its onCreate / onNewIntent). */
+    fun captureOpened(ref: String) {
+        main.post {
+            if (_capture.value?.ref != ref) return@post
+            captureOpenedAt = System.currentTimeMillis()
+            launcher.confirmed(ref)
+            reply(CaptureResult(ref, CaptureStates.OPEN))
+            Log.i("capture.opened")
+        }
     }
 
     /** From CaptureActivity: the picture / scan ([file], [pages]) or null when cancelled. */
     fun captureDone(ref: String, kind: String, file: File?, pages: Int, error: String? = null) {
-        _capture.value = null
-        Notifications.cancelId(app, ID_CAPTURE)
+        if (_capture.value?.ref == ref) {
+            _capture.value = null
+            captureOpenedAt = null
+            launcher.cancel()
+        }
         if (file == null) {
             return reply(CaptureResult(ref, CaptureStates.FAILED, reason = error ?: CaptureReasons.CANCELLED))
         }
@@ -320,10 +358,18 @@ class Features6(
     }
 
     private fun commit(s: ShelfState, sync: ShelfSync?) {
+        val before = _shelf.value
         val pruned = s.pruned(System.currentTimeMillis())
         _shelf.value = pruned
         saveShelf(pruned)
         if (sync != null) engine.execute { if (supports(Caps6.SHELF)) send(sync) }
+        // Items that went away take their file copies with them.
+        val live = pruned.items.map { it.id }.toSet()
+        before.items.filter { it.file != null && it.id !in live }.forEach { gone -> io.execute { shelfFiles.remove(gone.id) } }
+        io.execute {
+            refreshLocal()
+            syncFiles()
+        }
     }
 
     @Synchronized private fun mergeShelf(m: ShelfSync) {
@@ -343,10 +389,9 @@ class Features6(
             try {
                 val id = UUID.randomUUID().toString()
                 val staged = files.stage(uri, System.currentTimeMillis())
-                val dir = File(app.filesDir, "shelf/$id").apply { mkdirs() }
-                val dest = File(dir, staged.name)
-                File(staged.ref!!).copyTo(dest, overwrite = true)
-                File(staged.ref!!).delete()
+                val plain = File(staged.ref!!)
+                // The local copy is encrypted at rest right away; the staged plain copy goes.
+                shelfFiles.ingest(id, plain, move = true)
                 val f = ShelfFile(staged.name, staged.size, staged.mime, staged.sha256, "phone")
                 synchronized(this) {
                     val item = ShelfState.fileItem(f, id, "phone", System.currentTimeMillis())
@@ -355,6 +400,8 @@ class Features6(
                 }
             } catch (e: IOException) {
                 Log.w("shelf.add_file_failed", "error" to e.message)
+            } catch (e: SecurityException) {
+                Log.w("shelf.add_file_denied", "error" to e.message)
             }
         }
     }
@@ -376,18 +423,47 @@ class Features6(
         commit(next, ShelfSync(next.items.filter { it.id == id }))
     }
 
+    /** Rename (0.5.3): the title, and for files the name used when opening / copying. Synced; false when nothing changed. */
+    @Synchronized fun rename(id: String, title: String): Boolean {
+        val item = _shelf.value.items.firstOrNull { it.id == id } ?: return false
+        val renamed = ShelfRename.rename(item, title, System.currentTimeMillis()) ?: return false
+        commit(_shelf.value.update(renamed), ShelfSync(listOf(renamed)))
+        Log.i("shelf.renamed", "file" to (item.file != null))
+        return true
+    }
+
     /** The card's primary action. Returns a short confirmation ("Copied", "Opened"). */
     fun primary(item: ShelfItem): String {
         when (item.kind) {
             ShelfKinds.LINK -> open(Intent(Intent.ACTION_VIEW, Uri.parse(linkUrl(item.body))))
             ShelfKinds.ADDRESS -> open(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode("${item.title}, ${item.body}"))))
-            ShelfKinds.FILE -> openFile(item)
+            ShelfKinds.FILE -> return withFile(item, Want.OPEN)
             else -> {
                 copy(ShelfDetect.copyText(item))
                 return "Copied"
             }
         }
         return "Opened"
+    }
+
+    /**
+     * Copy (0.5.3): a FILE item puts the file itself on the clipboard (a FileProvider content URI,
+     * so a photo pastes as a photo); everything else copies its text.
+     */
+    fun copyItem(item: ShelfItem): String {
+        if (item.kind != ShelfKinds.FILE) {
+            copy(ShelfDetect.copyText(item))
+            return "Copied"
+        }
+        return withFile(item, Want.COPY)
+    }
+
+    fun share(item: ShelfItem): String = if (item.kind == ShelfKinds.FILE) {
+        withFile(item, Want.SHARE)
+    } else {
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, ShelfDetect.copyText(item))
+        open(Intent.createChooser(send, null))
+        "Shared"
     }
 
     fun copy(text: String) {
@@ -401,47 +477,125 @@ class Features6(
             app.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: android.content.ActivityNotFoundException) {
             Log.w("shelf.open_failed", "reason" to e.message)
+            Notifications.alert(app, "No app can open this", "Install an app for this kind of file, then try again")
         }
     }
 
-    private fun localFile(item: ShelfItem): File? =
-        item.file?.let { File(app.filesDir, "shelf/${item.id}/${it.name}") }?.takeIf { it.exists() }
-
-    private fun openFile(item: ShelfItem) {
-        val f = localFile(item)
-        if (f != null) {
-            val uri = FileProvider.getUriForFile(app, app.packageName + ".files", f)
-            open(Intent(Intent.ACTION_VIEW).setDataAndType(uri, item.file?.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-            return
+    /** Runs [want] on the local copy, or fetches it first. Returns the button's confirmation text. */
+    private fun withFile(item: ShelfItem, want: Want): String {
+        if (shelfFiles.has(item.id)) {
+            io.execute { act(item, want) }
+            return when (want) {
+                Want.OPEN -> "Opened"
+                Want.COPY -> "Copied"
+                Want.SHARE -> "Shared"
+            }
         }
-        wantedFiles += item.id
+        val (connected, _) = link()
+        if (!connected || !supports(Caps6.SHELF)) {
+            main.post {
+                android.widget.Toast.makeText(app, "Not downloaded yet · connect your Mac", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            return "Not downloaded"
+        }
+        synchronized(wantedFiles) { wantedFiles[item.id] = want }
+        request(item, force = true)
+        return "Getting…"
+    }
+
+    private fun act(item: ShelfItem, want: Want) {
+        val f = shelfFiles.materialize(item) ?: return Log.w("shelf.materialize_failed")
+        val uri = FileProvider.getUriForFile(app, app.packageName + ".files", f)
+        val mime = item.file?.mime?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
+            ?: app.contentResolver.getType(uri) ?: "*/*"
+        main.post {
+            when (want) {
+                Want.OPEN -> open(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                Want.SHARE -> open(
+                    Intent.createChooser(
+                        Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri)
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                        null,
+                    ),
+                )
+                Want.COPY -> {
+                    val clip = ClipData.newUri(app.contentResolver, f.name, uri)
+                    app.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(clip)
+                    Log.i("shelf.copied_file", "image" to FileKinds.isImage(item.file?.mime, item.file?.name))
+                }
+            }
+        }
+    }
+
+    // ----- background copies of Shelf files (0.5.3) -----
+
+    private fun refreshLocal() {
+        _localFiles.value = _shelf.value.items.filter { it.file != null && shelfFiles.has(it.id) }.map { it.id }.toSet()
+    }
+
+    /** Ask the Mac for every Shelf file we don't have yet (≤100 MB; over Bluetooth only small ones). */
+    private fun syncFiles() {
+        val (connected, wifi) = link()
+        if (!connected || !supports(Caps6.SHELF)) return
+        val now = System.currentTimeMillis()
+        synchronized(inFlight) { inFlight.entries.removeAll { now - it.value > FETCH_TIMEOUT_MS } }
+        for (item in _shelf.value.items) {
+            val f = item.file ?: continue
+            val busy = synchronized(inFlight) { item.id in inFlight }
+            if (ShelfCache.shouldFetch(f, shelfFiles.has(item.id), busy, connected, wifi)) request(item, force = false)
+        }
+    }
+
+    private fun request(item: ShelfItem, force: Boolean) {
+        synchronized(inFlight) {
+            if (!force && item.id in inFlight) return
+            inFlight[item.id] = System.currentTimeMillis()
+            _fetching.value = inFlight.keys.toSet()
+        }
         engine.execute { if (supports(Caps6.SHELF)) send(ShelfFileReq(item.id)) }
+        Log.i("shelf.fetch", "bytes" to (item.file?.size ?: 0), "wanted" to force)
     }
 
+    /** The Mac asked for a file: any device holding a copy serves it (not just the one that added it). */
     private fun serveShelfFile(r: ShelfFileReq) {
         val item = _shelf.value.items.firstOrNull { it.id == r.id } ?: return
-        val f = localFile(item) ?: return
+        val plain = shelfFiles.materialize(item) ?: return Log.i("shelf.serve_missing")
         try {
-            val staged = files.stage(Uri.fromFile(f), System.currentTimeMillis())
+            val staged = files.stage(Uri.fromFile(plain), System.currentTimeMillis())
             engine.execute { sendFile(staged.copy(name = item.file?.name ?: staged.name, kind = FileKinds6.SHELF)) }
         } catch (e: IOException) {
             Log.w("shelf.serve_failed", "error" to e.message)
+        } finally {
+            plain.parentFile?.deleteRecursively()
         }
     }
 
     private fun shelfFileArrived(r: TransferRecord) {
         val src = r.ref?.let(::File)?.takeIf { it.exists() } ?: return
         val item = _shelf.value.items.firstOrNull { it.file?.sha256.equals(r.sha256, true) }
-            ?: _shelf.value.items.firstOrNull { it.file?.name == r.name } ?: return
-        val dir = File(app.filesDir, "shelf/${item.id}").apply { mkdirs() }
-        val dest = File(dir, item.file?.name ?: r.name)
-        src.copyTo(dest, overwrite = true)
-        src.delete()
-        if (wantedFiles.remove(item.id)) main.post { openFile(item) }
+            ?: _shelf.value.items.firstOrNull { it.file?.name == r.name }
+        if (item == null) {
+            src.delete()
+            return
+        }
+        try {
+            shelfFiles.ingest(item.id, src, move = true)
+        } catch (e: IOException) {
+            Log.w("shelf.store_failed", "error" to e.message)
+            src.delete()
+            return
+        }
+        synchronized(inFlight) {
+            inFlight.remove(item.id)
+            _fetching.value = inFlight.keys.toSet()
+        }
+        refreshLocal()
+        val want = synchronized(wantedFiles) { wantedFiles.remove(item.id) }
+        if (want != null) act(item, want)
     }
 
     companion object {
-        private const val ID_CAPTURE = 7_100
+        private const val FETCH_TIMEOUT_MS = 10 * 60_000L
         private const val ID_HOTSPOT = 7_101
         private const val AP_ACTION = "android.net.wifi.WIFI_AP_STATE_CHANGED"
         private const val AP_ENABLED = 13

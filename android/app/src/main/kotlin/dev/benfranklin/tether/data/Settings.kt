@@ -78,8 +78,6 @@ data class AppSettings(
     val dndSync: Boolean = true,
     /** Images on the clipboard travel both ways. */
     val clipImages: Boolean = true,
-    /** Custom update feed (https); null = the default public feed, then the GitHub API. */
-    val updateFeed: String? = null,
     /** Check for updates when Tether opens (at most daily). */
     val autoUpdateCheck: Boolean = true,
     val lastUpdateCheck: Long = 0,
@@ -104,6 +102,13 @@ data class AppSettings(
 class SettingsRepository(context: Context) {
     private val file = JsonFile(File(context.filesDir, "settings.json"), AppSettings.serializer())
     private val state = MutableStateFlow(file.read() ?: AppSettings())
+
+    init {
+        // 0.5.3: the custom update feed setting is gone; rewrite once so it isn't kept on disk.
+        val raw = File(context.filesDir, "settings.json")
+        if (raw.exists() && raw.readText().contains("\"updateFeed\"")) file.write(state.value)
+    }
+
     val settings: StateFlow<AppSettings> = state.asStateFlow()
     val current: AppSettings get() = state.value
 

@@ -17,10 +17,13 @@ struct ShelfPage: View {
     @State private var selected: String?
     @State private var keyMonitor: Any?
     @Namespace private var hero
+    @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduce
 
     static let dragPrefix = "tether-shelf-item:"
-    private var items: [ShelfItem] { v5.shelf.ordered }
+    /// 0.5.3: ⌘F search over title, content, file name and type.
+    private var searching: Bool { !v5.shelfQuery.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var items: [ShelfItem] { searching ? ShelfSearch.filter(v5.shelf.ordered, query: v5.shelfQuery) : v5.shelf.ordered }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -29,8 +32,13 @@ struct ShelfPage: View {
                     PageTitle(title: "Shelf",
                               detail: m.peer.map { "Pinned on both devices · synced with \($0.name)" } ?? "Pinned on both devices")
                     addBar
-                    if items.isEmpty {
+                    if !v5.shelf.items.isEmpty { searchBar }
+                    if v5.shelf.items.isEmpty {
                         empty
+                    } else if items.isEmpty {
+                        Text("Nothing on your Shelf matches “\(v5.shelfQuery.trimmingCharacters(in: .whitespaces))”")
+                            .font(Typo.sans(13)).foregroundColor(Mono.muted).padding(.vertical, 30).frame(maxWidth: .infinity)
+                            .transition(.opacity)
                     } else {
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
                             ForEach(items) { item in card(item) }
@@ -52,6 +60,7 @@ struct ShelfPage: View {
         .animation(reduce ? Motion.reducedFade : .spring(response: 0.34, dampingFraction: 0.62), value: targeted)
         .animation(reduce ? Motion.reducedFade : .spring(response: 0.42, dampingFraction: 0.72), value: v5.shelfUndo?.id)
         .onAppear(perform: watchKeys)
+        .onChange(of: v5.shelfSearchFocus) { _ in searchFocused = true }
         .onDisappear {
             if let k = keyMonitor { NSEvent.removeMonitor(k) }
             keyMonitor = nil
@@ -79,6 +88,27 @@ struct ShelfPage: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Mono.surface))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(targeted ? Mono.text : Mono.line, lineWidth: targeted ? 1.5 : 1))
         .scaleEffect(targeted && !reduce ? 1.02 : 1)
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundColor(Mono.muted)
+            TextField("Search Shelf  ⌘F", text: $v5.shelfQuery)
+                .textFieldStyle(.plain).font(Typo.sans(13)).foregroundColor(Mono.text)
+                .focused($searchFocused)
+                .onExitCommand { v5.shelfQuery = "" }
+            if searching {
+                Button { v5.shelfQuery = "" } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundColor(Mono.muted)
+                }
+                .buttonStyle(.plain).accessibilityLabel("Clear search").transition(.opacity.combined(with: .scale))
+            }
+        }
+        .padding(.horizontal, 12).frame(height: 32)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Mono.surface))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(searchFocused ? Mono.text : Mono.line, lineWidth: searchFocused ? 1.5 : 1))
+        .animation(Motion.snappy(reduce), value: searchFocused)
+        .animation(Motion.snappy(reduce), value: searching)
     }
 
     private func add() {
@@ -112,11 +142,13 @@ struct ShelfPage: View {
             }
             .onDrop(of: [UTType.utf8PlainText],
                     delegate: ShelfReorder(target: item.id, items: { items }, dragging: $dragging, move: { id, to in
+                guard !searching else { return } // reordering a filtered list would be ambiguous
                 withAnimation(reduce ? Motion.reducedFade : .spring(response: 0.38, dampingFraction: 0.8)) { m.moveShelf(id, to: to) }
             }))
             .contextMenu {
                 Button(ShelfDetect.action(item.kind)) { m.shelfPrimary(item) }
                 Button("Copy") { m.copyShelf(item) }
+                Button("Rename") { v5.shelfRenaming = item.id }
                 Button("Open details") { open(item) }
                 Divider()
                 Button("Remove") { remove(item.id) }
@@ -295,10 +327,14 @@ struct ShelfCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ShelfTag(kind: item.kind).hero("s-tag-\(item.id)", in: hero, active: heroActive)
-            Text(item.title).font(Typo.sans(17, .medium)).foregroundColor(Mono.text).lineLimit(1)
-                .hero("s-title-\(item.id)", in: hero, active: heroActive)
-            Text(preview).font(mono ? Typo.mono(13) : Typo.sans(13)).foregroundColor(Mono.muted).lineLimit(1).truncationMode(.tail)
+            HStack(alignment: .top) {
+                ShelfTag(kind: item.kind).hero("s-tag-\(item.id)", in: hero, active: heroActive)
+                Spacer(minLength: 8)
+                ShelfFileThumb(item: item, state: m.shelfState(item))
+            }
+            ShelfTitle(item: item, shown: cardText.title).hero("s-title-\(item.id)", in: hero, active: heroActive)
+            Text(cardText.preview.replacingOccurrences(of: "\n", with: " "))
+                .font(mono ? Typo.mono(13) : Typo.sans(13)).foregroundColor(Mono.muted).lineLimit(1).truncationMode(.tail)
             Rectangle().fill(Mono.line).frame(height: 1).padding(.top, 2)
             HStack {
                 TimelineView(.periodic(from: .now, by: 30)) { ctx in
@@ -330,6 +366,14 @@ struct ShelfCard: View {
         .accessibilityLabel("\(item.kind) \(item.title)")
     }
 
+    /// "11 KB · Word document" (0.5.3: friendly kinds, not MIME types), plus "Not downloaded yet"
+    /// when the copy is missing and the phone is away.
+    static func filePreview(_ item: ShelfItem, state: ShelfCache.State) -> String {
+        guard let f = item.file else { return "" }
+        return [formatBytes(f.size), FileKinds.describe(mime: f.mime, name: f.name),
+                state == .notDownloaded ? "Not downloaded yet" : nil].compactMap { $0 }.joined(separator: " · ")
+    }
+
     /// "forms.gle/x7Tq2abc": the link without its scheme or "www.", capped at 48 characters.
     static func linkPreview(_ url: String) -> String {
         var s = url.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -338,11 +382,19 @@ struct ShelfCard: View {
         return s.count > 48 ? String(s.prefix(47)) + "…" : s
     }
 
+    /// Title + preview; a snippet titled from its own first line doesn't repeat it (0.5.3).
+    private var cardText: ShelfCardText.Parts {
+        switch item.kind {
+        case ShelfKinds.link, ShelfKinds.wifi, ShelfKinds.file: return .init(title: item.title, preview: preview)
+        default: return ShelfCardText.split(title: item.title, body: item.body)
+        }
+    }
+
     private var preview: String {
         switch item.kind {
         case ShelfKinds.link: return ShelfCard.linkPreview(item.body)
         case ShelfKinds.wifi: return item.secret.map { _ in "Password ••••••••" } ?? "Open network"
-        case ShelfKinds.file: return [item.file.map { formatBytes($0.size) }, item.file?.mime].compactMap { $0 }.joined(separator: " · ")
+        case ShelfKinds.file: return ShelfCard.filePreview(item, state: m.shelfState(item))
         default: return item.body.replacingOccurrences(of: "\n", with: " ")
         }
     }
@@ -433,6 +485,10 @@ struct ShelfDetail: View {
             HStack(spacing: 8) {
                 ShelfActionButton(item: item)
                 if ShelfDetect.action(item.kind) != "Copy" { GhostButton(title: "Copy") { m.copyShelf(item) } }
+                GhostButton(title: "Rename") {
+                    close()
+                    m.v5.shelfRenaming = item.id
+                }
                 Spacer()
                 GhostButton(title: "Remove", action: remove)
             }
@@ -445,5 +501,82 @@ struct ShelfDetail: View {
         )
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Mono.line))
         .shadow(color: .black.opacity(0.35), radius: 30, y: 14)
+    }
+}
+
+/// A card's title; double-click (or Rename in the context menu) edits it in place (0.5.3).
+struct ShelfTitle: View {
+    @EnvironmentObject var m: AppModel
+    let item: ShelfItem
+    /// What the card shows instead of the raw title (ShelfCardText); renaming still edits the title.
+    var shown: String?
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    private var editing: Bool { m.v5.shelfRenaming == item.id }
+
+    var body: some View {
+        Group {
+            if editing {
+                TextField("Name", text: $draft)
+                    .textFieldStyle(.plain).font(Typo.sans(17, .medium)).foregroundColor(Mono.text)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Mono.bg))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Mono.text, lineWidth: 1))
+                    .focused($focused)
+                    .onSubmit(commit)
+                    .onExitCommand { m.v5.shelfRenaming = nil }
+                    .onAppear {
+                        draft = item.title
+                        DispatchQueue.main.async { focused = true }
+                    }
+                    .onChange(of: focused) { f in if !f && editing { commit() } }
+            } else {
+                Text(shown ?? item.title).font(Typo.sans(17, .medium)).foregroundColor(Mono.text).lineLimit(1)
+                    .onTapGesture(count: 2) { m.v5.shelfRenaming = item.id }
+                    .help("Double-click to rename")
+            }
+        }
+        .accessibilityAction(named: "Rename") { m.v5.shelfRenaming = item.id }
+    }
+
+    private func commit() {
+        guard editing else { return }
+        m.v5.shelfRenaming = nil
+        if m.renameShelf(item.id, to: draft) { m.flashSuccess("shelf-rename-\(item.id)") }
+    }
+}
+
+/// An image file's thumbnail (from the encrypted local copy) at the top-right of its card.
+struct ShelfFileThumb: View {
+    @EnvironmentObject var m: AppModel
+    let item: ShelfItem
+    let state: ShelfCache.State
+    @State private var image: NSImage?
+    @Environment(\.accessibilityReduceMotion) private var reduce
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(nsImage: image).resizable().scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Mono.line))
+                    .transition(reduce ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
+            }
+        }
+        .animation(Motion.snappy(reduce), value: image != nil)
+        .onAppear(perform: load)
+        .onChange(of: state) { _ in load() }
+        .onChange(of: item.file?.sha256) { _ in load() }
+        .accessibilityHidden(true)
+    }
+
+    private func load() {
+        guard state == .local, let f = item.file, FileKinds.isImage(mime: f.mime, name: f.name) else {
+            image = nil
+            return
+        }
+        m.shelfThumbnail(item) { image = $0 }
     }
 }

@@ -129,8 +129,6 @@ struct MacSettings: Codable, Equatable {
     /// Clipboard history (last 20, both directions) and images both ways.
     var clipHistory = true
     var clipImages = true
-    /// Update source: Tether's public feed, falling back to the GitHub API; or a custom https URL.
-    var updateFeed: String?
     var autoUpdateCheck = true
 
     init() {}
@@ -180,7 +178,6 @@ struct MacSettings: Codable, Equatable {
         chargedAlert = try c.decodeIfPresent(Bool.self, forKey: .chargedAlert) ?? true
         clipHistory = try c.decodeIfPresent(Bool.self, forKey: .clipHistory) ?? true
         clipImages = try c.decodeIfPresent(Bool.self, forKey: .clipImages) ?? true
-        updateFeed = try c.decodeIfPresent(String.self, forKey: .updateFeed)
         autoUpdateCheck = try c.decodeIfPresent(Bool.self, forKey: .autoUpdateCheck) ?? true
     }
 

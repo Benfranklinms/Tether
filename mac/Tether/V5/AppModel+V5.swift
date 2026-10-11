@@ -24,7 +24,6 @@ extension AppModel {
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &v5Subs)
         if !demo { v5.clips = Self.clipsFile.read() ?? ClipHistory() }
-        v5.update.tokenSet = Keychain.githubToken != nil
         v5.accessibilityTrusted = Accessibility.trusted
         v5.unlockReady = Keychain.unlockPassword != nil
         let t = Timer(timeInterval: 15, repeats: true) { [weak self] _ in self?.tick5() }
@@ -80,7 +79,10 @@ extension AppModel {
     }
 
     /// Transfers shown in lists: clipboard images are not files the user sent or received.
-    var visibleTransfers: [TransferRecord] { transfers.filter { $0.kind != FileKinds5.clip } }
+    /// Transfers the user sees: not clipboard images, Shelf file syncs or Insert from Phone pictures.
+    var visibleTransfers: [TransferRecord] {
+        transfers.filter { $0.kind != FileKinds5.clip && $0.kind != FileKinds6.shelf && $0.kind != FileKinds6.capture }
+    }
 
     /// Revision-5 messages from the phone (Engine forwards what it doesn't handle itself).
     func receive5(_ message: Message) -> Bool {

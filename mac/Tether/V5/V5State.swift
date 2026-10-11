@@ -37,7 +37,6 @@ struct UpdateState: Equatable {
     var phase: Phase = .idle
     var info: UpdateInfo?
     var lastCheck: Date?
-    var tokenSet = false
 }
 
 /// A row of the Mac setup checklist.
@@ -102,6 +101,13 @@ final class V5State: ObservableObject {
     @Published var shelfUndo: ShelfItem?
     @Published var shelfDetail: String?
     @Published var shelfFetching: Set<String> = []
+    // 0.5.3: local (encrypted) copies, background fetches, search, rename
+    @Published var shelfLocal: Set<String> = []
+    var shelfInFlight: [String: Date] = [:]
+    var shelfWants: [String: ShelfWant] = [:]
+    @Published var shelfQuery = ""
+    @Published var shelfSearchFocus = 0
+    @Published var shelfRenaming: String?
     @Published var updateSheet = false
     @Published var whatsNew = false
     /// The last app other than Tether that was frontmost (where Insert from Phone pastes).

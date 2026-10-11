@@ -14,7 +14,8 @@ import WidgetKit
 
 /// Generic-password items in the login Keychain. Secrets are never logged.
 enum Keychain {
-    static let githubService = "in.benfranklin.tether.github-token"
+    /// 0.5.0–0.5.2 kept an optional GitHub update token here; 0.5.3 deletes it on launch.
+    static let legacyGithubService = "in.benfranklin.tether.github-token"
     static let unlockService = "in.benfranklin.tether.unlock"
 
     static func read(_ service: String) -> String? {
@@ -37,8 +38,14 @@ enum Keychain {
         return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
     }
 
-    static var githubToken: String? { read(githubService) }
     static var unlockPassword: String? { read(unlockService) }
+
+    /// Whether an item exists, reading attributes only (never the secret, so no Keychain prompt).
+    static func exists(_ service: String) -> Bool {
+        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                kSecReturnAttributes as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        return SecItemCopyMatching(q as CFDictionary, nil) == errSecSuccess
+    }
 }
 
 /// Touch ID or the Mac password before a sensitive change (proximity unlock).

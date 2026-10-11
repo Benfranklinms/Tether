@@ -19,6 +19,9 @@ targets:
     platform: macOS
     sources:
       - path: Tether
+      # 0.5.3: "What's new" reads this version's section from the bundled changelog.
+      - path: ../CHANGELOG.md
+        buildPhase: resources
     dependencies:
       - package: TetherCore
       - target: TetherWidgets

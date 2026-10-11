@@ -1,5 +1,7 @@
 package dev.benfranklin.tether.ui.screens
 
+import dev.benfranklin.tether.ui.screenPadding
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -46,7 +48,12 @@ import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Inventory2
-import dev.benfranklin.tether.core.proto.FindActions
+import dev.benfranklin.tether.core.features.TransferList
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
@@ -101,6 +108,8 @@ data class HomeModel(
     val screenLive: Boolean = false,
     /** Paired, Bluetooth usable, but not linked: offer a manual radio restart (0.3.1). */
     val canReconnect: Boolean = false,
+    /** "Now" for folding away old transfers (fixed in screenshot tests). */
+    val now: Long = System.currentTimeMillis(),
 )
 
 @Composable
@@ -126,8 +135,10 @@ fun HomeScreen(
             onNoticeShown()
         }
     }
+    val recent = remember(m.transfers, m.now) { TransferList.home(m.transfers, m.now) }
     Scaffold(containerColor = Mono.Bg, snackbarHost = { SnackbarHost(snack) }) { pad ->
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding(), bottom = 32.dp)) {
+      Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(pad, bottom = 32.dp)) {
             item {
                 Row(
                     Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
@@ -171,14 +182,6 @@ fun HomeScreen(
                 }
             }
             item { ShelfTile(extras.shelfCount, extras.onShelf) }
-            extras.find?.let { f ->
-                item(key = "find") {
-                    FindMacCard(
-                        f, onRing = { extras.onFind(FindActions.RING) }, onStop = { extras.onFind(FindActions.STOP) },
-                        onLock = { extras.onFind(FindActions.LOCK) },
-                    )
-                }
-            }
             if (m.screenLive) {
                 item {
                     Row(
@@ -219,7 +222,7 @@ fun HomeScreen(
                     )
                 }
             }
-            items(m.transfers, key = { it.id }) { t ->
+            items(recent, key = { it.id }) { t ->
                 TransferRow(
                     t, onCancel, onRetry, onRemove,
                     Modifier.animateItem(
@@ -227,7 +230,54 @@ fun HomeScreen(
                     ),
                 )
             }
+            if (m.transfers.size > recent.size) {
+                item(key = "see-all") {
+                    SeeAllRow(m.transfers.size, extras.onSeeAllTransfers, Modifier.animateItem())
+                }
+            }
         }
+        StatusBarScrim()
+      }
+    }
+}
+
+/** "See all (N)" under the latest transfers: opens the full Transfers screen. */
+@Composable
+private fun SeeAllRow(total: Int, onClick: () -> Unit, modifier: Modifier) {
+    val source = remember { MutableInteractionSource() }
+    val view = LocalView.current
+    Row(
+        modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).pressScale(source).clip(RoundedCornerShape(14.dp))
+            .border(1.dp, Mono.Line, RoundedCornerShape(14.dp))
+            .clickable(source, ripple(), role = Role.Button) {
+                Haptics.tick(view)
+                onClick()
+            }
+            .heightIn(min = 48.dp).padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("See all", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        Text(
+            "$total", style = MaterialTheme.typography.labelLarge, color = Mono.Muted,
+            fontFamily = dev.benfranklin.tether.ui.theme.MonoCode,
+        )
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = Mono.Muted)
+    }
+}
+
+/**
+ * Edge-to-edge: the status bar is transparent, so content scrolling up would run under the clock
+ * and icons. A solid strip the height of the status bar (plus a short fade) keeps them readable.
+ */
+@Composable
+fun StatusBarScrim() {
+    Column(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(Mono.Bg))
+        Box(
+            Modifier.fillMaxWidth().height(12.dp)
+                .background(Brush.verticalGradient(listOf(Mono.Bg, Mono.Bg.copy(alpha = 0f)))),
+        )
     }
 }
 
@@ -283,12 +333,11 @@ private fun StatusCard(m: HomeModel) {
 data class HomeExtras(
     val shelfCount: Int = 0,
     val onShelf: () -> Unit = {},
-    /** Null hides the Find my Mac card (Mac too old / not paired). */
-    val find: FindModel? = null,
-    val onFind: (String) -> Unit = {},
     /** Newer version to offer, or null. */
     val updateVersion: String? = null,
     val onUpdate: () -> Unit = {},
+    /** "See all (N)": the full Transfers screen (0.5.3). */
+    val onSeeAllTransfers: () -> Unit = {},
 )
 
 @Composable
@@ -354,8 +403,10 @@ private fun ActionTile(label: String, icon: ImageVector, enabled: Boolean, onCli
 }
 
 @Composable
-private fun TransferRow(
+internal fun TransferRow(
     t: TransferRecord, onCancel: (String) -> Unit, onRetry: (String) -> Unit, onRemove: (String) -> Unit, modifier: Modifier,
+    background: androidx.compose.ui.graphics.Color = Mono.Bg,
+    onOpen: (() -> Unit)? = null,
 ) {
     val reduce = LocalReduceMotion.current
     val view = LocalView.current
@@ -370,9 +421,11 @@ private fun TransferRow(
     }
     val desc = transferDescription(t)
     Row(
-        modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp).semantics(mergeDescendants = true) {
-            contentDescription = desc
-        },
+        modifier.fillMaxWidth().background(background)
+            .then(if (onOpen != null && t.status == TransferStatus.DONE) Modifier.clickable(onClick = onOpen) else Modifier)
+            .padding(horizontal = 20.dp, vertical = 10.dp).semantics(mergeDescendants = true) {
+                contentDescription = desc
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(Mono.Surface), contentAlignment = Alignment.Center) {

@@ -34,8 +34,13 @@ class Screens6LogicTest {
         val p = shelfPreview(item(ShelfKinds.WIFI, "Home", secret = "hunter22"))
         assertFalse(p.contains("hunter22"))
         assertEquals("Open network", shelfPreview(item(ShelfKinds.WIFI, "Cafe")))
-        val f = shelfPreview(item(ShelfKinds.FILE, file = ShelfFile("a.pdf", 2048, "application/pdf", "00", "mac")))
-        assertTrue(f.startsWith("a.pdf"))
+        val pdf = item(ShelfKinds.FILE, file = ShelfFile("a.pdf", 2048, "application/pdf", "00", "mac"))
+        assertEquals("2 KB · PDF", shelfPreview(pdf))
+        val docx = item(ShelfKinds.FILE, file = ShelfFile("q.docx", 11 * 1024,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "00", "mac"))
+        assertEquals("11 KB · Word document", shelfPreview(docx))
+        assertEquals("2 KB · PDF · Not downloaded yet", shelfPreview(pdf, dev.benfranklin.tether.core.features.ShelfCache.State.NOT_DOWNLOADED))
+        assertEquals("2 KB · PDF", shelfPreview(pdf, dev.benfranklin.tether.core.features.ShelfCache.State.REMOTE))
         assertEquals("body", shelfPreview(item(ShelfKinds.TEXT, "body")))
     }
 

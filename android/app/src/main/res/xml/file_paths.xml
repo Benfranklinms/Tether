@@ -4,5 +4,5 @@
     <files-path name="received" path="received/" />
     <files-path name="clips" path="clips/" />
     <cache-path name="captures" path="captures/" />
-    <files-path name="shelf" path="shelf/" />
+    <cache-path name="shelf-open" path="shelf-open/" />
 </paths>

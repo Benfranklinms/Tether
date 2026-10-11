@@ -3,22 +3,19 @@ import CryptoKit
 import Foundation
 import TetherCore
 
-/// In-app updates for the Mac. Default source: the public Tether GitHub releases (an optional
-/// fine-grained read-only token in the Keychain raises the API rate limit). Optional alternative: a custom
-/// public https feed (tether-update.json format). The ZIP is preferred, the DMG is the fallback;
-/// both are checked against the release's SHA-256 before the app is replaced.
+/// In-app updates for the Mac from Tether's public GitHub releases (no token, no custom feed since
+/// 0.5.3). The ZIP is preferred, the DMG is the fallback; both are checked against the release's
+/// SHA-256 before the app is replaced. Every request and redirect must stay on HTTPS.
 final class MacUpdater: NSObject, URLSessionTaskDelegate {
     static let shared = MacUpdater()
     weak var model: AppModel?
 
     private lazy var session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
 
-    // The token is only ever sent to api.github.com: a redirect elsewhere (the asset CDN) drops it.
+    // Redirects (GitHub → its download CDN) are followed only over HTTPS.
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
-        var r = request
-        if !GitHubReleases.redirectKeepsAuth(to: request.url) { r.setValue(nil, forHTTPHeaderField: "Authorization") }
-        completionHandler(r)
+        completionHandler(request.url?.scheme == "https" ? request : nil)
     }
 
     private func set(_ f: @escaping (inout UpdateState) -> Void) {
@@ -27,30 +24,17 @@ final class MacUpdater: NSObject, URLSessionTaskDelegate {
 
     private func request(_ url: URL, binary: Bool) -> URLRequest {
         var r = URLRequest(url: url, timeoutInterval: binary ? 600 : 30)
-        let custom = model?.settings.updateFeed?.isEmpty == false
-        let token = custom ? nil : Keychain.githubToken
-        for (k, v) in GitHubReleases.headers(for: url, token: token, binary: binary) { r.setValue(v, forHTTPHeaderField: k) }
+        for (k, v) in GitHubReleases.headers(binary: binary) { r.setValue(v, forHTTPHeaderField: k) }
         return r
     }
 
-    /// Source URL: the custom feed when set, else the private releases API (needs a token).
-    var source: URL? {
-        if let f = model?.settings.updateFeed, !f.isEmpty { return f.hasPrefix("https://") ? URL(string: f) : nil }
-        return URL(string: GitHubReleases.latestURL)
-    }
-
     func check(manual: Bool) {
-        let custom = model?.settings.updateFeed?.isEmpty == false
-        guard let url = source else {
-            set { $0.phase = .failed("The update feed must be an https:// URL") }
-            return
-        }
+        guard let url = URL(string: GitHubReleases.latestURL) else { return }
         set { $0.phase = .checking }
         session.dataTask(with: request(url, binary: false)) { [weak self] data, resp, err in
             guard let self else { return }
             let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            let tok = custom ? "-" : (Keychain.githubToken == nil ? "none" : "set")
-            Log.info("update.check", ["status": "\(status)", "custom": "\(custom)", "token": tok])
+            Log.info("update.check", ["status": "\(status)"])
             guard err == nil, status == 200, let data, let info = UpdateFeed.parse(data) else {
                 let msg = err != nil ? "Couldn't reach GitHub"
                     : (status == 200 ? "No usable release" : GitHubReleases.explain(status: status))
@@ -76,9 +60,7 @@ final class MacUpdater: NSObject, URLSessionTaskDelegate {
             return set { $0.phase = .failed("This release has no Mac download") }
         }
         let isZip = info.macZip != nil
-        let custom = model?.settings.updateFeed?.isEmpty == false
-        // Private repo: the asset API URL with Accept: application/octet-stream; public feed: the plain URL.
-        guard let url = URL(string: (!custom ? asset.apiURL : nil) ?? asset.url) else { return }
+        guard let url = URL(string: asset.url), url.scheme == "https" else { return }
         set { $0.phase = .downloading(0) }
         let task = session.downloadTask(with: request(url, binary: true)) { [weak self] tmp, resp, err in
             guard let self else { return }
@@ -189,22 +171,22 @@ final class MacUpdater: NSObject, URLSessionTaskDelegate {
 }
 
 extension AppModel {
-    func saveGithubToken(_ token: String) {
-        let t = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard GitHubReleases.looksLikeToken(t) else { return toast("That doesn't look like a GitHub token") }
-        if Keychain.write(Keychain.githubService, t) {
-            v5.update.tokenSet = true
-            Log.info("update.token_saved", ["token": GitHubReleases.redact(t)])
-            MacUpdater.shared.check(manual: true)
-        } else {
-            toast("Couldn't save the token to the Keychain")
+    /// 0.5.3: the GitHub token (Keychain) and custom feed (settings.json "updateFeed") options are
+    /// gone. Delete what older builds stored, once per launch (both are no-ops when absent).
+    static func purgeLegacyUpdateSettings(_ current: MacSettings) {
+        let flag = "legacyUpdateTokenPurged"
+        if !UserDefaults.standard.bool(forKey: flag) {
+            if Keychain.exists(Keychain.legacyGithubService) {
+                Keychain.write(Keychain.legacyGithubService, nil)
+                Log.info("update.legacy_token_removed")
+            }
+            UserDefaults.standard.set(true, forKey: flag)
         }
-    }
-
-    func removeGithubToken() {
-        Keychain.write(Keychain.githubService, nil)
-        v5.update.tokenSet = false
-        v5.update.phase = .idle
+        let file = JSONFile<MacSettings>("settings.json")
+        if let raw = try? Data(contentsOf: file.url), String(data: raw, encoding: .utf8)?.contains("\"updateFeed\"") == true {
+            file.write(current)
+            Log.info("update.legacy_feed_removed")
+        }
     }
 
     func checkForUpdates(manual: Bool = true) {

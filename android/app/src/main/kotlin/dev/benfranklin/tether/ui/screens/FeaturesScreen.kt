@@ -1,5 +1,7 @@
 package dev.benfranklin.tether.ui.screens
 
+import dev.benfranklin.tether.ui.screenPadding
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -109,7 +111,7 @@ fun FeaturesScreen(s: AppSettings, st: FeatureStatus, a: FeatureActions, onBack:
     val caps = st.macCaps
     fun macLacks(cap: String) = caps != null && cap !in caps
     Scaffold(containerColor = Mono.Bg, topBar = { TopBar("On your Mac", onBack) }) { pad ->
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding(), bottom = 40.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = screenPadding(pad)) {
             if (caps != null && Caps.CURRENT.any { it !in caps }) {
                 item {
                     Text(

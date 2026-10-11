@@ -92,18 +92,7 @@ final class Mac5LogicTests: XCTestCase {
         XCTAssertEqual(Versions.compare("1.0", "1.0.0"), 0)
     }
 
-    func testFeedAndGitHubParsing() {
-        let feed = Data("""
-        {"schema":1,"version":"0.5.0","notes":"Big","url":"https://github.com/x/r/releases/tag/v0.5.0",
-         "android":{"url":"https://x/a.apk","sha256":"ab","size":1,"versionCode":51},
-         "mac":{"url":"https://x/T.zip","sha256":"CD34","size":4000000,"dmg":"https://x/T.dmg"},"future":1}
-        """.utf8)
-        let u = UpdateFeed.parse(feed)
-        XCTAssertEqual(u?.version, "0.5.0")
-        XCTAssertEqual(u?.macZip?.sha256, "cd34")
-        XCTAssertEqual(u?.macZip?.size, 4_000_000)
-        XCTAssertEqual(u?.macDmg?.url, "https://x/T.dmg")
-        XCTAssertNil(UpdateFeed.parse(Data(#"{"version":"1.0","mac":{"url":"http://evil/T.zip"}}"#.utf8))?.macZip)
+    func testGitHubParsing() {
         XCTAssertNil(UpdateFeed.parse(Data("nope".utf8)))
         let gh = Data("""
         {"tag_name":"v0.5.0","draft":false,"prerelease":false,"body":"N","html_url":"https://github.com/r",
@@ -274,36 +263,26 @@ final class Mac5LogicTests: XCTestCase {
         XCTAssertNil(WidgetSnapshot.decode(Data("x".utf8)))
     }
 
-    // MARK: 0.5 private GitHub releases
+    // MARK: public GitHub releases (0.5.3: no token, no custom feed)
 
-    func testPrivateReleaseAssetsAndAuthPolicy() throws {
+    func testPublicReleasesNeedNoToken() throws {
         let gh = Data(#"""
         {"tag_name":"v0.5.0","html_url":"https://github.com/Benfranklinms/Tether/releases/tag/v0.5.0","body":"n",
          "assets":[{"name":"Tether-0.5.0.zip","url":"https://api.github.com/repos/Benfranklinms/Tether/releases/assets/11",
          "browser_download_url":"https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.zip","size":5,
          "digest":"sha256:ABCD"},
-         {"name":"Tether-0.5.0.dmg","url":"https://evil.example/repos/Benfranklinms/Tether/releases/assets/12",
-         "browser_download_url":"https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.dmg","size":6}]}
+         {"name":"Tether-0.5.0.dmg","browser_download_url":"http://insecure.example/Tether-0.5.0.dmg","size":6}]}
         """#.utf8)
         let u = try XCTUnwrap(UpdateFeed.parse(gh))
         XCTAssertEqual(u.version, "0.5.0")
-        XCTAssertEqual(u.macZip?.apiURL, "https://api.github.com/repos/Benfranklinms/Tether/releases/assets/11")
+        XCTAssertEqual(u.macZip?.url, "https://github.com/Benfranklinms/Tether/releases/download/v0.5.0/Tether-0.5.0.zip")
         XCTAssertEqual(u.macZip?.sha256, "abcd")
-        XCTAssertNil(u.macDmg?.apiURL, "asset API URL on another host is refused")
-        let api = URL(string: "https://api.github.com/repos/Benfranklinms/Tether/releases/latest")!
-        let cdn = URL(string: "https://objects.githubusercontent.com/x")!
-        XCTAssertEqual(GitHubReleases.headers(for: api, token: "github_pat_x", binary: false)["Authorization"], "Bearer github_pat_x")
-        XCTAssertNil(GitHubReleases.headers(for: cdn, token: "github_pat_x", binary: true)["Authorization"])
-        XCTAssertEqual(GitHubReleases.headers(for: cdn, token: nil, binary: true)["Accept"], "application/octet-stream")
-        XCTAssertNil(GitHubReleases.headers(for: URL(string: "http://api.github.com/x")!, token: "t", binary: false)["Authorization"])
-        XCTAssertFalse(GitHubReleases.redirectKeepsAuth(to: cdn))
-        XCTAssertTrue(GitHubReleases.redirectKeepsAuth(to: api))
-        XCTAssertTrue(GitHubReleases.looksLikeToken("github_pat_11ABCDEFG0123456789_abcdefghijklmnop"))
-        XCTAssertTrue(GitHubReleases.looksLikeToken("  ghp_0123456789abcdefghijABCDEFGHIJ0123  "))
-        XCTAssertFalse(GitHubReleases.looksLikeToken("hello world token value 123"))
-        XCTAssertFalse(GitHubReleases.looksLikeToken("ghp_short"))
-        XCTAssertFalse(GitHubReleases.redact("github_pat_secret").contains("secret"))
-        XCTAssertTrue(GitHubReleases.explain(status: 401).contains("rejected"))
+        XCTAssertNil(u.macDmg, "plain-http downloads are refused")
+        XCTAssertNil(GitHubReleases.headers(binary: false)["Authorization"])
+        XCTAssertEqual(GitHubReleases.headers(binary: true)["Accept"], "application/octet-stream")
+        XCTAssertEqual(GitHubReleases.latestURL, "https://api.github.com/repos/Benfranklinms/Tether/releases/latest")
+        XCTAssertTrue(GitHubReleases.explain(status: 403).contains("rate limited"))
+        XCTAssertNil(UpdateFeed.parse(Data(#"{"schema":1,"version":"9.0"}"#.utf8)), "the old custom feed format is gone")
     }
 
     func testPhoneKindsOnlyScreenshotsAndPhotosAreMedia() {

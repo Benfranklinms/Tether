@@ -88,7 +88,9 @@ final class AppModel: ObservableObject {
 
     init(demo: Bool = false) {
         self.demo = demo
-        settings = demo ? MacSettings() : (JSONFile<MacSettings>("settings.json").read() ?? MacSettings())
+        let loaded = demo ? MacSettings() : (JSONFile<MacSettings>("settings.json").read() ?? MacSettings())
+        settings = loaded
+        if !demo { AppModel.purgeLegacyUpdateSettings(loaded) }
         guard !demo else {
             setUp5()
             return

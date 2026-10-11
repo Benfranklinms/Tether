@@ -233,10 +233,7 @@ struct MenuView: View {
                     if m.visibleTransfers.isEmpty {
                         empty("arrow.up.arrow.down", "Drop files here to send them.\nFiles from your phone land in Downloads/Tether.")
                     }
-                    ForEach(m.visibleTransfers, id: \.id) { t in
-                        TransferRow(t: t)
-                            .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
-                    }
+                    MenuTransfers()
                 }
             }
             .animation(Motion.spring(reduce), value: m.history.items.map(\.key))

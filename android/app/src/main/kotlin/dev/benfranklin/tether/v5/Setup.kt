@@ -158,11 +158,6 @@ object Setup {
             canInstall(c), false, Fix.Screen(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, pkgUri(c))),
         )
         list += Item(
-            "updates", "Updates", "Checks Tether's GitHub releases (Settings › Continue, files & updates)",
-            true, false,
-            Fix.Screen(Intent(Intent.ACTION_VIEW, Uri.parse(dev.benfranklin.tether.core.features.GitHubReleases.NEW_TOKEN_URL))),
-        )
-        list += Item(
             "readlogs", "Read logs (adb)", "Clipboard auto mode: send copies without opening Tether",
             readLogs(c), false,
             Fix.Adb(

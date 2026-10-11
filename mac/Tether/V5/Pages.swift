@@ -115,6 +115,9 @@ struct ContinueCardView: View {
     @EnvironmentObject var m: AppModel
     let state: ContinueCardState
     @State private var hover = false
+    /// 0.5.3: the card's own thumbnail when it shows a picture, else a fresh one asked from the phone.
+    @State private var thumb: NSImage?
+    @State private var refreshKey: String?
 
     private var c: ContinuePayload { state.card }
 
@@ -152,15 +155,23 @@ struct ContinueCardView: View {
         VStack(alignment: .leading, spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(Mono.surfaceHigh)
-                if let img = NSImage(data: state.thumb) {
+                if let img = thumb {
                     Image(nsImage: img).resizable().scaledToFill()
                         .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .transition(.opacity)
                 } else {
                     Image(systemName: symbol).font(.system(size: 22, weight: .light)).foregroundColor(Mono.muted)
                 }
             }
             .frame(width: 196, height: 110)
             .clipped()
+            .animation(.easeOut(duration: 0.2), value: thumb != nil)
+            .onAppear(perform: loadThumb)
+            .onChange(of: state.thumb) { _ in loadThumb() }
+            .onReceive(NotificationCenter.default.publisher(for: .tetherThumbReady)) { n in
+                guard let k = n.object as? String, k == refreshKey, let img = ThumbCache.shared[k], !ThumbCheck.isBlank(img) else { return }
+                thumb = img
+            }
             Text(label).font(Typo.mono(9, .medium)).tracking(0.8).foregroundColor(Mono.muted)
             Text(c.title).font(Typo.sans(13, .medium)).foregroundColor(Mono.text).lineLimit(2)
             if let s = c.subtitle { Text(s).font(Typo.sans(11)).foregroundColor(Mono.muted).lineLimit(1) }
@@ -179,6 +190,47 @@ struct ContinueCardView: View {
         .tetherCard(highlighted: hover)
         .hoverLift()
         .onHover { hover = $0 }
+    }
+}
+
+extension ContinueCardView {
+    /// A solid-black thumbnail (made before the screenshot was written, or a FLAG_SECURE screen)
+    /// is never shown: the placeholder icon stays, and for phone photos a fresh thumbnail is asked
+    /// for once the file has settled.
+    fileprivate func loadThumb() {
+        if let img = NSImage(data: state.thumb), !ThumbCheck.isBlank(img) {
+            thumb = img
+            return
+        }
+        thumb = nil
+        guard c.kind == ContinueKinds.photo, let root = c.root, let path = c.path else { return }
+        let key = m.thumbKey(root: root, path: path) + "@384"
+        refreshKey = key
+        if let hit = ThumbCache.shared[key], !ThumbCheck.isBlank(hit) {
+            thumb = hit
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { m.requestThumb(root: root, path: path, size: 384) }
+    }
+}
+
+/// Whether a thumbnail is one flat dark colour (TetherCore MediaReady.isBlank on an 8×8 luma grid).
+enum ThumbCheck {
+    static func isBlank(_ image: NSImage) -> Bool {
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return true }
+        let n = 8
+        var px = [UInt8](repeating: 0, count: n * n * 4)
+        let drawn: Bool = px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            ctx.interpolationQuality = .medium
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: n, height: n))
+            return true
+        }
+        guard drawn else { return true }
+        let luma = (0..<(n * n)).map { i in (Int(px[i * 4]) * 299 + Int(px[i * 4 + 1]) * 587 + Int(px[i * 4 + 2]) * 114) / 1000 }
+        return MediaReady.isBlank(luma)
     }
 }
 

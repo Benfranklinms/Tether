@@ -260,6 +260,8 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         app, engine, files, { settings.current },
         send = { m -> controller.send(m) }, sendFile = { r -> controller.sendFile(r) },
         supports = { c -> controller.peerSupports(c) },
+        foreground = { foreground },
+        link = { (state.value.link as? LinkState.Connected)?.let { true to it.wifi } ?: (false to false) },
     )
     val updater = Updater(app).also { Updater.instance = it }
 
@@ -437,6 +439,7 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
             for (u in uris) {
                 try {
                     val rec = files.stage(u, System.currentTimeMillis())
+                    transferSources.remember(rec.id, u)
                     engine.execute { controller.sendFile(rec) }
                 } catch (e: IOException) {
                     Log.e("file.stage_failed", e)
@@ -452,6 +455,18 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
     fun cancelTransfer(id: String) = engine.execute { controller.cancelTransfer(id) }
     fun retryTransfer(id: String) = engine.execute { controller.retryTransfer(id) }
     fun removeTransfer(id: String) = engine.execute { controller.removeTransfer(id) }
+
+    /** Where sent files came from, so the Transfers screen can open them (0.5.3). */
+    val transferSources = dev.benfranklin.tether.files.TransferSources(app)
+
+    /** Clear all (Transfers screen): every finished transfer leaves the list; running ones stay. */
+    fun clearFinishedTransfers() = engine.execute {
+        val done = transfers.transfers.value.filter { it.status.isFinal }.map { it.id }
+        done.forEach { controller.removeTransfer(it) }
+        transferSources.retain(transfers.transfers.value.map { it.id }.toSet() - done.toSet())
+    }
+
+    fun openTransfer(t: TransferRecord): String? = transferSources.open(t)
 
     fun unpair() = engine.execute {
         controller.unpair()
@@ -869,11 +884,12 @@ class TetherRuntime(private val app: Context) : ControllerListener, BleCentral.L
         } else {
             stopRssi()
             if (screenLive || screenPending) stopScreen("link")
+            if (wasConnectedForShelf) v6.linkChanged()
         }
         retick(state)
         if (state is LinkState.Connected) {
             this.state.update { it.copy(lastError = null) }
-            if (!wasConnectedForShelf) v6.linkUp()
+            if (!wasConnectedForShelf) v6.linkUp() else v6.linkChanged()
             if (!state.wifi) {
                 val now = SystemClock.elapsedRealtime()
                 if (fastPath.nextAt == null) {

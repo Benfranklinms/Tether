@@ -5,6 +5,21 @@ CI copies the section whose heading matches the tag (`## 0.5.2` for `v0.5.2`) in
 release notes, and the apps show it in their update popup. A tag without a matching section
 fails the release.
 
+## 0.5.3
+
+- **Take Photo and Scan Document work from the Mac menu bar.** The phone now really opens the camera even when Tether is in the background (Android blocks that unless Tether is allowed to). If it can't, your phone shows a notification to tap, and the Mac tells you so instead of waiting silently.
+- **Copy on a Shelf photo or file copies the file itself.** Paste in Finder, Mail or Messages gives you the picture or the document, not a line of text.
+- **Shelf files open even when the other device is away.** Every Shelf file up to 100 MB is copied to both devices in the background (encrypted, like the rest of the Shelf).
+- **Rename Shelf items** on both devices (right-click › Rename or double-click the title on the Mac; long-press or the detail screen on the phone). The new name is used when you open or copy the file.
+- **Search the Shelf**: ⌘F on the Mac, the search bar on the phone. Searches titles, contents, file names and types.
+- **Shelf cards say "Word document" or "PDF"** instead of long technical types, and image files show a thumbnail.
+- **Transfers on the phone stay tidy**: Home shows the latest three with **See all**, a full list grouped by day with Sent / Received filters, swipe to delete and Clear all. Finished transfers fold away after a day.
+- **Nothing scrolls under the phone's status bar or navigation bar** any more, on any screen, and the clock and battery icons stay readable in light mode too.
+- **Find my Mac moved to Settings** on the phone, so Home stays short.
+- **Shelf snippet cards** no longer repeat their title in the preview.
+- **Continue on Mac cards** wait until a new photo is fully saved, so the thumbnail and size are right (no more black thumbnails).
+- **What's new** now shows after every update, including updates from 0.5.1 and older.
+
 ## 0.5.2
 
 - **Animations in both apps.** Pages slide in the direction you move, notifications and messages open with a hero transition, photos zoom out of their tile and back, lists cascade in and swipe away, buttons react when pressed. Everything falls back to a simple fade with Reduce Motion.
