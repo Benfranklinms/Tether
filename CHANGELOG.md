@@ -5,6 +5,10 @@ CI copies the section whose heading matches the tag (`## 0.5.2` for `v0.5.2`) in
 release notes, and the apps show it in their update popup. A tag without a matching section
 fails the release.
 
+## 0.5.6
+
+- Fixed a crash on macOS 27 when the menu-bar panel resized.
+
 ## 0.5.5
 
 - **18 themes on the phone.** Settings › Appearance has 9 dark themes (Mono, OLED Black, Midnight, Sand, Violet, Ocean, Rose, Slate, Mocha) and 9 light ones (Light, Ice, Lilac, Snow, Paper, Linen, Sky, Blush, Periwinkle). Switching fades the colours over.
