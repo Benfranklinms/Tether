@@ -492,3 +492,48 @@ enum HostingSizing {
         return box
     }
 }
+
+/// Panel actions passed into MenuView (nil in screenshots / previews).
+struct PanelControls {
+    var detached: Bool
+    var onTop: Bool
+    var detach: () -> Void
+    var attach: () -> Void
+    var toggleOnTop: () -> Void
+    var open: (WindowID) -> Void
+}
+
+/// The draggable header strip. Dragging it moves the panel; dragging the attached panel
+/// more than a few points tears it off first.
+struct PanelDragArea: NSViewRepresentable {
+    var onTearOff: () -> Void
+
+    func makeNSView(context: Context) -> DragView {
+        let v = DragView()
+        v.onTearOff = onTearOff
+        return v
+    }
+
+    func updateNSView(_ v: DragView, context: Context) { v.onTearOff = onTearOff }
+
+    final class DragView: NSView {
+        var onTearOff: (() -> Void)?
+        private var start: NSPoint?
+
+        override func mouseDown(with event: NSEvent) { start = NSEvent.mouseLocation }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let s = start else { return }
+            let now = NSEvent.mouseLocation
+            if hypot(now.x - s.x, now.y - s.y) > 4 {
+                if let p = window as? TetherPanel, !p.isDetached { onTearOff?() }
+                start = nil
+                window?.performDrag(with: event)
+            }
+        }
+
+        override func mouseUp(with event: NSEvent) { start = nil }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    }
+}
