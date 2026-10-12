@@ -312,14 +312,13 @@ enum Screenshots {
         let host = NSHostingView(rootView: shot.view().environmentObject(model).environment(\.tetherStyle, model.settings.appearance))
         let size = host.fittingSize
         // 0.5.6: measured once above; from here the window sets the size (no constraint-driven resizes).
-        HostingSizing.harden(host)
-        host.frame = NSRect(origin: .zero, size: size)
-        let w = window ?? NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let content = HostingSizing.container(host, size: size, keepSafeArea: false)
+        let w = window ?? NSWindow(contentRect: content.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window = w
         w.isReleasedWhenClosed = false
         w.appearance = Screenshots.appearance
         w.backgroundColor = Mono.nsBg
-        w.contentView = host
+        w.contentView = content
         w.setContentSize(size)
         w.setFrameOrigin(NSPoint(x: 40, y: 40))
         w.orderFrontRegardless()

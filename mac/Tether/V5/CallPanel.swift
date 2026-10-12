@@ -15,7 +15,6 @@ final class FloatingCallUI: ObservableObject {
 final class FloatingCallController {
     private weak var model: AppModel?
     private var panel: NSPanel?
-    private var host: NSHostingController<AnyView>?
     private let ui = FloatingCallUI()
     private var bag = Set<AnyCancellable>()
     /// Calls the user closed the bar for (stays closed for the rest of that call).
@@ -59,16 +58,11 @@ final class FloatingCallController {
             p.hasShadow = true
             p.isMovableByWindowBackground = true
             p.becomesKeyOnlyIfNeeded = true
-            let root = FloatingCallView(ui: ui, onClose: { [weak self] id in self?.dismiss(id: id) })
-                .environmentObject(m)
-                .environment(\.tetherStyle, m.settings.appearance)
-            // 0.5.6: the hosting view doesn't size the window (no SwiftUI sizing constraints, no safe
-            // area); the banner is measured with sizeThatFits and framed explicitly below, outside layout.
-            let host = NSHostingController(rootView: AnyView(root))
-            HostingSizing.harden(host, keepSafeArea: false)
-            host.view.frame = NSRect(origin: .zero, size: size)
-            p.contentView = host.view
-            self.host = host
+            // 0.5.6: the hosting view doesn't size the window (plain content view, no SwiftUI sizing
+            // constraints, no safe area); the banner is measured with sizeThatFits and framed explicitly
+            // below, outside layout.
+            let view = NSHostingView(rootView: banner(m))
+            p.contentView = HostingSizing.container(view, size: size, keepSafeArea: false)
             panel = p
         }
         guard let p = panel else { return }
@@ -76,7 +70,10 @@ final class FloatingCallController {
         // Let SwiftUI lay out the new state (incoming → live) before measuring.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            let fit = self.host?.sizeThatFits(in: NSSize(width: 360, height: 600)) ?? p.frame.size
+            // A throwaway measuring host (never in a window) with the same content and state.
+            let measure = NSHostingController(rootView: self.banner(m))
+            HostingSizing.harden(measure)
+            let fit = measure.sizeThatFits(in: NSSize(width: 360, height: 600))
             let size = NSSize(width: 360, height: min(max(80, ceil(fit.height)), 600))
             var frame = NSRect(origin: p.frame.origin, size: size)
             if let screen = NSScreen.main ?? NSScreen.screens.first {
@@ -98,6 +95,12 @@ final class FloatingCallController {
         }
         if !p.isVisible { p.orderFrontRegardless() }
         if !ui.visible { ui.visible = true }
+    }
+
+    private func banner(_ m: AppModel) -> AnyView {
+        AnyView(FloatingCallView(ui: ui, onClose: { [weak self] id in self?.dismiss(id: id) })
+            .environmentObject(m)
+            .environment(\.tetherStyle, m.settings.appearance))
     }
 
     /// Springs the banner away, then orders the panel out.

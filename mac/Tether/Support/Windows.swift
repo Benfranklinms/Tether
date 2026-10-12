@@ -70,14 +70,13 @@ final class WindowRouter: NSObject, NSWindowDelegate {
             root = AnyView(KeyboardView(v5: model.v5))
             size = NSSize(width: 440, height: 330)
         }
-        let host = NSHostingController(rootView: Themed(model: model, content: root))
-        // 0.5.6: the window owns its size (explicit sizes + contentMinSize below). Letting the hosting
-        // controller push its SwiftUI size into the window made AppKit resize the window from constraints
-        // inside a layout pass, which re-dirtied the constraints and aborted on macOS 27.
-        HostingSizing.harden(host, keepSafeArea: true)
-        host.view.frame = NSRect(origin: .zero, size: size)
+        // 0.5.6: the window owns its size (explicit sizes + contentMinSize below). A hosting view that is the
+        // window's content view resizes the window to its SwiftUI size from inside the window's layout pass,
+        // which re-dirtied the constraints and aborted on macOS 27; hosted in a plain content view it can't.
+        // The titlebar safe area is kept here: these windows lay out around the traffic lights.
+        let host = NSHostingView(rootView: Themed(model: model, content: root))
         let w = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: style, backing: .buffered, defer: false)
-        w.contentViewController = host
+        w.contentView = HostingSizing.container(host, size: size, keepSafeArea: true)
         w.setContentSize(size)
         w.titleVisibility = .hidden
         w.titlebarAppearsTransparent = true
@@ -138,7 +137,7 @@ final class StatusController: NSObject, NSWindowDelegate {
     private let model: AppModel
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var panel: TetherPanel?
-    private var host: NSHostingController<PanelRoot>?
+    private var host: NSHostingView<PanelRoot>?
     private var subs: Set<AnyCancellable> = []
     private var outsideMonitor: Any?
     private static let frameKey = "detachedPanelFrame"
@@ -226,15 +225,14 @@ final class StatusController: NSObject, NSWindowDelegate {
         let frame = NSRect(x: 0, y: 0, width: Self.attachedWidth, height: 480)
         let p = TetherPanel(contentRect: frame)
         let root = PanelRoot(model: model, controller: self)
-        let host = NSHostingController(rootView: root)
-        // 0.5.6 (macOS 27 crash): the hosting controller no longer sizes the window. With
-        // .preferredContentSize the window frame followed the SwiftUI size from constraints during the
-        // display-cycle layout; that changed the safe area, re-dirtied the constraints in the same pass and
-        // AppKit threw (SIGABRT ~3 s after launch). The attached panel is now sized from a measured height,
-        // outside layout (contentHeightChanged); the detached one is sized by the user.
-        HostingSizing.harden(host, keepSafeArea: false)
-        host.view.frame = frame
-        p.contentViewController = host
+        let host = NSHostingView(rootView: root)
+        // 0.5.6 (macOS 27 crash): SwiftUI no longer sizes the window. As the window's content view controller
+        // (sizingOptions .preferredContentSize) it resized the panel from inside the display-cycle layout;
+        // that changed the safe area, re-dirtied the constraints in the same pass and AppKit threw (SIGABRT
+        // ~3 s after launch). Now the hosting view sits in a plain content view with no sizing constraints
+        // and no safe area; the attached panel is sized from a measured height outside layout
+        // (contentHeightChanged) and the detached one by the user.
+        p.contentView = HostingSizing.container(host, size: frame.size, keepSafeArea: false)
         p.setFrame(frame, display: false)
         p.delegate = self
         panel = p
@@ -247,7 +245,7 @@ final class StatusController: NSObject, NSWindowDelegate {
         let p = makePanel()
         p.isDetached = false
         if p.level != panelLevel { p.level = panelLevel }
-        if !p.isVisible, let view = host?.view {
+        if !p.isVisible, let view = host {
             // Measure before showing: lays out the SwiftUI view only (not the window), so PanelRoot reports
             // its natural height without AppKit deriving the window frame from constraints.
             view.layoutSubtreeIfNeeded()
@@ -467,62 +465,30 @@ struct PanelHeightKey: PreferenceKey {
 }
 
 /// 0.5.6: hosting views never drive their window's frame. AppKit windows here are sized explicitly
-/// (setContentSize / setFrame / contentMinSize / user resizing); with SwiftUI's sizing constraints
-/// installed, a constraint-driven window resize could invalidate the safe area during the same layout
-/// pass and abort with "needs another Update Constraints in Window pass" (macOS 27).
+/// (setContentSize / setFrame / contentMinSize / user resizing). A hosting view that is the window's
+/// content view (or content view controller) resizes the window to its SwiftUI size from the window's
+/// layout pass; that could invalidate the safe area and constraints in the same pass and abort with
+/// "needs another Update Constraints in Window pass" (macOS 27; reproduced on CI's macOS 26 runner).
 enum HostingSizing {
-    static func harden<V: View>(_ host: NSHostingController<V>, keepSafeArea: Bool) {
+    /// No SwiftUI sizing constraints, and no safe area unless the window lays out around its titlebar.
+    static func harden<V: View>(_ view: NSHostingView<V>, keepSafeArea: Bool = false) {
+        view.sizingOptions = []
+        if !keepSafeArea, #available(macOS 13.3, *) { view.safeAreaRegions = [] }
+    }
+
+    static func harden<V: View>(_ host: NSHostingController<V>, keepSafeArea: Bool = false) {
         host.sizingOptions = []
         if !keepSafeArea, #available(macOS 13.3, *) { host.safeAreaRegions = [] }
     }
 
-    static func harden<V: View>(_ view: NSHostingView<V>) {
-        view.sizingOptions = []
-        if #available(macOS 13.3, *) { view.safeAreaRegions = [] }
-    }
-}
-
-/// Panel actions passed into MenuView (nil in screenshots / previews).
-struct PanelControls {
-    var detached: Bool
-    var onTop: Bool
-    var detach: () -> Void
-    var attach: () -> Void
-    var toggleOnTop: () -> Void
-    var open: (WindowID) -> Void
-}
-
-/// The draggable header strip. Dragging it moves the panel; dragging the attached panel
-/// more than a few points tears it off first.
-struct PanelDragArea: NSViewRepresentable {
-    var onTearOff: () -> Void
-
-    func makeNSView(context: Context) -> DragView {
-        let v = DragView()
-        v.onTearOff = onTearOff
-        return v
-    }
-
-    func updateNSView(_ v: DragView, context: Context) { v.onTearOff = onTearOff }
-
-    final class DragView: NSView {
-        var onTearOff: (() -> Void)?
-        private var start: NSPoint?
-
-        override func mouseDown(with event: NSEvent) { start = NSEvent.mouseLocation }
-
-        override func mouseDragged(with event: NSEvent) {
-            guard let s = start else { return }
-            let now = NSEvent.mouseLocation
-            if hypot(now.x - s.x, now.y - s.y) > 4 {
-                if let p = window as? TetherPanel, !p.isDetached { onTearOff?() }
-                start = nil
-                window?.performDrag(with: event)
-            }
-        }
-
-        override func mouseUp(with event: NSEvent) { start = nil }
-
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    /// A plain content view holding `view` (hardened) by autoresizing, so the window keeps its size.
+    static func container<V: View>(_ view: NSHostingView<V>, size: NSSize, keepSafeArea: Bool) -> NSView {
+        harden(view, keepSafeArea: keepSafeArea)
+        let box = NSView(frame: NSRect(origin: .zero, size: size))
+        box.autoresizesSubviews = true
+        view.frame = box.bounds
+        view.autoresizingMask = [.width, .height]
+        box.addSubview(view)
+        return box
     }
 }
