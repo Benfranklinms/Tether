@@ -22,7 +22,8 @@ enum PanelSmoke {
         status = StatusController(model: m)
         savedNotes = m.history
         DispatchQueue.main.asyncAfter(deadline: .now() + 120) { finish("timed out") }
-        steps(stepList[...])
+        // Give the new status item a moment to be placed in the menu bar (a user can't click it sooner).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { steps(stepList[...]) }
     }
 
     private typealias Step = (name: String, run: () -> Void)
