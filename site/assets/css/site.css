@@ -415,7 +415,7 @@ html:not(.pin) .ch-text .num { display: block; margin-bottom: 14px; }
   background: radial-gradient(closest-side, rgba(255,255,255,.9), rgba(255,255,255,0)); opacity: 0; transition: opacity .6s; will-change: transform; }
 .has-hover .glow { opacity: 1; }
 main, .nav, .foot { position: relative; z-index: 1; }
-.nav { position: fixed; }
+.nav { position: fixed; z-index: 50; }
 
 /* ---------------------------------------------------------------- responsive */
 @media (max-width: 1320px) {
