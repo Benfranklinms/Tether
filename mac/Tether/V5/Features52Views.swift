@@ -34,9 +34,11 @@ final class FindMacAlarm {
             w.isOpaque = false
             w.backgroundColor = .clear
             w.isReleasedWhenClosed = false
-            w.contentView = NSHostingView(rootView: FindMacOverlay(phone: model.peer?.name ?? "your phone") { [weak model] in
+            let host = NSHostingView(rootView: FindMacOverlay(phone: model.peer?.name ?? "your phone") { [weak model] in
                 model?.foundMac()
             })
+            HostingSizing.harden(host) // 0.5.6: the window is screen-sized; the view never resizes it
+            w.contentView = host
             w.setFrame(screen.frame, display: true)
             w.makeKeyAndOrderFront(nil)
             windows.append(w)

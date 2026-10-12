@@ -62,7 +62,8 @@ struct SlimMenuView: View {
         .animation(Motion.bouncy(reduce), value: m.v5.hotspot)
         .padding(16)
         .frame(width: detached ? nil : 340)
-        .frame(minWidth: 320, maxWidth: detached ? .infinity : 340, alignment: .top)
+        // Detached: fill the window the user sized (0.5.6: the window no longer follows the content height).
+        .frame(minWidth: 320, maxWidth: detached ? .infinity : 340, maxHeight: detached ? .infinity : nil, alignment: .top)
         .overlay(alignment: .topTrailing) { pin }
         .tetherBackground()
         .tetherWindowChrome()

@@ -5,6 +5,7 @@ import TetherCore
 /// Command-line switches:
 ///   --demo               run with sample data and no radios (try the UI without a phone)
 ///   --screenshots <dir>  render every screen with sample data into <dir> as PNGs, then quit
+///   --smoke-panel        CI smoke test: open, resize, detach and re-attach the menu-bar panel, then quit
 enum Launch {
     static let args = ProcessInfo.processInfo.arguments
 
@@ -13,7 +14,10 @@ enum Launch {
         return URL(fileURLWithPath: args[i + 1], isDirectory: true)
     }()
 
-    static let demo = args.contains("--demo") || screenshotDir != nil || ProcessInfo.processInfo.environment["TETHER_DEMO"] == "1"
+    static let smokePanel = args.contains("--smoke-panel")
+
+    static let demo = args.contains("--demo") || smokePanel || screenshotDir != nil
+        || ProcessInfo.processInfo.environment["TETHER_DEMO"] == "1"
 }
 
 @main
@@ -51,6 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let dir = Launch.screenshotDir {
             Screenshots.run(into: dir) { NSApp.terminate(nil) }
+            return
+        }
+        if Launch.smokePanel {
+            PanelSmoke.run()
             return
         }
         let m = AppModel(demo: Launch.demo)
@@ -303,6 +311,8 @@ enum Screenshots {
         Demo5.load(model)
         let host = NSHostingView(rootView: shot.view().environmentObject(model).environment(\.tetherStyle, model.settings.appearance))
         let size = host.fittingSize
+        // 0.5.6: measured once above; from here the window sets the size (no constraint-driven resizes).
+        HostingSizing.harden(host)
         host.frame = NSRect(origin: .zero, size: size)
         let w = window ?? NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window = w

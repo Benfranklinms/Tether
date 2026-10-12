@@ -192,8 +192,11 @@ private struct WindowConfigurator: NSViewRepresentable {
 
     private func apply(_ w: NSWindow?) {
         guard let w else { return }
-        w.isOpaque = !clear
-        w.backgroundColor = clear ? .clear : Mono.nsBg
-        w.titlebarAppearsTransparent = true
+        // 0.5.6: only touch what changed. This runs after every SwiftUI update; re-setting the titlebar
+        // invalidates the window's safe area and constraints even when nothing differs.
+        if w.isOpaque == clear { w.isOpaque = !clear }
+        let bg: NSColor = clear ? .clear : Mono.nsBg
+        if w.backgroundColor != bg { w.backgroundColor = bg }
+        if !w.titlebarAppearsTransparent { w.titlebarAppearsTransparent = true }
     }
 }

@@ -15,6 +15,7 @@ final class FloatingCallUI: ObservableObject {
 final class FloatingCallController {
     private weak var model: AppModel?
     private var panel: NSPanel?
+    private var host: NSHostingController<AnyView>?
     private let ui = FloatingCallUI()
     private var bag = Set<AnyCancellable>()
     /// Calls the user closed the bar for (stays closed for the rest of that call).
@@ -61,9 +62,13 @@ final class FloatingCallController {
             let root = FloatingCallView(ui: ui, onClose: { [weak self] id in self?.dismiss(id: id) })
                 .environmentObject(m)
                 .environment(\.tetherStyle, m.settings.appearance)
-            let host = NSHostingView(rootView: root)
-            host.frame = NSRect(origin: .zero, size: size)
-            p.contentView = host
+            // 0.5.6: the hosting view doesn't size the window (no SwiftUI sizing constraints, no safe
+            // area); the banner is measured with sizeThatFits and framed explicitly below, outside layout.
+            let host = NSHostingController(rootView: AnyView(root))
+            HostingSizing.harden(host, keepSafeArea: false)
+            host.view.frame = NSRect(origin: .zero, size: size)
+            p.contentView = host.view
+            self.host = host
             panel = p
         }
         guard let p = panel else { return }
@@ -71,8 +76,8 @@ final class FloatingCallController {
         // Let SwiftUI lay out the new state (incoming → live) before measuring.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            let fit = p.contentView?.fittingSize ?? p.frame.size
-            let size = NSSize(width: 360, height: max(80, fit.height))
+            let fit = self.host?.sizeThatFits(in: NSSize(width: 360, height: 600)) ?? p.frame.size
+            let size = NSSize(width: 360, height: min(max(80, ceil(fit.height)), 600))
             var frame = NSRect(origin: p.frame.origin, size: size)
             if let screen = NSScreen.main ?? NSScreen.screens.first {
                 let v = screen.visibleFrame

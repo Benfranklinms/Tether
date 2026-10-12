@@ -287,6 +287,20 @@ jobs:
           ln -s /Applications dmg/Applications
           hdiutil create -volname "Tether" -srcfolder dmg -ov -format UDZO "../out/Tether-${TETHER_VERSION_NAME}.dmg"
           ls -la ../out
+      - name: Smoke test (menu-bar panel open / resize / detach / attach)
+        run: |
+          "$APP/Contents/MacOS/Tether" --smoke-panel > smoke.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 150); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+          if kill -0 $pid 2>/dev/null; then kill -9 $pid; cat smoke.log; echo "::error::panel smoke test hung"; exit 1; fi
+          code=0; wait $pid || code=$?
+          cat smoke.log
+          if [ $code -ne 0 ] || ! grep -q "SMOKE PASS" smoke.log; then
+            echo "::error::panel smoke test failed (exit $code)"
+            ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -5
+            f=$(ls -t ~/Library/Logs/DiagnosticReports/Tether* 2>/dev/null | head -1); [ -n "$f" ] && head -120 "$f"
+            exit 1
+          fi
       - name: Screenshots (demo mode)
         continue-on-error: true
         run: |
@@ -308,7 +322,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mac-logs
-          path: mac/xcodebuild.log
+          path: |
+            mac/xcodebuild.log
+            mac/smoke.log
       - name: Commit screenshots
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: .

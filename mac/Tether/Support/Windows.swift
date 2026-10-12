@@ -71,6 +71,11 @@ final class WindowRouter: NSObject, NSWindowDelegate {
             size = NSSize(width: 440, height: 330)
         }
         let host = NSHostingController(rootView: Themed(model: model, content: root))
+        // 0.5.6: the window owns its size (explicit sizes + contentMinSize below). Letting the hosting
+        // controller push its SwiftUI size into the window made AppKit resize the window from constraints
+        // inside a layout pass, which re-dirtied the constraints and aborted on macOS 27.
+        HostingSizing.harden(host, keepSafeArea: true)
+        host.view.frame = NSRect(origin: .zero, size: size)
         let w = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: style, backing: .buffered, defer: false)
         w.contentViewController = host
         w.setContentSize(size)
@@ -133,9 +138,23 @@ final class StatusController: NSObject, NSWindowDelegate {
     private let model: AppModel
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var panel: TetherPanel?
+    private var host: NSHostingController<PanelRoot>?
     private var subs: Set<AnyCancellable> = []
     private var outsideMonitor: Any?
     private static let frameKey = "detachedPanelFrame"
+    /// The attached panel's width (SlimMenuView is 340 pt wide when attached).
+    static let attachedWidth: CGFloat = 340
+    /// Natural height of the panel content, measured by PanelRoot (0 until the first measurement).
+    private(set) var contentHeight: CGFloat = 0
+    private var resizeScheduled = false
+
+    /// The panel window (smoke test and diagnostics).
+    var panelWindow: NSPanel? { panel }
+    /// The menu-bar icon in screen coordinates (nil when the item has no window, e.g. hidden).
+    var statusItemScreenRect: NSRect? {
+        guard let button = item.button, let bw = button.window else { return nil }
+        return bw.convertToScreen(button.convert(button.bounds, to: nil))
+    }
 
     init(model: AppModel) {
         self.model = model
@@ -181,8 +200,9 @@ final class StatusController: NSObject, NSWindowDelegate {
             button.title = ""
         }
         button.setAccessibilityLabel(model.isConnected ? "Tether, connected" : "Tether")
-        panel?.isDetached = model.settings.panelDetached
-        panel?.level = panelLevel
+        guard let p = panel else { return }
+        if p.isDetached != model.settings.panelDetached { p.isDetached = model.settings.panelDetached }
+        if p.level != panelLevel { p.level = panelLevel }
     }
 
     private var panelLevel: NSWindow.Level {
@@ -203,13 +223,22 @@ final class StatusController: NSObject, NSWindowDelegate {
 
     private func makePanel() -> TetherPanel {
         if let p = panel { return p }
-        let p = TetherPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 600))
+        let frame = NSRect(x: 0, y: 0, width: Self.attachedWidth, height: 480)
+        let p = TetherPanel(contentRect: frame)
         let root = PanelRoot(model: model, controller: self)
         let host = NSHostingController(rootView: root)
-        host.sizingOptions = [.preferredContentSize]
+        // 0.5.6 (macOS 27 crash): the hosting controller no longer sizes the window. With
+        // .preferredContentSize the window frame followed the SwiftUI size from constraints during the
+        // display-cycle layout; that changed the safe area, re-dirtied the constraints in the same pass and
+        // AppKit threw (SIGABRT ~3 s after launch). The attached panel is now sized from a measured height,
+        // outside layout (contentHeightChanged); the detached one is sized by the user.
+        HostingSizing.harden(host, keepSafeArea: false)
+        host.view.frame = frame
         p.contentViewController = host
+        p.setFrame(frame, display: false)
         p.delegate = self
         panel = p
+        self.host = host
         return p
     }
 
@@ -217,19 +246,57 @@ final class StatusController: NSObject, NSWindowDelegate {
         model.refreshReceivedFiles()
         let p = makePanel()
         p.isDetached = false
-        p.level = panelLevel
-        p.layoutIfNeeded()
-        let size = p.contentViewController?.view.fittingSize ?? NSSize(width: 360, height: 600)
-        p.setContentSize(size)
-        if let button = item.button, let bw = button.window {
-            let r = bw.convertToScreen(button.convert(button.bounds, to: nil))
-            let screen = bw.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-            var x = r.midX - size.width / 2
-            x = min(max(x, screen.minX + 8), screen.maxX - size.width - 8)
-            p.setFrameTopLeftPoint(NSPoint(x: x, y: r.minY - 6))
+        if p.level != panelLevel { p.level = panelLevel }
+        if !p.isVisible, let view = host?.view {
+            // Measure before showing: lays out the SwiftUI view only (not the window), so PanelRoot reports
+            // its natural height without AppKit deriving the window frame from constraints.
+            view.layoutSubtreeIfNeeded()
         }
+        placeAttached(p)
         p.makeKeyAndOrderFront(nil)
         watchOutsideClicks()
+    }
+
+    /// The attached panel's size: fixed width, measured content height clamped to the screen.
+    private func attachedSize(on screen: NSRect) -> NSSize {
+        let measured = contentHeight > 0 ? contentHeight : 480
+        let maxH = screen.height > 0 ? screen.height - 16 : measured
+        return NSSize(width: Self.attachedWidth, height: min(max(measured, 120), max(maxH, 120)))
+    }
+
+    /// Sizes the attached panel and pins its top edge under the menu-bar icon (centred on it,
+    /// kept 8 pt inside the screen), as before 0.5.6.
+    private func placeAttached(_ p: TetherPanel) {
+        let bw = item.button?.window
+        let screen = bw?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        let size = attachedSize(on: screen)
+        var frame = NSRect(origin: p.frame.origin, size: size)
+        if let r = statusItemScreenRect {
+            var x = r.midX - size.width / 2
+            x = min(max(x, screen.minX + 8), screen.maxX - size.width - 8)
+            frame.origin = NSPoint(x: x, y: r.minY - 6 - size.height)
+        } else {
+            // No status item window (hidden item): keep the current top edge.
+            frame.origin.y = p.frame.maxY - size.height
+        }
+        if frame.integral != p.frame.integral { p.setFrame(frame.integral, display: true) }
+    }
+
+    /// PanelRoot's measured content height. Called from SwiftUI during its update, so the resize is
+    /// coalesced and applied on the next main-queue turn, never inside the layout pass that measured it.
+    func contentHeightChanged(_ height: CGFloat) {
+        guard height.isFinite, height > 0 else { return }
+        let h = ceil(height)
+        guard abs(h - contentHeight) >= 0.5 else { return }
+        contentHeight = h
+        guard !resizeScheduled else { return }
+        resizeScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.resizeScheduled = false
+            guard let p = self.panel, !p.isDetached, !self.model.settings.panelDetached, p.isVisible else { return }
+            self.placeAttached(p)
+        }
     }
 
     private func hideAttached() {
@@ -242,7 +309,7 @@ final class StatusController: NSObject, NSWindowDelegate {
         stopWatching()
         let p = makePanel()
         p.isDetached = true
-        p.level = panelLevel
+        if p.level != panelLevel { p.level = panelLevel }
         if let s = UserDefaults.standard.string(forKey: Self.frameKey) {
             let f = NSRectFromString(s)
             if f.width > 200, f.height > 200, NSScreen.screens.contains(where: { $0.visibleFrame.intersects(f) }) {
@@ -321,6 +388,8 @@ final class TetherPanel: NSPanel {
     var isDetached = false {
         didSet {
             guard oldValue != isDetached else { return }
+            // Style and size limits change from event handling (pin, header drag, settings), never from
+            // layout; the hosted view no longer feeds sizes back, so this can't loop.
             if isDetached {
                 styleMask.insert(.resizable)
                 collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -328,6 +397,7 @@ final class TetherPanel: NSPanel {
             } else {
                 styleMask.remove(.resizable)
                 collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
+                contentMinSize = NSSize(width: 1, height: 1)
             }
             hidesOnDeactivate = false
         }
@@ -365,17 +435,50 @@ struct PanelRoot: View {
     weak var controller: StatusController?
 
     var body: some View {
+        let detached = model.settings.panelDetached
         Themed(model: model, content:
             SlimMenuView(panel: PanelControls(
-                detached: model.settings.panelDetached,
+                detached: detached,
                 onTop: model.settings.panelOnTop,
                 detach: { controller?.detach() },
                 attach: { controller?.attach() },
                 toggleOnTop: { controller?.toggleOnTop() },
                 open: { controller?.open($0) }
             ))
+            // Attached: the content's natural height, measured below and applied to the window by the
+            // controller. Detached: it fills the window the user sized.
+            .fixedSize(horizontal: false, vertical: !detached)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(GeometryReader { g in Color.clear.preference(key: PanelHeightKey.self, value: g.size.height) })
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            // The titlebar is transparent and hidden: no safe area for SwiftUI to track or react to.
+            .ignoresSafeArea()
+            .onPreferenceChange(PanelHeightKey.self) { h in
+                if !detached { controller?.contentHeightChanged(h) }
+            }
         )
+    }
+}
+
+/// The panel content's measured height.
+struct PanelHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// 0.5.6: hosting views never drive their window's frame. AppKit windows here are sized explicitly
+/// (setContentSize / setFrame / contentMinSize / user resizing); with SwiftUI's sizing constraints
+/// installed, a constraint-driven window resize could invalidate the safe area during the same layout
+/// pass and abort with "needs another Update Constraints in Window pass" (macOS 27).
+enum HostingSizing {
+    static func harden<V: View>(_ host: NSHostingController<V>, keepSafeArea: Bool) {
+        host.sizingOptions = []
+        if !keepSafeArea, #available(macOS 13.3, *) { host.safeAreaRegions = [] }
+    }
+
+    static func harden<V: View>(_ view: NSHostingView<V>) {
+        view.sizingOptions = []
+        if #available(macOS 13.3, *) { view.safeAreaRegions = [] }
     }
 }
 
